@@ -198,6 +198,34 @@ impl Engine {
         self.last_stamp = None;
     }
 
+    pub fn fill_layer(&mut self) -> bool {
+        if self.mesh.is_none() || self.stroking {
+            return false;
+        }
+        let index = self.layer_index(self.active);
+        self.gpu.begin_stroke(index);
+        self.gpu.fill_mask();
+        let (forward, right, up, eye) = self.basis();
+        let view_proj = gpu::view_projection(eye, forward, right, up, self.fov, 1.0, 0.1, 10.0);
+        self.gpu.paint(&[], view_proj, eye, &self.brush, &self.channels, index);
+        self.gpu.end_stroke();
+        self.dirty = true;
+        true
+    }
+
+    pub fn set_orbit(&mut self, yaw: f32, pitch: f32, zoom: f32) {
+        self.yaw = yaw;
+        self.pitch = pitch.clamp(-1.5, 1.5);
+        if let Some((mesh, _)) = &self.mesh {
+            self.target = mesh.center;
+            self.distance = mesh.radius * 2.8 * zoom.clamp(0.1, 10.0);
+        }
+    }
+
+    pub fn camera_json(&self) -> String {
+        serde_json::json!({ "yaw": self.yaw, "pitch": self.pitch, "distance": self.distance, "fov": self.fov }).to_string()
+    }
+
     pub fn undo(&mut self) -> bool {
         let ok = self.gpu.undo(&self.layer_ids());
         self.dirty |= ok;

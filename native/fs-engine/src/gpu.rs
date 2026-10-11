@@ -394,6 +394,13 @@ impl Gpu {
         self.stroke = Some((index, Snapshot { layer: self.layers[index].id, set }));
     }
 
+    pub fn fill_mask(&self) {
+        let view = view_of(&self.mask);
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&view, wgpu::LoadOp::Clear(wgpu::Color::WHITE))], ..Default::default() });
+        self.queue.submit([encoder.finish()]);
+    }
+
     pub fn end_stroke(&mut self) {
         if let Some((_, snap)) = self.stroke.take() {
             self.undo_stack.push(snap);
