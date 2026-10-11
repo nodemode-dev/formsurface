@@ -1,4 +1,4 @@
-# FormSurface MCP tools (server 0.2.0)
+# FormSurface MCP tools (server 0.3.0)
 
 When this table and the server disagree, the server wins and this file is stale.
 
@@ -7,7 +7,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_status` | none | mesh, texture size, layers, active layer, brush, paint material, camera, viewport |
 | `formsurface_load_sample` | kind: sphere, torus, capsule, knot | status |
 | `formsurface_set_camera` | yaw_degrees, pitch_degrees, zoom (1 frames the mesh) | camera |
-| `formsurface_set_brush` | size_px 1 to 400, hardness, flow, stroke_opacity, spacing, eraser, mirror_x, backface_culling | brush |
+| `formsurface_set_brush` | size_px 1 to 400, hardness, flow, stroke_opacity, spacing, eraser, mirror_x, backface_culling, alignment (camera, tangent_wrap, tangent_planar, uv), size_space (screen, object), angle_degrees, follow_path, tip (round, square, spray), spray_density, lazy_px, jitter_size, jitter_angle, jitter_position, jitter_flow, symmetry (off, mirror, radial), symmetry_axis (x, y, z), radial_count | brush |
 | `formsurface_set_paint_material` | base_color hex, roughness, metallic, height, paint_color, paint_roughness, paint_metallic, paint_height | paint material |
 | `formsurface_set_base_material` | base_color hex, roughness, metallic | empty |
 | `formsurface_add_layer` | name | new id and layers |

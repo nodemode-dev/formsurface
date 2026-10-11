@@ -29,6 +29,10 @@ Three Rgba16Float textures per layer: premultiplied color with coverage in alpha
 
 Paint in the editor on the sphere and torus knot samples, then export maps and check the stroke in base color and roughness. In headless containers, Chromium needs `--enable-unsafe-webgpu --enable-features=Vulkan --use-vulkan=native` with lavapipe; the canvas does not present there, so verify through `snapshot` and `export_channel` readbacks and say so.
 
+## Brush model (v0.3.0)
+
+A stamp is 16 floats: center and world radius, normal and a mirrored flag, tangent and angle, UV position, UV radius and flow scale. Symmetric copies set the mirrored flag, which skips the visibility test and uses tangent-plane coordinates in camera and UV alignments (their screen or UV position would be the original's). Tips are evaluated in the stamp's local 2D frame after rotation; the stencil multiplies coverage in screen space. Jitter, lazy mouse and follow path live in `lib.rs` (`push_stamp`, `stroke_to`); the shader stays deterministic per stamp.
+
 ## Next capabilities, in plan order
 
-Alignment modes (camera, tangent wrap, tangent planar, UV), size space choices, angle, jitters, lazy mouse, alphas and stencils, radial symmetry, engine in a Worker, tile paging for 4K and 8K, texture sets per material.
+Fill layers with UV, tri-planar, planar, spherical and cylindrical projections; layer masks; generators driven by curvature and AO; engine in a Worker; tile paging for 4K and 8K; texture sets per material.

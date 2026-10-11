@@ -31,7 +31,9 @@ The tools give an agent hands; this skill gives the order of work. FormSurface p
 
 - Brush size is in screen pixels, so it shrinks on the model as the camera zooms out. Zoom in (`zoom` below 1) for detail.
 - Height 0.5 is flat; paint height only on its own layer so it can be removed.
-- Mirror X paints the opposite side through the mesh center; use it for symmetric models only.
+- Mirror X paints the opposite side through the mesh center; use it for symmetric models only. Radial symmetry repeats a mark around an axis (bolts on a wheel, panels on a can).
+- Alignment: tangent_wrap (default) hugs curved surfaces; tangent_planar gives crisp decal-like marks on flat areas; camera paints exactly the screen footprint, stretching on grazing faces; uv follows the texture layout and distorts where the UVs do.
+- For organic wear use the spray tip with size and position jitter; for seams and trims use follow_path with a square tip.
 - Tell the person what you changed by layer name. Never delete their layers unless asked.
 
 ## Reference
