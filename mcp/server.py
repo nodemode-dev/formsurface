@@ -478,20 +478,34 @@ class MapSpec(BaseModel):
 
 @server.tool()
 def formsurface_list_export_templates() -> dict:
-    """List export templates (pbr, gltf, unreal, unity_hdrp, unity_urp) with the maps each writes and how channels are packed."""
+    """List export templates (pbr, gltf, unreal, unity_hdrp, unity_urp, plus saved ones marked saved) with the maps each writes and how channels are packed."""
     return call("export_templates")
 
 
 @server.tool()
 def formsurface_export_maps(
     name: str | None = None,
-    template: Literal["pbr", "gltf", "unreal", "unity_hdrp", "unity_urp"] | None = None,
+    template: Annotated[str, Field(pattern=r"^[A-Za-z0-9 _.-]{1,80}$")] | None = None,
     custom_maps: Annotated[list[MapSpec] | None, Field(max_length=16)] = None,
-    bit_depth: Literal[8, 16] | None = None,
+    format: Literal["png", "tif", "exr", "hdr", "jpg", "psd"] | None = None,
+    bit_depth: Literal[8, 16, 32] | None = None,
+    padding: Literal["infinite", "transparent", "color", "diffusion"] | None = None,
+    padding_width: Annotated[int, Field(ge=0, le=256)] | None = None,
+    padding_color: Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$")] | None = None,
 ) -> dict:
-    """Export maps for every texture set into the FormSurface workspace and return the folder. template pbr writes base color, roughness, metallic, height and normal (OpenGL) plus baked maps; gltf, unreal, unity_hdrp and unity_urp pack channels for those engines (unreal flips the normal to DirectX). custom_maps defines your own files: each has a suffix and either rgb (basecolor, normal_gl, normal_dx) or r, g, b, a sources; smoothness is 1 minus roughness and ao is white until baked. With several sets, files are named name_material_suffix, with .udim appended for tiled materials. Without template, the editor's Export template choice is used. bit_depth 16 writes 16-bit PNGs (smooth height and normal gradients); without it the editor's choice is used."""
+    """Export maps for every texture set into the FormSurface workspace and return the folder. template is pbr (base color, roughness, metallic, height and normal plus baked maps), gltf, unreal, unity_hdrp, unity_urp, or a template saved with formsurface_save_export_template (see formsurface_list_export_templates). custom_maps defines files for this export only: each has a suffix and either rgb (basecolor, normal_gl, normal_dx) or r, g, b, a sources; smoothness is 1 minus roughness and ao is white until baked. With several sets, files are named name_material_suffix, with .udim for tiled materials. format and bit_depth: png 8 or 16, tif 8, 16 or 32 (float), exr 16 (half) or 32 (float), hdr 32, jpg 8, psd 8, 16 or 32; float files store base color linear, everything else as in PNG. padding fills texels outside the UV islands: infinite dilation (default), or padding_width texels of dilation followed by transparent (alpha 0; not jpg or hdr), color (padding_color) or diffusion (a smooth blur fill). Omitted values use the editor's Export choices."""
     maps = [m.model_dump(exclude_none=True) for m in custom_maps] if custom_maps else None
-    return call("export", drop_none(name=name, template=template, maps=maps, bit_depth=bit_depth), timeout=300)
+    return call("export", drop_none(name=name, template=template, maps=maps, format=format, bit_depth=bit_depth, padding=padding, padding_width=padding_width, padding_color=padding_color), timeout=600)
+
+
+@server.tool()
+def formsurface_save_export_template(
+    name: Annotated[str, Field(pattern=r"^[A-Za-z0-9 _.-]{1,80}$")],
+    maps: Annotated[list[MapSpec], Field(min_length=1, max_length=16)],
+    label: str | None = None,
+) -> dict:
+    """Save an output template to the workspace library (workspace/templates) so it appears in the editor's Template list and in formsurface_export_maps template for later exports. maps use the same shape as custom_maps. Built-in template names cannot be reused."""
+    return call("save_export_template", drop_none(name=name, label=label, maps=[m.model_dump(exclude_none=True) for m in maps]))
 
 
 @server.tool()
