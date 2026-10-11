@@ -16,7 +16,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_add_fill_layer` | name, projection (uv, triplanar, planar, spherical, cylindrical), pattern (solid, checker, stripes, noise), base_color, roughness, metallic, height, scale, rotation_degrees, planar_axis, sharpness, fill_color, fill_roughness, fill_metallic, fill_height | id and settings |
 | `formsurface_set_fill` | layer_id, projection, pattern, base_color, roughness, metallic, height, scale, rotation_degrees, offset_u, offset_v, planar_axis, sharpness, amount | settings |
 | `formsurface_bake_maps` | directions 8 to 256 | baked flag and map names |
-| `formsurface_bake_high_poly` | mesh_file (in workspace/meshes), use_sample, sample (sphere, pair), cage_front, cage_rear (fractions of mesh radius), match_by_name, ao_rays (0 to 64, default 16; 0 skips AO and bent normal) | hit count, map names (normal, ID, height, opacity, AO, bent normal), matched part count |
+| `formsurface_bake_high_poly` | mesh_file (in workspace/meshes), use_sample, sample (sphere, pair), cage_front, cage_rear (fractions of mesh radius), match_by_name, ao_rays (0 to 64, default 16; 0 skips AO and bent normal), cage_file (custom cage in workspace/meshes: the low mesh with vertices moved), distance_cage (drop the custom cage) | hit count, map names (normal, ID, height, opacity, AO, bent normal), matched part count |
 | `formsurface_view_2d` | on, channel (base_color, roughness, metallic, height), center_u, center_v, zoom (frame part of the layout) | view (2d or 3d); in 2D, paint_stroke, paint_path and polygon_fill points land on the UV layout |
 | `formsurface_paint_path` | points (2 to 64 [x, y] in 0 to 1, kept on the surface), closed, smooth, erase | control points, missed points, samples; one undo step; 3D view only |
 | `formsurface_text_resource` | text, target (alpha, stencil, fill), font (sans-serif, serif, monospace or a loaded font), bold | image size, brush |
@@ -38,7 +38,8 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_paint_stroke` | points: list of [x, y] in 0 to 1, pressure | points, points_on_surface, layer |
 | `formsurface_undo` | steps 1 to 24 | undone count |
 | `formsurface_redo` | steps 1 to 24 | redone count |
-| `formsurface_screenshot` | none | PNG image of the viewport |
+| `formsurface_screenshot` | none | PNG image of the viewport (post effects included) |
+| `formsurface_set_post_effects` | reset, bloom, bloom_threshold, glare, lens_flare, dof_aperture (px, 0 off), dof_focus (-1 front to 1 back of the model), aberration, sharpen, vignette, vignette_softness, grain, gain, contrast, saturation, temperature, tint | current post settings; viewport and screenshots only, exports never change |
 | `formsurface_add_folder` | name, layer_ids to move inside | folder id, moved ids, layers |
 | `formsurface_set_layer_folder` | layer_id, folder_id (0 for top level) | layers |
 | `formsurface_list_export_templates` | none | templates with their maps and packed sources |
@@ -55,7 +56,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_quick_mask` | mode (off, edit, on), action (clear, allow_all, invert) | mode |
 | `formsurface_set_filter` | layer_id, brightness, contrast, hue_degrees, saturation, gamma, roughness_offset, metallic_offset, blur, sharpen, levels_in_low, levels_in_high, levels_out_low, levels_out_high, invert, posterize (0 to 32), pixelate (0 to 64) (only given values change) | settings |
 | `formsurface_polygon_fill` | x, y in 0 to 1, mode (triangle, polygon, mesh, uv_chunk) | filled triangle count, mode, layer |
-| `formsurface_export_maps` | name, template (pbr, gltf, unreal, unity_hdrp, unity_urp or a saved name), custom_maps (suffix plus rgb or r, g, b, a sources), format (png, tif, exr, hdr, jpg, psd), bit_depth (8, 16, 32 as the format allows), padding (infinite, transparent, color, diffusion), padding_width, padding_color | folder, template, format, bit depth, padding and file names; every texture set is exported, as name_material_suffix (plus .udim for tiled materials) when there is more than one |
+| `formsurface_export_maps` | name, template (pbr, gltf, unreal, unity_hdrp, unity_urp, unity_standard_specular, godot, blender, arnold, redshift, usd, sketchfab, spec_gloss or a saved name), custom_maps (suffix plus rgb (basecolor, normal_gl, normal_dx, diffuse, specular) or r, g, b, a sources), format (png, tif, exr, hdr, jpg, psd), bit_depth (8, 16, 32 as the format allows), padding (infinite, transparent, color, diffusion), padding_width, padding_color | folder, template, format, bit depth, padding and file names; every texture set is exported, as name_material_suffix (plus .udim for tiled materials) when there is more than one |
 | `formsurface_save_export_template` | name, maps (same shape as custom_maps), label | file; the template joins the editor's list and export_maps |
 
 The same tools run from a JSON script with `./formsurface batch script.json` (a list of `[tool, arguments]` pairs; `--pause`, `--keep-going`, `--out`). Suggest it when the person wants the same job repeated on many meshes.
