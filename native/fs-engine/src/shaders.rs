@@ -323,6 +323,7 @@ struct Layer {
 @group(0) @binding(3) var l_color: texture_2d<f32>;
 @group(0) @binding(4) var l_val: texture_2d<f32>;
 @group(0) @binding(5) var l_cov: texture_2d<f32>;
+@group(0) @binding(6) var l_mask: texture_2d<f32>;
 
 struct Out { @location(0) color: vec4<f32>, @location(1) mat: vec4<f32>, };
 
@@ -353,7 +354,8 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     let lc = textureLoad(l_color, p, 0);
     let lv = textureLoad(l_val, p, 0);
     let lk = textureLoad(l_cov, p, 0);
-    let op = layer.opacity.x;
+    var op = layer.opacity.x;
+    if (layer.opacity.y > 0.5) { op = op * clamp(textureLoad(l_mask, p, 0).r, 0.0, 1.0); }
     var col = pc.rgb;
     if (lc.a > 1e-5) {
         let straight = lc.rgb / lc.a;
@@ -364,6 +366,159 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     vals = mix(pm.rgb, clamp(blend3(layer.mode.x, pm.rgb, straight_v), vec3<f32>(0.0), vec3<f32>(1.0)), lk.rgb * op);
     o.color = vec4<f32>(col, 1.0);
     o.mat = vec4<f32>(vals, 1.0);
+    return o;
+}
+"#;
+
+pub const APPLY_MASK: &str = r#"
+struct Paint {
+    color: vec4<f32>,
+    values: vec4<f32>,
+    flags: vec4<f32>,
+    mode: vec4<f32>,
+};
+@group(0) @binding(0) var<uniform> paint: Paint;
+@group(0) @binding(1) var snap_mask: texture_2d<f32>;
+@group(0) @binding(2) var stroke: texture_2d<f32>;
+
+@fragment
+fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    let p = vec2<i32>(pos.xy);
+    let old = textureLoad(snap_mask, p, 0).r;
+    let a = clamp(textureLoad(stroke, p, 0).r, 0.0, 1.0) * paint.mode.y;
+    let target_value = select(paint.color.x, 0.0, paint.mode.x > 0.5);
+    let v = mix(old, target_value, a);
+    return vec4<f32>(v, v, v, 1.0);
+}
+"#;
+
+pub const GEOMETRY: &str = r#"
+struct VOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) world: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+};
+@vertex
+fn vs(@location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) uv: vec2<f32>) -> VOut {
+    var o: VOut;
+    o.clip = vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 0.0, 1.0);
+    o.world = p;
+    o.normal = n;
+    return o;
+}
+struct Out { @location(0) pos: vec4<f32>, @location(1) normal: vec4<f32>, };
+@fragment
+fn fs(i: VOut) -> Out {
+    var o: Out;
+    o.pos = vec4<f32>(i.world, 1.0);
+    o.normal = vec4<f32>(normalize(i.normal), 1.0);
+    return o;
+}
+"#;
+
+pub const FILL: &str = r#"
+struct Fill {
+    color: vec4<f32>,
+    values: vec4<f32>,
+    flags: vec4<f32>,
+    proj: vec4<f32>,
+    proj2: vec4<f32>,
+    mesh: vec4<f32>,
+};
+@group(0) @binding(0) var<uniform> fill: Fill;
+@group(0) @binding(1) var pos_map: texture_2d<f32>;
+@group(0) @binding(2) var normal_map: texture_2d<f32>;
+@group(0) @binding(3) var pattern_tex: texture_2d<f32>;
+@group(0) @binding(4) var repeat_samp: sampler;
+
+struct Out {
+    @location(0) color: vec4<f32>,
+    @location(1) val: vec4<f32>,
+    @location(2) cov: vec4<f32>,
+};
+
+fn hash(p: vec2<f32>) -> f32 {
+    return fract(sin(dot(p, vec2<f32>(127.1, 311.7))) * 43758.5453);
+}
+
+fn vnoise(p: vec2<f32>) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2<f32>(1.0, 0.0)), u.x), mix(hash(i + vec2<f32>(0.0, 1.0)), hash(i + vec2<f32>(1.0, 1.0)), u.x), u.y);
+}
+
+fn pattern(c0: vec2<f32>) -> vec4<f32> {
+    let a = fill.proj.w;
+    let rot = vec2<f32>(c0.x * cos(a) - c0.y * sin(a), c0.x * sin(a) + c0.y * cos(a));
+    let c = rot * fill.proj.z + fill.proj2.xy;
+    let kind = fill.proj.y;
+    if (kind < 0.5) { return vec4<f32>(1.0); }
+    if (kind < 1.5) {
+        let k = (floor(c.x) + floor(c.y)) - 2.0 * floor((floor(c.x) + floor(c.y)) * 0.5);
+        return vec4<f32>(vec3<f32>(k), 1.0);
+    }
+    if (kind < 2.5) { return vec4<f32>(vec3<f32>(step(0.5, fract(c.x))), 1.0); }
+    if (kind < 3.5) {
+        var v = 0.0;
+        var amp = 0.5;
+        var q = c * 4.0;
+        for (var o = 0; o < 5; o = o + 1) {
+            v = v + amp * vnoise(q);
+            q = q * 2.03;
+            amp = amp * 0.5;
+        }
+        return vec4<f32>(vec3<f32>(v), 1.0);
+    }
+    return textureSampleLevel(pattern_tex, repeat_samp, c, 0.0);
+}
+
+fn axis_coords(p: vec3<f32>, axis: f32) -> vec2<f32> {
+    if (axis < 0.5) { return p.zy; }
+    if (axis < 1.5) { return p.xz; }
+    return p.xy;
+}
+
+@fragment
+fn fs(@builtin(position) frag: vec4<f32>) -> Out {
+    let px = vec2<i32>(frag.xy);
+    let size = vec2<f32>(textureDimensions(pos_map));
+    let uv = frag.xy / size;
+    let wp = textureLoad(pos_map, px, 0);
+    let n = normalize(textureLoad(normal_map, px, 0).xyz + vec3<f32>(1e-6));
+    let local = (wp.xyz - fill.mesh.xyz) / max(fill.mesh.w, 1e-6);
+    let mode = fill.proj.x;
+    var s = vec4<f32>(1.0);
+    if (mode < 0.5) {
+        s = pattern(uv);
+    } else if (mode < 1.5) {
+        var w = pow(abs(n), vec3<f32>(fill.proj2.z));
+        w = w / max(w.x + w.y + w.z, 1e-6);
+        s = pattern(local.zy * 0.5) * w.x + pattern(local.xz * 0.5) * w.y + pattern(local.xy * 0.5) * w.z;
+    } else if (mode < 2.5) {
+        s = pattern(axis_coords(local, fill.proj2.w) * 0.5 + 0.5);
+    } else if (mode < 3.5) {
+        let d = normalize(local + vec3<f32>(1e-6));
+        s = pattern(vec2<f32>(atan2(d.z, d.x) / 6.2831853 + 0.5, acos(clamp(d.y, -1.0, 1.0)) / 3.1415927));
+    } else {
+        s = pattern(vec2<f32>(atan2(local.z, local.x) / 6.2831853 + 0.5, local.y * 0.5 + 0.5));
+    }
+    var lum = dot(s.rgb, vec3<f32>(0.2126, 0.7152, 0.0722)) * s.a;
+    if (fill.color.w > 0.5) { lum = s.a; }
+    let a = clamp(lum, 0.0, 1.0) * fill.values.w;
+    var base = fill.color.rgb;
+    if (fill.color.w > 0.5) { base = s.rgb; }
+    var o: Out;
+    let ac = a * fill.flags.x;
+    o.color = vec4<f32>(base * ac, ac);
+    let am = a * fill.flags.yzw;
+    o.val = vec4<f32>(fill.values.xyz * am, 0.0);
+    o.cov = vec4<f32>(am, 0.0);
+    if (wp.w < 0.5) {
+        o.color = vec4<f32>(0.0);
+        o.val = vec4<f32>(0.0);
+        o.cov = vec4<f32>(0.0);
+    }
     return o;
 }
 "#;

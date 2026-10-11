@@ -1,7 +1,7 @@
 mod gpu;
 mod shaders;
 
-use fs_core::{add, cross, dot, normalize, scale, sub, BlendMode, BrushSettings, Bvh, ChannelValues, Hit, LayerInfo, Mesh, SizeSpace, Symmetry, Vec3};
+use fs_core::{add, cross, dot, normalize, scale, sub, BlendMode, BrushSettings, Bvh, ChannelValues, FillSettings, Hit, LayerInfo, LayerKind, Mesh, SizeSpace, Symmetry, Vec3};
 use gpu::Gpu;
 use wasm_bindgen::prelude::*;
 
@@ -25,6 +25,8 @@ pub struct Engine {
     pending: Vec<[f32; 16]>,
     seed: u64,
     lazy: Option<(f32, f32)>,
+    fills: std::collections::HashMap<u32, FillSettings>,
+    mask_target: bool,
     stroking: bool,
     cursor: Option<Hit>,
     dirty: bool,
@@ -57,6 +59,8 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         pending: Vec::new(),
         seed: 0x9e37_79b9_7f4a_7c15,
         lazy: None,
+        fills: std::collections::HashMap::new(),
+        mask_target: false,
         stroking: false,
         cursor: None,
         dirty: true,
@@ -85,6 +89,10 @@ impl Engine {
         self.distance = mesh.radius * 2.8;
         let info = format!("{} vertices, {} triangles", mesh.positions.len(), mesh.triangle_count());
         self.mesh = Some((mesh, bvh));
+        let ids: Vec<u32> = self.fills.keys().copied().collect();
+        for id in ids {
+            self.render_fill(id);
+        }
         self.dirty = true;
         Ok(info)
     }
@@ -152,6 +160,9 @@ impl Engine {
             return false;
         }
         let index = self.layer_index(self.active);
+        if self.layers[index].kind == LayerKind::Fill && !self.layers[index].mask {
+            return false;
+        }
         self.gpu.begin_stroke(index);
         self.stroking = true;
         self.lazy = Some((x, y));
@@ -238,7 +249,8 @@ impl Engine {
         self.gpu.fill_mask();
         let (forward, right, up, eye) = self.basis();
         let view_proj = gpu::view_projection(eye, forward, right, up, self.fov, 1.0, 0.1, 10.0);
-        self.gpu.paint(&[], view_proj, eye, &self.brush, &self.channels, index);
+        let to_mask = self.paints_mask();
+        self.gpu.paint(&[], view_proj, eye, &self.brush, &self.channels, index, to_mask);
         self.gpu.end_stroke();
         self.dirty = true;
         true
@@ -273,7 +285,7 @@ impl Engine {
         let id = self.next_id;
         self.next_id += 1;
         let at = if self.layers.is_empty() { 0 } else { self.layer_index(self.active) + 1 };
-        self.layers.insert(at, LayerInfo { id, name, visible: true, opacity: 1.0, blend: BlendMode::Normal });
+        self.layers.insert(at, LayerInfo { id, name, visible: true, opacity: 1.0, blend: BlendMode::Normal, kind: LayerKind::Paint, mask: false });
         self.gpu.insert_layer(at, id);
         self.active = id;
         self.dirty = true;
@@ -286,6 +298,7 @@ impl Engine {
         }
         let index = self.layer_index(id);
         self.layers.remove(index);
+        self.fills.remove(&id);
         self.gpu.remove_layer(index, id);
         if self.active == id {
             self.active = self.layers[index.min(self.layers.len() - 1)].id;
@@ -306,11 +319,62 @@ impl Engine {
     }
 
     pub fn update_layer(&mut self, json: &str) -> Result<(), JsValue> {
-        let info: LayerInfo = serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let mut info: LayerInfo = serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let index = self.layer_index(info.id);
+        info.kind = self.layers[index].kind;
         self.layers[index] = info;
         self.dirty = true;
         Ok(())
+    }
+
+    pub fn add_fill_layer(&mut self, name: String) -> u32 {
+        let id = self.add_layer(name);
+        let index = self.layer_index(id);
+        self.layers[index].kind = LayerKind::Fill;
+        self.fills.insert(id, FillSettings::default());
+        self.render_fill(id);
+        id
+    }
+
+    pub fn fill_settings(&self, id: u32) -> String {
+        self.fills.get(&id).map(|f| serde_json::to_string(f).unwrap_or_default()).unwrap_or_default()
+    }
+
+    pub fn set_fill(&mut self, id: u32, json: &str) -> Result<(), JsValue> {
+        if !self.fills.contains_key(&id) {
+            return Err(JsValue::from_str("That layer is not a fill layer"));
+        }
+        let settings: FillSettings = serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        self.fills.insert(id, settings);
+        self.render_fill(id);
+        Ok(())
+    }
+
+    pub fn set_fill_image(&mut self, id: u32, width: u32, height: u32, rgba: &[u8]) -> Result<(), JsValue> {
+        self.gpu.set_pattern(id, width, height, rgba).map_err(|e| JsValue::from_str(&e))?;
+        self.render_fill(id);
+        Ok(())
+    }
+
+    pub fn set_mask(&mut self, id: u32, enabled: bool) {
+        let index = self.layer_index(id);
+        self.layers[index].mask = enabled;
+        self.dirty = true;
+    }
+
+    pub fn fill_mask(&mut self, id: u32, white: bool) {
+        let index = self.layer_index(id);
+        self.layers[index].mask = true;
+        self.gpu.fill_mask_value(index, if white { 1.0 } else { 0.0 });
+        self.dirty = true;
+    }
+
+    pub fn set_paint_target(&mut self, mask: bool) {
+        self.mask_target = mask;
+    }
+
+    pub fn paint_target_is_mask(&self) -> bool {
+        self.paints_mask()
     }
 
     pub fn select_layer(&mut self, id: u32) {
@@ -487,7 +551,22 @@ impl Engine {
         let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
         let view_proj = gpu::view_projection(eye, forward, right, up, self.fov, aspect, (self.distance - r * 2.0).max(r * 0.01), self.distance + r * 3.0);
         let stamps = std::mem::take(&mut self.pending);
-        self.gpu.paint(&stamps, view_proj, eye, &self.brush, &self.channels, self.layer_index(self.active));
+        let to_mask = self.paints_mask();
+        self.gpu.paint(&stamps, view_proj, eye, &self.brush, &self.channels, self.layer_index(self.active), to_mask);
+        self.dirty = true;
+    }
+
+    fn paints_mask(&self) -> bool {
+        let layer = &self.layers[self.layer_index(self.active)];
+        layer.kind == LayerKind::Fill || (self.mask_target && layer.mask)
+    }
+
+    fn render_fill(&mut self, id: u32) {
+        let Some(settings) = self.fills.get(&id).copied() else { return };
+        let Some((mesh, _)) = &self.mesh else { return };
+        let uniform = settings.uniform(mesh.center, mesh.radius);
+        let index = self.layer_index(id);
+        self.gpu.fill_layer_content(index, &uniform);
         self.dirty = true;
     }
 

@@ -189,6 +189,14 @@ impl Tip {
     }
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LayerKind {
+    #[default]
+    Paint,
+    Fill,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LayerInfo {
     pub id: u32,
@@ -196,4 +204,105 @@ pub struct LayerInfo {
     pub visible: bool,
     pub opacity: f32,
     pub blend: BlendMode,
+    #[serde(default)]
+    pub kind: LayerKind,
+    #[serde(default)]
+    pub mask: bool,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Projection {
+    Uv,
+    Triplanar,
+    Planar,
+    Spherical,
+    Cylindrical,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Pattern {
+    Solid,
+    Checker,
+    Stripes,
+    Noise,
+    Image,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FillSettings {
+    pub projection: Projection,
+    pub pattern: Pattern,
+    pub scale: f32,
+    pub rotation: f32,
+    pub offset_x: f32,
+    pub offset_y: f32,
+    pub sharpness: f32,
+    pub axis: u32,
+    pub base_color: [f32; 3],
+    pub roughness: f32,
+    pub metallic: f32,
+    pub height: f32,
+    pub use_color: bool,
+    pub use_roughness: bool,
+    pub use_metallic: bool,
+    pub use_height: bool,
+    pub image_color: bool,
+    pub opacity: f32,
+}
+
+impl Default for FillSettings {
+    fn default() -> Self {
+        FillSettings {
+            projection: Projection::Uv,
+            pattern: Pattern::Solid,
+            scale: 8.0,
+            rotation: 0.0,
+            offset_x: 0.0,
+            offset_y: 0.0,
+            sharpness: 4.0,
+            axis: 2,
+            base_color: [0.18, 0.2, 0.24],
+            roughness: 0.55,
+            metallic: 0.0,
+            height: 0.5,
+            use_color: true,
+            use_roughness: true,
+            use_metallic: true,
+            use_height: false,
+            image_color: false,
+            opacity: 1.0,
+        }
+    }
+}
+
+impl FillSettings {
+    pub fn uniform(&self, center: [f32; 3], radius: f32) -> [f32; 24] {
+        let flag = |b: bool| if b { 1.0 } else { 0.0 };
+        let projection = match self.projection {
+            Projection::Uv => 0.0,
+            Projection::Triplanar => 1.0,
+            Projection::Planar => 2.0,
+            Projection::Spherical => 3.0,
+            Projection::Cylindrical => 4.0,
+        };
+        let pattern = match self.pattern {
+            Pattern::Solid => 0.0,
+            Pattern::Checker => 1.0,
+            Pattern::Stripes => 2.0,
+            Pattern::Noise => 3.0,
+            Pattern::Image => 4.0,
+        };
+        let c = self.base_color;
+        [
+            c[0], c[1], c[2], flag(self.image_color && self.pattern == Pattern::Image),
+            self.roughness, self.metallic, self.height, self.opacity.clamp(0.0, 1.0),
+            flag(self.use_color), flag(self.use_roughness), flag(self.use_metallic), flag(self.use_height),
+            projection, pattern, self.scale.max(0.01), self.rotation.to_radians(),
+            self.offset_x, self.offset_y, self.sharpness.clamp(1.0, 32.0), self.axis.min(2) as f32,
+            center[0], center[1], center[2], radius,
+        ]
+    }
 }

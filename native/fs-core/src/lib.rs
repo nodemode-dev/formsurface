@@ -3,7 +3,7 @@ pub mod document;
 pub mod mesh;
 
 pub use bvh::{Bvh, Hit};
-pub use document::{Alignment, BlendMode, BrushSettings, ChannelValues, LayerInfo, SizeSpace, StrokeMode, Symmetry, Tip};
+pub use document::{Alignment, BlendMode, BrushSettings, ChannelValues, FillSettings, LayerInfo, LayerKind, Pattern, Projection, SizeSpace, StrokeMode, Symmetry, Tip};
 pub use mesh::Mesh;
 
 pub type Vec3 = [f32; 3];

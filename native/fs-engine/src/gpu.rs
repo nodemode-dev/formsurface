@@ -10,6 +10,7 @@ struct Set {
     color: wgpu::Texture,
     val: wgpu::Texture,
     cov: wgpu::Texture,
+    mask: wgpu::Texture,
 }
 
 struct LayerTex {
@@ -41,6 +42,13 @@ pub struct Gpu {
     sampler: wgpu::Sampler,
     camera: wgpu::Buffer,
     stamp_buffer: wgpu::Buffer,
+    fill_uniform: wgpu::Buffer,
+    fill_pipe: wgpu::RenderPipeline,
+    apply_mask_pipe: wgpu::RenderPipeline,
+    geometry_pipe: wgpu::RenderPipeline,
+    geometry: Option<(wgpu::Texture, wgpu::Texture)>,
+    patterns: std::collections::HashMap<u32, wgpu::Texture>,
+    white: wgpu::Texture,
     clamp_sampler: wgpu::Sampler,
     alpha_tex: wgpu::Texture,
     stencil_tex: wgpu::Texture,
@@ -92,6 +100,7 @@ fn new_set(device: &wgpu::Device, size: u32) -> Set {
         color: texture(device, size, LAYER_FORMAT, "layer color"),
         val: texture(device, size, LAYER_FORMAT, "layer values"),
         cov: texture(device, size, LAYER_FORMAT, "layer coverage"),
+        mask: texture(device, size, LAYER_FORMAT, "layer mask"),
     }
 }
 
@@ -298,6 +307,13 @@ impl Gpu {
             }),
             camera: uniform("camera", 128),
             stamp_buffer: uniform("stamps", 64 + 32 * 64),
+            fill_uniform: uniform("fill", 96),
+            fill_pipe: pipeline(&device, "fill", shaders::FILL, false, &[LAYER_FORMAT; 3], None, false),
+            apply_mask_pipe: pipeline(&device, "apply mask", shaders::APPLY_MASK, false, &[LAYER_FORMAT], None, false),
+            geometry_pipe: pipeline(&device, "geometry", shaders::GEOMETRY, true, &[wgpu::TextureFormat::Rgba32Float, LAYER_FORMAT], None, false),
+            geometry: None,
+            patterns: std::collections::HashMap::new(),
+            white: white_texture(&device, &queue),
             clamp_sampler: device.create_sampler(&wgpu::SamplerDescriptor { mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, ..Default::default() }),
             alpha_tex: white_texture(&device, &queue),
             stencil_tex: white_texture(&device, &queue),
@@ -352,7 +368,26 @@ impl Gpu {
             pass.set_pipeline(&self.coverage_pipe);
             self.draw_mesh(&mut pass);
         }
+        let pos = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("uv position map"),
+            size: wgpu::Extent3d { width: self.size, height: self.size, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba32Float,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let normal = texture(&self.device, self.size, LAYER_FORMAT, "uv normal map");
+        {
+            let (pv, nv) = (view_of(&pos), view_of(&normal));
+            let clear = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&pv, clear), attach(&nv, clear)], ..Default::default() });
+            pass.set_pipeline(&self.geometry_pipe);
+            self.draw_mesh(&mut pass);
+        }
         self.queue.submit([encoder.finish()]);
+        self.geometry = Some((pos, normal));
     }
 
     fn draw_mesh(&self, pass: &mut wgpu::RenderPass) {
@@ -369,7 +404,61 @@ impl Gpu {
             let view = view_of(t);
             encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&view, wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT))], ..Default::default() });
         }
+        let mask = view_of(&set.mask);
+        encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&mask, wgpu::LoadOp::Clear(wgpu::Color::WHITE))], ..Default::default() });
         self.queue.submit([encoder.finish()]);
+    }
+
+    pub fn fill_mask_value(&mut self, index: usize, value: f64) {
+        let view = view_of(&self.layers[index].set.mask);
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&view, wgpu::LoadOp::Clear(wgpu::Color { r: value, g: value, b: value, a: 1.0 }))], ..Default::default() });
+        self.queue.submit([encoder.finish()]);
+    }
+
+    pub fn fill_layer_content(&mut self, index: usize, uniform: &[f32; 24]) {
+        let Some(geometry) = &self.geometry else { return };
+        let id = self.layers[index].id;
+        self.queue.write_buffer(&self.fill_uniform, 0, bytemuck::cast_slice(uniform));
+        let (pv, nv) = (view_of(&geometry.0), view_of(&geometry.1));
+        let pattern = view_of(self.patterns.get(&id).unwrap_or(&self.white));
+        let group = bind(&self.device, &self.fill_pipe, &[
+            self.fill_uniform.as_entire_binding(),
+            wgpu::BindingResource::TextureView(&pv),
+            wgpu::BindingResource::TextureView(&nv),
+            wgpu::BindingResource::TextureView(&pattern),
+            wgpu::BindingResource::Sampler(&self.sampler),
+        ]);
+        let set = &self.layers[index].set;
+        let (c, v, k) = (view_of(&set.color), view_of(&set.val), view_of(&set.cov));
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let clear = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&c, clear), attach(&v, clear), attach(&k, clear)], ..Default::default() });
+            pass.set_pipeline(&self.fill_pipe);
+            pass.set_bind_group(0, &group, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        self.queue.submit([encoder.finish()]);
+    }
+
+    pub fn set_pattern(&mut self, id: u32, width: u32, height: u32, rgba: &[u8]) -> Result<(), String> {
+        if width == 0 || height == 0 || width > 4096 || height > 4096 || rgba.len() != (width * height * 4) as usize {
+            return Err("Fill images must be RGBA, 1 to 4096 pixels per side".into());
+        }
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("fill pattern"),
+            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(texture.as_image_copy(), rgba, wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(width * 4), rows_per_image: Some(height) }, wgpu::Extent3d { width, height, depth_or_array_layers: 1 });
+        self.patterns.insert(id, texture);
+        Ok(())
     }
 
     fn take_set(&mut self) -> Set {
@@ -378,7 +467,7 @@ impl Gpu {
 
     fn copy_set(&self, encoder: &mut wgpu::CommandEncoder, from: &Set, to: &Set) {
         let extent = wgpu::Extent3d { width: self.size, height: self.size, depth_or_array_layers: 1 };
-        for (a, b) in [(&from.color, &to.color), (&from.val, &to.val), (&from.cov, &to.cov)] {
+        for (a, b) in [(&from.color, &to.color), (&from.val, &to.val), (&from.cov, &to.cov), (&from.mask, &to.mask)] {
             encoder.copy_texture_to_texture(a.as_image_copy(), b.as_image_copy(), extent);
         }
     }
@@ -391,6 +480,7 @@ impl Gpu {
 
     pub fn remove_layer(&mut self, index: usize, id: u32) {
         let layer = self.layers.remove(index);
+        self.patterns.remove(&id);
         self.pool.push(layer.set);
         let (keep_u, drop_u): (Vec<_>, Vec<_>) = std::mem::take(&mut self.undo_stack).into_iter().partition(|s| s.layer != id);
         let (keep_r, drop_r): (Vec<_>, Vec<_>) = std::mem::take(&mut self.redo_stack).into_iter().partition(|s| s.layer != id);
@@ -486,7 +576,7 @@ impl Gpu {
         Ok(())
     }
 
-    pub fn paint(&mut self, stamps: &[[f32; 16]], view_proj: [f32; 16], eye: Vec3, brush: &BrushSettings, channels: &ChannelValues, index: usize) {
+    pub fn paint(&mut self, stamps: &[[f32; 16]], view_proj: [f32; 16], eye: Vec3, brush: &BrushSettings, channels: &ChannelValues, index: usize, to_mask: bool) {
         let Some((stroke_index, _)) = self.stroke.as_ref() else { return };
         if *stroke_index != index || self.vertices.is_none() {
             return;
@@ -526,14 +616,31 @@ impl Gpu {
         let erase = brush.mode == StrokeMode::Erase;
         let flag = |b: bool| if b { 1.0 } else { 0.0 };
         let c = channels.base_color;
-        let paint = [
+        let mut paint = [
             c[0], c[1], c[2], 1.0,
             channels.roughness, channels.metallic, channels.height, 0.0,
             flag(channels.use_color), flag(channels.use_roughness), flag(channels.use_metallic), flag(channels.use_height),
             flag(erase), brush.opacity, 0.0, 0.0,
         ];
+        if to_mask {
+            paint[0] = (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]).max(0.0).powf(1.0 / 2.2);
+        }
         self.queue.write_buffer(&self.paint_uniform, 0, bytemuck::cast_slice(&paint));
         let (_, snap) = self.stroke.as_ref().unwrap();
+        if to_mask {
+            let (sm, mk) = (view_of(&snap.set.mask), view_of(&self.mask));
+            let group = bind(&self.device, &self.apply_mask_pipe, &[self.paint_uniform.as_entire_binding(), wgpu::BindingResource::TextureView(&sm), wgpu::BindingResource::TextureView(&mk)]);
+            let target = view_of(&self.layers[index].set.mask);
+            let mut encoder = self.device.create_command_encoder(&Default::default());
+            {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&target, wgpu::LoadOp::Load)], ..Default::default() });
+                pass.set_pipeline(&self.apply_mask_pipe);
+                pass.set_bind_group(0, &group, &[]);
+                pass.draw(0..3, 0..1);
+            }
+            self.queue.submit([encoder.finish()]);
+            return;
+        }
         let (sc, sv, sk, mk) = (view_of(&snap.set.color), view_of(&snap.set.val), view_of(&snap.set.cov), view_of(&self.mask));
         let group = bind(&self.device, &self.apply_pipe, &[
             self.paint_uniform.as_entire_binding(),
@@ -559,7 +666,7 @@ impl Gpu {
 
     fn layer_pass(&self, uniform: [f32; 16], prev: &Pair, out: &Pair, layer: &Set) {
         self.queue.write_buffer(&self.layer_uniform, 0, bytemuck::cast_slice(&uniform));
-        let (pc, pm, lc, lv, lk) = (view_of(&prev.color), view_of(&prev.mat), view_of(&layer.color), view_of(&layer.val), view_of(&layer.cov));
+        let (pc, pm, lc, lv, lk, lm) = (view_of(&prev.color), view_of(&prev.mat), view_of(&layer.color), view_of(&layer.val), view_of(&layer.cov), view_of(&layer.mask));
         let group = bind(&self.device, &self.composite_pipe, &[
             self.layer_uniform.as_entire_binding(),
             wgpu::BindingResource::TextureView(&pc),
@@ -567,6 +674,7 @@ impl Gpu {
             wgpu::BindingResource::TextureView(&lc),
             wgpu::BindingResource::TextureView(&lv),
             wgpu::BindingResource::TextureView(&lk),
+            wgpu::BindingResource::TextureView(&lm),
         ]);
         let (oc, om) = (view_of(&out.color), view_of(&out.mat));
         let mut encoder = self.device.create_command_encoder(&Default::default());
@@ -588,7 +696,7 @@ impl Gpu {
             if !info.visible {
                 continue;
             }
-            let uniform = [info.opacity, 0.0, 0.0, 0.0, f32::from_bits(info.blend.code()), f32::from_bits(0), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+            let uniform = [info.opacity, if info.mask { 1.0 } else { 0.0 }, 0.0, 0.0, f32::from_bits(info.blend.code()), f32::from_bits(0), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
             let (prev, out) = if current_is_ping { (&self.ping, &self.pong) } else { (&self.pong, &self.ping) };
             self.layer_pass(uniform, prev, out, &layer.set);
             current_is_ping = !current_is_ping;
