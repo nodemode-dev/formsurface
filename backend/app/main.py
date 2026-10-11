@@ -185,7 +185,7 @@ async def save_library(name: str, request: Request):
     return {"file": str(path)}
 
 
-TEMPLATE_SOURCES = {"basecolor", "normal_gl", "normal_dx", "roughness", "smoothness", "metallic", "height", "ao", "curvature", "thickness", "one", "zero"}
+TEMPLATE_SOURCES = {"basecolor", "normal_gl", "normal_dx", "roughness", "smoothness", "metallic", "height", "ao", "curvature", "thickness", "ao_high", "height_high", "opacity", "one", "zero"}
 SUFFIX = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 
 
