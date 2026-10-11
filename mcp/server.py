@@ -327,6 +327,30 @@ def formsurface_set_filter(
 
 
 @server.tool()
+def formsurface_export_mesh(name: str | None = None) -> dict:
+    """Write the loaded mesh as an OBJ into the workspace exports folder: positions, normals, the original UDIM UVs and one group per texture set (usemtl with the material name). The mesh is triangulated."""
+    return call("export_mesh", drop_none(name=name), timeout=180)
+
+
+@server.tool()
+def formsurface_flatten_stack(name: str = "Flattened") -> dict:
+    """Replace every layer of the active texture set (all its tiles with UV tiles on) with one paint layer holding exactly what the viewport shows. Fill, filter, folder and generator settings are lost and this cannot be undone; ask the person first."""
+    return call("flatten", {"name": name})
+
+
+@server.tool()
+def formsurface_export_layer_mask(layer_id: int, name: str | None = None) -> dict:
+    """Save a layer's mask as a grayscale PNG in the workspace exports folder."""
+    return call("export_mask", drop_none(id=layer_id, name=name), timeout=120)
+
+
+@server.tool()
+def formsurface_clone_source(x: Annotated[float, Field(ge=0, le=1)], y: Annotated[float, Field(ge=0, le=1)]) -> dict:
+    """Set the clone source at a viewport point (0,0 top left) on the active texture set and switch the brush to clone. The next formsurface_paint_stroke fixes the offset between source and stroke; strokes then copy what is visible at that offset (every switched-on channel) into the active paint layer. The offset is in UV space, so keep source and target on the same UV island. formsurface_set_brush with eraser false returns to painting."""
+    return call("clone_source", {"x": x, "y": y})
+
+
+@server.tool()
 def formsurface_uv_tiles(on: bool | None = None) -> dict:
     """Painter's UV tiles workflow. When on, the UDIM tiles of a material share one layer stack: adding, changing or removing layers, fills, filters and masks on one tile applies to all of them, and a stroke paints across tile borders in one go. Turning it on copies the active tile's stack to the material's other tiles and clears their previous paint. Without on, reports the current state."""
     return call("uv_tiles", drop_none(on=on))
