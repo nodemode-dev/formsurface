@@ -9,7 +9,9 @@ Paint directly on 3D models, layer by layer, the way Substance 3D Painter works.
 - **3D projection painting.** The brush hits the mesh in world space and writes into the UV textures, so strokes keep a constant on-screen size, cross UV seams and do not stretch on distorted islands. Occluded and back-facing surfaces are protected.
 - **GPU engine in Rust.** wgpu running on WebGPU in the browser. Painting, compositing and the viewport never leave the GPU; nothing round-trips through the server while you paint.
 - **Channels:** base color, roughness, metallic, height (shown as bump in the viewport, exported as a normal map). Each channel can be switched on or off per stroke.
-- **Brush:** size (screen pixels), hardness, flow, stroke opacity, spacing, pen pressure on size or flow, backface culling, eraser, mirror X symmetry.
+- **Brush:** size in screen or object space, hardness, flow, stroke opacity, spacing, pen pressure on size or flow, backface culling, eraser.
+- **Alignment and tips:** Painter's camera, tangent wrap, tangent planar and UV alignments; round, square and spray tips or any image as a brush alpha; angle, follow path, size, angle, position and flow jitter, lazy mouse.
+- **Stencil and symmetry:** a screen-space stencil from any image (scale, rotation, offset); mirror or radial symmetry on X, Y or Z.
 - **Layers:** add, delete, reorder, hide, opacity, 8 blend modes, undo and redo (24 strokes).
 - **Viewport:** PBR shading with tone mapping, exposure, brush cursor drawn on the surface, orbit, pan, zoom, frame. Seam padding (dilation) on the composited maps.
 - **Meshes:** glTF, GLB, OBJ, FBX, plus built-in samples (sphere, torus, capsule, torus knot).
@@ -21,7 +23,7 @@ FormSurface ships an MCP server with 16 `formsurface_*` tools that drive the edi
 
 ## Parity
 
-Measured against Substance 3D Painter 12.1.5 on 50 documented capabilities, v0.2.0 scores 10.5 of 50 (21 percent): the painting core is real, texturing features (fill projections, masks, generators, smart materials, baking, texture sets, UDIMs, color management) are not built yet. The full page is in the planning sidecar.
+Measured against Substance 3D Painter 12.1.5 on 50 documented capabilities, v0.3.0 scores 14.5 of 50 (29 percent): the painting core and brush engine are real, texturing features (fill projections, masks, generators, smart materials, baking, texture sets, UDIMs, color management) are not built yet. The full page is in the planning sidecar.
 
 ## Quick start
 
