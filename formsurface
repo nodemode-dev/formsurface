@@ -3,7 +3,7 @@ set -e
 cd "$(dirname "$0")"
 usage() {
   cat << 'EOF2'
-formsurface 0.16.0 · 3D texture painting
+formsurface 0.17.0 · 3D texture painting
 
 usage: ./formsurface [command]
 
