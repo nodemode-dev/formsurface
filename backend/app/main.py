@@ -286,11 +286,22 @@ def read_environment(name: str):
     return FileResponse(path)
 
 
+@app.get("/api/images/{name}")
+def read_image(name: str):
+    path = DATA / "images" / name
+    if not SAFE.match(name) or name.startswith(".") or path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"} or not path.is_file():
+        raise HTTPException(404, "Put the image in the workspace images folder (png, jpg or webp)")
+    return FileResponse(path)
+
+
+MESH_SUFFIXES = {".glb", ".gltf", ".obj", ".fbx", ".usd", ".usda", ".usdc", ".usdz", ".ply", ".dae"}
+
+
 @app.get("/api/meshes/{name}")
 def read_mesh(name: str):
     path = DATA / "meshes" / name
-    if not SAFE.match(name) or name.startswith(".") or path.suffix.lower() not in {".glb", ".gltf", ".obj", ".fbx"} or not path.is_file():
-        raise HTTPException(404, "Put the mesh in the workspace meshes folder (glb, gltf, obj or fbx)")
+    if not SAFE.match(name) or name.startswith(".") or path.suffix.lower() not in MESH_SUFFIXES or not path.is_file():
+        raise HTTPException(404, "Put the mesh in the workspace meshes folder (glb, gltf, obj, fbx, usd, usda, usdc, usdz, ply or dae)")
     return FileResponse(path)
 
 
