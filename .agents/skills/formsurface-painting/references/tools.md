@@ -49,7 +49,8 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_quick_mask` | mode (off, edit, on), action (clear, allow_all, invert) | mode |
 | `formsurface_set_filter` | layer_id, brightness, contrast, hue_degrees, saturation, gamma, roughness_offset, metallic_offset, blur, sharpen (only given values change) | settings |
 | `formsurface_polygon_fill` | x, y in 0 to 1, mode (triangle, polygon, mesh, uv_chunk) | filled triangle count, mode, layer |
-| `formsurface_export_maps` | name, template (pbr, gltf, unreal, unity_hdrp, unity_urp), custom_maps (suffix plus rgb or r, g, b, a sources), bit_depth (8 or 16) | folder, template and map names; every texture set is exported, as name_material_suffix (plus .udim for tiled materials) when there is more than one |
+| `formsurface_export_maps` | name, template (pbr, gltf, unreal, unity_hdrp, unity_urp or a saved name), custom_maps (suffix plus rgb or r, g, b, a sources), format (png, tif, exr, hdr, jpg, psd), bit_depth (8, 16, 32 as the format allows), padding (infinite, transparent, color, diffusion), padding_width, padding_color | folder, template, format, bit depth, padding and file names; every texture set is exported, as name_material_suffix (plus .udim for tiled materials) when there is more than one |
+| `formsurface_save_export_template` | name, maps (same shape as custom_maps), label | file; the template joins the editor's list and export_maps |
 
 The same tools run from a JSON script with `./formsurface batch script.json` (a list of `[tool, arguments]` pairs; `--pause`, `--keep-going`, `--out`). Suggest it when the person wants the same job repeated on many meshes.
 
