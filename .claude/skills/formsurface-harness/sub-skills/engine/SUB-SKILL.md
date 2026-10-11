@@ -49,6 +49,10 @@ A stamp is 16 floats: center and world radius, normal and a mirrored flag, tange
 
 `fs_core::sets::split` groups triangles by material and by the UDIM tile of their UV centroid (V is stored flipped, so the row is `floor(1 - v)`), duplicates vertices per set and moves UVs into 0 to 1. Sets are contiguous index ranges. `Gpu` holds the active set's state in its own fields (layers, undo, final maps, coverage, geometry, bakes, base) and parks the others in `parked`; `select_set` swaps them with `mem::swap`, never copies. `draw_mesh` draws the active range, `draw_all` the whole mesh (bake depth, so occlusion crosses sets), and the view draws every range with its own final maps. `Engine::each_set` runs bakes and fill refreshes on every set and composites each before moving on, because only the active set composites per frame. Never switch sets during a stroke.
 
+## Folders (v0.8.0)
+
+`LayerInfo.parent` names the containing folder (0 is the top level). `fs_core::tree_order` keeps the flat list so each folder's contents sit directly below it; every structural change ends in `Engine::normalize`, which also calls `Gpu::reorder`, because `composite` zips infos and GPU layers by index. Folders are passthrough: they are skipped as leaves, and each leaf takes the product of its ancestors' opacity, is skipped when any ancestor is hidden, and when ancestors carry masks gets one mask multiplied in `group_mask` by MASK_MUL (blend src Dst, dst Zero). A folder blend mode is not applied. Folders own a layer set only for their mask.
+
 ## Next capabilities, in plan order
 
-Engine and bakes in a Worker; folders and blur or sharpen filters; a shared layer stack across UDIM tiles (Painter's UV tiles workflow); match-by-name and bent normal baking; tile paging for 4K and 8K; color management.
+Engine and bakes in a Worker; blur and sharpen filters; isolated folder blending; a shared layer stack across UDIM tiles (Painter's UV tiles workflow); match-by-name and bent normal baking; tile paging for 4K and 8K; color management; 16-bit export.

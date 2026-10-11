@@ -1,4 +1,4 @@
-# FormSurface MCP tools (server 0.7.0)
+# FormSurface MCP tools (server 0.8.0)
 
 When this table and the server disagree, the server wins and this file is stale.
 
@@ -32,6 +32,9 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_undo` | steps 1 to 24 | undone count |
 | `formsurface_redo` | steps 1 to 24 | redone count |
 | `formsurface_screenshot` | none | PNG image of the viewport |
-| `formsurface_export_maps` | name | folder and map names; every texture set is exported, as name_material_channel (plus .udim for tiled materials) when there is more than one |
+| `formsurface_add_folder` | name, layer_ids to move inside | folder id, moved ids, layers |
+| `formsurface_set_layer_folder` | layer_id, folder_id (0 for top level) | layers |
+| `formsurface_list_export_templates` | none | templates with their maps and packed sources |
+| `formsurface_export_maps` | name, template (pbr, gltf, unreal, unity_hdrp, unity_urp), custom_maps (suffix plus rgb or r, g, b, a sources) | folder, template and map names; every texture set is exported, as name_material_suffix (plus .udim for tiled materials) when there is more than one |
 
 Errors arrive as text naming the fix: no editor linked (turn on Agent link), service not running (run ./formsurface), or a timeout.

@@ -1,6 +1,6 @@
 ---
 name: formsurface-painting
-description: Paint and texture 3D models in FormSurface through its MCP server (29 formsurface_* tools that drive the editor open in the person's browser). Use whenever an agent should texture, paint, recolor, add wear or trim, layer materials, set roughness or metallic, take a viewport screenshot or export PBR maps from FormSurface, or when formsurface tools fail with no editor linked. Trigger on paint this model, texture the mesh in formsurface, add a gold rim, make it look worn, export texture maps, formsurface_paint_stroke, formsurface_status, Agent link, or ./formsurface mcp, even when MCP is not named. Not for changing FormSurface source code, which is the formsurface-harness skill.
+description: Paint and texture 3D models in FormSurface through its MCP server (32 formsurface_* tools that drive the editor open in the person's browser). Use whenever an agent should texture, paint, recolor, add wear or trim, layer materials, set roughness or metallic, take a viewport screenshot or export PBR maps from FormSurface, or when formsurface tools fail with no editor linked. Trigger on paint this model, texture the mesh in formsurface, add a gold rim, make it look worn, export texture maps, formsurface_paint_stroke, formsurface_status, Agent link, or ./formsurface mcp, even when MCP is not named. Not for changing FormSurface source code, which is the formsurface-harness skill.
 license: Apache-2.0
 metadata:
   version: "0.7.0"
@@ -29,7 +29,9 @@ The tools give an agent hands; this skill gives the order of work. FormSurface p
 8. For marks, place the camera with `formsurface_set_camera`, call `formsurface_screenshot`, find where the surface sits in the image, then `formsurface_paint_stroke` with normalized viewport points (0,0 top left, 1,1 bottom right) along that region. The result reports `points_on_surface`; zero means the stroke missed, so re-aim instead of repeating.
 9. Check with another screenshot from a second angle. Strokes paint only what the camera sees; turn the camera to reach the other side.
 10. Undo is per stroke or fill (`formsurface_undo`), up to 24 steps, and belongs to the active texture set.
-11. Finish with `formsurface_export_maps`, which returns the folder of base color, roughness, metallic, height and normal PNGs for every texture set (bakes add their maps).
+11. Finish with `formsurface_export_maps`, which returns the folder of base color, roughness, metallic, height and normal PNGs for every texture set (bakes add their maps). When the person names a target engine, pass its template (gltf, unreal, unity_hdrp, unity_urp); for any other layout, pass custom_maps with packed sources. Bake first so packed AO is not plain white.
+
+Group related layers with `formsurface_add_folder` (for example all the wear of one material) so the person can hide or fade them together; smart materials already arrive in a folder of their own name. While a folder is the active layer, new layers go inside it.
 
 ## Judgment
 
