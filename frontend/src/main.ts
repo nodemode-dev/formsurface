@@ -59,7 +59,7 @@ function sel(id: string): string {
   return $<HTMLSelectElement>(id).value;
 }
 
-async function imageRgba(file: File): Promise<{ w: number; h: number; data: Uint8Array }> {
+async function imageRgba(file: File, gray = true): Promise<{ w: number; h: number; data: Uint8Array }> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, 2048 / Math.max(bitmap.width, bitmap.height));
   const w = Math.max(1, Math.round(bitmap.width * scale));
@@ -68,7 +68,7 @@ async function imageRgba(file: File): Promise<{ w: number; h: number; data: Uint
   const context = surface.getContext('2d')!;
   context.drawImage(bitmap, 0, 0, w, h);
   const pixels = context.getImageData(0, 0, w, h).data;
-  for (let i = 0; i < pixels.length; i += 4) {
+  for (let i = 0; gray && i < pixels.length; i += 4) {
     const l = (pixels[i] * 0.2126 + pixels[i + 1] * 0.7152 + pixels[i + 2] * 0.0722) * (pixels[i + 3] / 255);
     pixels[i] = pixels[i + 1] = pixels[i + 2] = Math.round(l);
     pixels[i + 3] = 255;
@@ -112,7 +112,49 @@ function refreshLayers(): void {
     $<HTMLSelectElement>('l-blend').value = layer.blend;
     $<HTMLInputElement>('l-opacity').value = String(layer.opacity);
     setOutput('l-opacity');
+    const maskSelect = $<HTMLSelectElement>('l-mask');
+    maskSelect.value = layer.mask ? 'keep' : 'none';
+    const target = $<HTMLSelectElement>('l-target');
+    target.disabled = !layer.mask || layer.kind === 'fill';
+    target.value = layer.kind === 'fill' ? 'mask' : engine.paint_target_is_mask() ? 'mask' : 'layer';
+    const isFill = layer.kind === 'fill';
+    $('fill-section').setAttribute('aria-disabled', String(!isFill));
+    if (isFill) loadFillControls(JSON.parse(engine.fill_settings(layer.id)) as Record<string, unknown>);
   }
+}
+
+const FILL_FIELDS: [string, string][] = [
+  ['f-proj', 'projection'], ['f-axis', 'axis'], ['f-pattern', 'pattern'], ['f-imgcolor', 'image_color'], ['f-scale', 'scale'], ['f-rot', 'rotation'],
+  ['f-ox', 'offset_x'], ['f-oy', 'offset_y'], ['f-sharp', 'sharpness'], ['f-rough', 'roughness'], ['f-metal', 'metallic'], ['f-height', 'height'],
+  ['f-use-color', 'use_color'], ['f-use-rough', 'use_roughness'], ['f-use-metal', 'use_metallic'], ['f-use-height', 'use_height'], ['f-opacity', 'opacity'],
+];
+
+function loadFillControls(settings: Record<string, unknown>): void {
+  for (const [id, key] of FILL_FIELDS) {
+    const input = $<HTMLInputElement>(id);
+    const value = settings[key];
+    if (value === undefined) continue;
+    if (input.type === 'checkbox') input.checked = Boolean(value); else input.value = String(value);
+    setOutput(id);
+  }
+  const c = settings.base_color as number[] | undefined;
+  if (c) $<HTMLInputElement>('f-color').value = `#${c.map((v) => Math.round(Math.pow(Math.max(0, v), 1 / 2.2) * 255).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function fillPayload(): Record<string, unknown> {
+  const out: Record<string, unknown> = { base_color: hex('f-color') };
+  for (const [id, key] of FILL_FIELDS) {
+    const input = $<HTMLInputElement>(id);
+    out[key] = input.type === 'checkbox' ? input.checked : input.tagName === 'SELECT' && key !== 'axis' ? input.value : Number(input.value);
+  }
+  return out;
+}
+
+function syncFill(): void {
+  if (!engine) return;
+  const layer = layers().find((l) => l.id === engine!.active_layer());
+  if (!layer || layer.kind !== 'fill') return;
+  engine.set_fill(layer.id, JSON.stringify(fillPayload()));
 }
 
 function setOutput(id: string): void {
@@ -198,6 +240,7 @@ canvas.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) return;
   const [x, y] = local(event);
   painting = engine.stroke_begin(x, y, pressure(event));
+  if (!painting && layers().find((l) => l.id === engine!.active_layer())?.kind === 'fill') status('A fill layer is painted through its mask: choose a mask in the layer properties first.', true);
 });
 canvas.addEventListener('pointermove', (event) => {
   if (!engine) return;
@@ -263,7 +306,7 @@ $('tool-mirror').addEventListener('click', () => {
 for (const id of ['b-angle', 'b-density', 'b-lazy', 'b-jsize', 'b-jangle', 'b-jpos', 'b-jflow', 'b-radial', 's-scale', 's-angle', 's-x', 's-y']) $(id).addEventListener('input', () => { setOutput(id); syncBrush(); });
 for (const id of ['b-align', 'b-space', 'b-tip', 'b-sym', 'b-axis', 'b-follow', 's-on']) $(id).addEventListener('change', syncBrush);
 const imageInput = $<HTMLInputElement>('image-file');
-let imageTarget: 'alpha' | 'stencil' = 'alpha';
+let imageTarget: 'alpha' | 'stencil' | 'fill' = 'alpha';
 $('b-alpha-load').addEventListener('click', () => { imageTarget = 'alpha'; imageInput.click(); });
 $('s-load').addEventListener('click', () => { imageTarget = 'stencil'; imageInput.click(); });
 imageInput.addEventListener('change', async () => {
@@ -271,7 +314,17 @@ imageInput.addEventListener('change', async () => {
   imageInput.value = '';
   if (!file || !engine) return;
   try {
-    const { w, h, data } = await imageRgba(file);
+    const { w, h, data } = await imageRgba(file, imageTarget !== 'fill');
+    if (imageTarget === 'fill') {
+      const id = engine.active_layer();
+      engine.set_fill_image(id, w, h, data);
+      const option = $<HTMLSelectElement>('f-pattern').querySelector<HTMLOptionElement>('option[value="image"]')!;
+      option.disabled = false;
+      $<HTMLSelectElement>('f-pattern').value = 'image';
+      syncFill();
+      status(`Fill image ${file.name} loaded`);
+      return;
+    }
     if (imageTarget === 'alpha') {
       engine.set_alpha(w, h, data);
       const option = $<HTMLSelectElement>('b-tip').querySelector<HTMLOptionElement>('option[value="image"]')!;
@@ -298,6 +351,24 @@ $('layer-add').addEventListener('click', () => {
   engine.add_layer(`Layer ${layers().length + 1}`);
   refreshLayers();
 });
+$('layer-add-fill').addEventListener('click', () => {
+  if (!engine) return;
+  engine.add_fill_layer(`Fill ${layers().length + 1}`);
+  refreshLayers();
+});
+$('l-mask').addEventListener('change', () => {
+  if (!engine) return;
+  const id = engine.active_layer();
+  const choice = sel('l-mask');
+  if (choice === 'none') engine.set_mask(id, false);
+  else if (choice === 'white' || choice === 'black') engine.fill_mask(id, choice === 'white');
+  if (choice !== 'none') engine.set_paint_target(true);
+  refreshLayers();
+});
+$('l-target').addEventListener('change', () => { engine?.set_paint_target(sel('l-target') === 'mask'); });
+for (const [id] of FILL_FIELDS) $(id).addEventListener(id.startsWith('f-use') || id === 'f-imgcolor' || $(id).tagName === 'SELECT' ? 'change' : 'input', () => { setOutput(id); syncFill(); });
+$('f-color').addEventListener('input', syncFill);
+$('f-image-load').addEventListener('click', () => { imageTarget = 'fill'; imageInput.click(); });
 $('layer-delete').addEventListener('click', () => {
   if (!engine) return;
   if (!engine.remove_layer(engine.active_layer())) status('A texture set keeps at least one layer.', true);
@@ -490,6 +561,36 @@ const agentLink = new AgentLink({
     if (args.active) e.select_layer(layer.id);
     refreshLayers();
     return { layers: layers(), active_layer: e.active_layer() };
+  },
+  add_fill_layer: (args) => {
+    const e = requireEngine();
+    const id = e.add_fill_layer(String(args.name || `Fill ${layers().length + 1}`));
+    const current = JSON.parse(e.fill_settings(id)) as Record<string, unknown>;
+    const patch = (args.settings ?? {}) as Record<string, unknown>;
+    if (typeof patch.base_color === 'string') patch.base_color = [1, 3, 5].map((i) => Math.pow(parseInt((patch.base_color as string).slice(i, i + 2), 16) / 255, 2.2));
+    e.set_fill(id, JSON.stringify({ ...current, ...patch }));
+    refreshLayers();
+    return { id, settings: JSON.parse(e.fill_settings(id)), layers: layers() };
+  },
+  set_fill: (args) => {
+    const e = requireEngine();
+    const id = Number(args.id);
+    const raw = e.fill_settings(id);
+    if (!raw) throw new Error(`Layer ${id} is not a fill layer`);
+    const patch = (args.settings ?? {}) as Record<string, unknown>;
+    if (typeof patch.base_color === 'string') patch.base_color = [1, 3, 5].map((i) => Math.pow(parseInt((patch.base_color as string).slice(i, i + 2), 16) / 255, 2.2));
+    e.set_fill(id, JSON.stringify({ ...JSON.parse(raw), ...patch }));
+    refreshLayers();
+    return { id, settings: JSON.parse(e.fill_settings(id)) };
+  },
+  mask: ({ id, action, paint_target }) => {
+    const e = requireEngine();
+    const layerId = Number(id);
+    if (action === 'remove') e.set_mask(layerId, false);
+    else if (action === 'add_white' || action === 'add_black') e.fill_mask(layerId, action === 'add_white');
+    if (paint_target === 'mask' || paint_target === 'layer') e.set_paint_target(paint_target === 'mask');
+    refreshLayers();
+    return { layers: layers(), paints_mask: e.paint_target_is_mask() };
   },
   move_layer: ({ id, offset }) => { requireEngine().move_layer(Number(id), Number(offset)); refreshLayers(); return { layers: layers() }; },
   remove_layer: ({ id }) => {

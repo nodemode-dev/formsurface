@@ -4,6 +4,8 @@ export interface LayerInfo {
   visible: boolean;
   opacity: number;
   blend: string;
+  kind?: 'paint' | 'fill';
+  mask?: boolean;
 }
 
 interface Handlers {
@@ -15,6 +17,7 @@ interface Handlers {
 interface Row {
   root: HTMLDivElement;
   name: HTMLSpanElement;
+  kind: HTMLSpanElement;
   eye: SVGUseElement;
   layer: LayerInfo;
 }
@@ -52,7 +55,9 @@ export class LayerList {
     layers.forEach((layer, index) => {
       const row = this.rows.get(layer.id) ?? this.create(layer);
       row.layer = layer;
-      if (row.name.textContent !== layer.name) row.name.textContent = layer.name;
+      if (row.name.firstChild?.textContent !== layer.name) row.name.firstChild!.textContent = layer.name;
+      const kind = `${layer.kind === 'fill' ? 'fill' : 'paint'}${layer.mask ? ' + mask' : ''}`;
+      if (row.kind.textContent !== kind) row.kind.textContent = kind;
       const eye = layer.visible ? '#i-eye' : '#i-eye-off';
       if (row.eye.getAttribute('href') !== eye) row.eye.setAttribute('href', eye);
       row.root.classList.toggle('active', layer.id === active);
@@ -66,10 +71,14 @@ export class LayerList {
     const [eyeBtn, eye] = button('i-eye', 'Show or hide layer');
     const name = document.createElement('span');
     name.className = 'name';
+    name.appendChild(document.createTextNode(''));
+    const kind = document.createElement('span');
+    kind.className = 'kind';
+    name.appendChild(kind);
     const [up] = button('i-up', 'Move layer up');
     const [down] = button('i-down', 'Move layer down');
     root.append(eyeBtn, name, up, down);
-    const row: Row = { root, name, eye, layer };
+    const row: Row = { root, name, kind, eye, layer };
     root.addEventListener('click', () => this.handlers.select(row.layer.id));
     eyeBtn.addEventListener('click', (e) => { e.stopPropagation(); this.handlers.toggle(row.layer); });
     up.addEventListener('click', (e) => { e.stopPropagation(); this.handlers.move(row.layer.id, 1); });

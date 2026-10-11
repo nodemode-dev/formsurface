@@ -26,7 +26,8 @@
   <symbol id="i-eye" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
   <symbol id="i-eye-off" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12zM4 20 20 4"/></symbol>
   <symbol id="i-link" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M10 14a4 4 0 0 0 5.7 0l3.6-3.6a4 4 0 0 0-5.7-5.7L12.5 5.8M14 10a4 4 0 0 0-5.7 0l-3.6 3.6a4 4 0 0 0 5.7 5.7l1.1-1.1"/></symbol>
-  <symbol id="i-save"viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M5 4h11l4 4v12H4V5a1 1 0 0 1 1-1zM8 4v5h7V4M8 20v-6h8v6"/></symbol>
+  <symbol id="i-fill" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 12 11 5l8 8-7 7z"/><path fill="currentColor" d="M5.5 13.5h12L12 19z" opacity=".55"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M20 16s1.5 1.8 1.5 3a1.5 1.5 0 0 1-3 0c0-1.2 1.5-3 1.5-3z"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M5 4h11l4 4v12H4V5a1 1 0 0 1 1-1zM8 4v5h7V4M8 20v-6h8v6"/></symbol>
 </svg>
 
 <div class="app">
@@ -126,6 +127,7 @@
       <h2>Layers
         <span>
           <button class="icon-btn" id="layer-add" title="Add paint layer"><svg><use href="#i-plus"/></svg></button>
+          <button class="icon-btn" id="layer-add-fill" title="Add fill layer"><svg><use href="#i-fill"/></svg></button>
           <button class="icon-btn" id="layer-delete" title="Delete layer"><svg><use href="#i-trash"/></svg></button>
         </span>
       </h2>
@@ -136,7 +138,34 @@
           <option value="add">Linear dodge (add)</option><option value="subtract">Subtract</option><option value="darken">Darken</option><option value="lighten">Lighten</option>
         </select><output></output></div>
         <div class="row"><label for="l-opacity">Opacity</label><input id="l-opacity" type="range" min="0" max="1" step="0.01" value="1"><output for="l-opacity">1.00</output></div>
+        <div class="row"><label for="l-mask">Mask</label><select id="l-mask">
+          <option value="none">No mask</option><option value="white">White mask (shows all)</option><option value="black">Black mask (hides all)</option><option value="keep" disabled>Mask on</option>
+        </select><output></output></div>
+        <div class="row"><label for="l-target">Paint into</label><select id="l-target"><option value="layer">Layer</option><option value="mask">Mask</option></select><output></output></div>
       </div>
+    </section>
+    <section class="section" id="fill-section">
+      <h2>Fill layer
+        <span><button class="icon-btn" id="f-image-load" title="Load an image for the fill pattern"><svg><use href="#i-open"/></svg></button></span>
+      </h2>
+      <div class="row"><label for="f-proj">Projection</label><select id="f-proj">
+        <option value="uv">UV</option><option value="triplanar">Tri-planar</option><option value="planar">Planar</option><option value="spherical">Spherical</option><option value="cylindrical">Cylindrical</option>
+      </select><output></output></div>
+      <div class="row"><label for="f-axis">Planar axis</label><select id="f-axis"><option value="0">X</option><option value="1">Y</option><option value="2" selected>Z</option></select><output></output></div>
+      <div class="row"><label for="f-pattern">Pattern</label><select id="f-pattern">
+        <option value="solid">Solid</option><option value="checker">Checker</option><option value="stripes">Stripes</option><option value="noise">Noise</option><option value="image" disabled>Image</option>
+      </select><output></output></div>
+      <label class="check"><input type="checkbox" id="f-imgcolor">Use image color</label>
+      <div class="row"><label for="f-scale">Scale</label><input id="f-scale" type="range" min="0.25" max="64" step="0.25" value="8"><output for="f-scale">8.00</output></div>
+      <div class="row"><label for="f-rot">Rotation</label><input id="f-rot" type="range" min="-180" max="180" step="1" value="0"><output for="f-rot">0</output></div>
+      <div class="row"><label for="f-ox">Offset U</label><input id="f-ox" type="range" min="-1" max="1" step="0.01" value="0"><output for="f-ox">0.00</output></div>
+      <div class="row"><label for="f-oy">Offset V</label><input id="f-oy" type="range" min="-1" max="1" step="0.01" value="0"><output for="f-oy">0.00</output></div>
+      <div class="row"><label for="f-sharp">Blend sharpness</label><input id="f-sharp" type="range" min="1" max="32" step="0.5" value="4"><output for="f-sharp">4.00</output></div>
+      <div class="channel"><input type="checkbox" id="f-use-color" checked aria-label="Fill base color"><label for="f-color">Base color</label><input id="f-color" type="color" value="#787d87"><output></output></div>
+      <div class="channel"><input type="checkbox" id="f-use-rough" checked aria-label="Fill roughness"><label for="f-rough">Roughness</label><input id="f-rough" type="range" min="0" max="1" step="0.01" value="0.55"><output for="f-rough">0.55</output></div>
+      <div class="channel"><input type="checkbox" id="f-use-metal" checked aria-label="Fill metallic"><label for="f-metal">Metallic</label><input id="f-metal" type="range" min="0" max="1" step="0.01" value="0"><output for="f-metal">0.00</output></div>
+      <div class="channel"><input type="checkbox" id="f-use-height" aria-label="Fill height"><label for="f-height">Height</label><input id="f-height" type="range" min="0" max="1" step="0.01" value="0.5"><output for="f-height">0.50</output></div>
+      <div class="row"><label for="f-opacity">Fill amount</label><input id="f-opacity" type="range" min="0" max="1" step="0.01" value="1"><output for="f-opacity">1.00</output></div>
     </section>
     <section class="section">
       <h2>Base material</h2>

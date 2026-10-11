@@ -52,6 +52,9 @@ svg { width: var(--icon); height: var(--icon); flex: none; }
 .layer.active { border-color: var(--accent); background: var(--accent-soft); }
 .layer .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layer-props { margin-top: var(--space-2); }
+.layer .kind { font: 10px var(--mono); color: var(--text-muted); margin-left: var(--space-1); }
+#fill-section[aria-disabled="true"] { opacity: .45; }
+#fill-section[aria-disabled="true"] input, #fill-section[aria-disabled="true"] select, #fill-section[aria-disabled="true"] button { pointer-events: none; }
 
 .status { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-3); background: var(--surface); border-top: 1px solid var(--border); color: var(--text-muted); font: 11px var(--mono); }
 .status .msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
