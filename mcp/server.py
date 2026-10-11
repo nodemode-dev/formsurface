@@ -56,6 +56,12 @@ def formsurface_load_sample(kind: Literal["sphere", "torus", "capsule", "knot", 
 
 
 @server.tool()
+def formsurface_instance_layer(layer_id: int, texture_set: str) -> dict:
+    """Put a live instance of a fill or filter layer of the active texture set into another texture set (by name such as trim or body.1002, or index). Changing settings, mask generator, name, opacity, blend or visibility of any copy then updates every copy. Paint layers cannot be instanced because paint lives in each set's own UV space."""
+    return call("instance_layer", {"id": layer_id, "texture_set": texture_set})
+
+
+@server.tool()
 def formsurface_load_mesh(file: str) -> dict:
     """Replace the mesh with a glb, gltf, obj or fbx from the workspace meshes folder (the mesh update step of a batch). The first texture set keeps its layers in UV space; bakes are reset."""
     return call("load_mesh", {"file": file}, timeout=180)
