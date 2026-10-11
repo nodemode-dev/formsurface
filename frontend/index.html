@@ -39,7 +39,7 @@
 <div class="app">
   <header class="topbar">
     <div class="brand"><svg><use href="#i-logo"/></svg>FormSurface</div>
-    <button class="btn" id="open-mesh" title="Open a mesh (glTF, GLB, OBJ, FBX)"><svg><use href="#i-open"/></svg>Open mesh</button>
+    <button class="btn" id="open-mesh" title="Open a mesh (glTF, GLB, OBJ, FBX, USD, USDA, USDC, USDZ, PLY, Collada)"><svg><use href="#i-open"/></svg>Open mesh</button>
     <div class="menu">
       <button class="btn" id="sample-toggle" aria-haspopup="true" aria-expanded="false"><svg><use href="#i-shape"/></svg>Sample mesh</button>
       <div class="menu-list" id="sample-menu" hidden>
@@ -60,7 +60,7 @@
     <button class="btn" id="save-project" title="Save textures to the local FormSurface service"><svg><use href="#i-save"/></svg>Save</button>
     <button class="btn primary" id="export" title="Export texture maps as PNG"><svg><use href="#i-export"/></svg>Export maps</button>
     <span class="version" id="version"></span>
-    <input type="file" id="mesh-file" accept=".glb,.gltf,.obj,.fbx" hidden>
+    <input type="file" id="mesh-file" accept=".glb,.gltf,.obj,.fbx,.usd,.usda,.usdc,.usdz,.ply,.dae" hidden>
     <input type="file" id="image-file" accept="image/*" hidden>
   </header>
 
@@ -278,10 +278,10 @@
         <button class="btn" id="k-cage-clear" style="justify-content:center" title="Go back to the distance cage (Cage front and rear)">Distance cage</button>
       </div>
       <p class="check" id="k-cage-state" style="margin:4px 0 0">Distance cage</p>
-      <input type="file" id="cage-file" accept=".glb,.gltf,.obj,.fbx" hidden>
+      <input type="file" id="cage-file" accept=".glb,.gltf,.obj,.fbx,.usd,.usda,.usdc,.usdz,.ply,.dae" hidden>
       <button class="btn" id="k-bake-high" style="width:100%;justify-content:center;margin-top:6px"><svg><use href="#i-bake"/></svg>Bake maps from high-poly</button>
       <p class="check" id="k-high-state" style="min-height:28px;margin:6px 0 0">No high-poly mesh</p>
-      <input type="file" id="high-file" accept=".glb,.gltf,.obj,.fbx" hidden>
+      <input type="file" id="high-file" accept=".glb,.gltf,.obj,.fbx,.usd,.usda,.usdc,.usdz,.ply,.dae" hidden>
     </section>
     <section class="section">
       <h2>Base material</h2>
@@ -319,6 +319,11 @@
       <div class="row"><label for="p-temperature">Temperature</label><input id="p-temperature" type="range" min="-1" max="1" step="0.01" value="0"><output for="p-temperature">0.00</output></div>
       <div class="row"><label for="p-tint">Tint</label><input id="p-tint" type="range" min="-1" max="1" step="0.01" value="0"><output for="p-tint">0.00</output></div>
       <button class="btn" id="p-reset" style="width:100%;justify-content:center;margin-top:6px">Reset post effects</button>
+    </section>
+    <section class="section">
+      <h2>Resources</h2>
+      <p class="check" id="res-empty" style="margin:0">Imported images and environments appear here with the color space they are read in: sRGB, Linear or Raw data.</p>
+      <div id="res-list"></div>
     </section>
     <section class="section">
       <h2>Export</h2>

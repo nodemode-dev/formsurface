@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { USDLoader } from 'three/addons/loaders/USDLoader.js';
+import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
+import { ColladaLoader } from 'three/addons/loaders/ColladaLoader.js';
 
 export interface FlatMesh {
   positions: Float32Array;
@@ -78,12 +81,34 @@ function flatten(root: THREE.Object3D, requireUv = true): FlatMesh {
   };
 }
 
-export async function loadHighPoly(name: string, data: ArrayBuffer): Promise<FlatMesh> {
+export const MESH_EXTENSIONS = ['.glb', '.gltf', '.obj', '.fbx', '.usd', '.usda', '.usdc', '.usdz', '.ply', '.dae'];
+
+async function parseScene(name: string, data: ArrayBuffer): Promise<THREE.Object3D> {
   const lower = name.toLowerCase();
-  if (lower.endsWith('.glb') || lower.endsWith('.gltf')) return flatten((await new GLTFLoader().parseAsync(data, '')).scene, false);
-  if (lower.endsWith('.obj')) return flatten(new OBJLoader().parse(new TextDecoder().decode(data)), false);
-  if (lower.endsWith('.fbx')) return flatten(new FBXLoader().parse(data, ''), false);
-  throw new Error('Unsupported high-poly format. Use glTF, GLB, OBJ or FBX.');
+  if (lower.endsWith('.glb') || lower.endsWith('.gltf')) return (await new GLTFLoader().parseAsync(data, '')).scene;
+  if (lower.endsWith('.obj')) return new OBJLoader().parse(new TextDecoder().decode(data));
+  if (lower.endsWith('.fbx')) return new FBXLoader().parse(data, '');
+  if (/\.usd[acz]?$/.test(lower)) {
+    return await new Promise<THREE.Object3D>((resolve, reject) => {
+      try { new USDLoader().parse(data, '', resolve, reject); } catch (error) { reject(error); }
+    });
+  }
+  if (lower.endsWith('.ply')) {
+    const geometry = new PLYLoader().parse(data);
+    const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial());
+    mesh.name = name.replace(/\.[^.]+$/, '');
+    return mesh;
+  }
+  if (lower.endsWith('.dae')) {
+    const collada = new ColladaLoader().parse(new TextDecoder().decode(data), '');
+    if (!collada) throw new Error(`${name} is not a readable Collada file`);
+    return collada.scene;
+  }
+  throw new Error(`Unsupported mesh format. Use ${MESH_EXTENSIONS.join(', ')}.`);
+}
+
+export async function loadHighPoly(name: string, data: ArrayBuffer): Promise<FlatMesh> {
+  return flatten(await parseScene(name, data), false);
 }
 
 function bumpySphere(radius: number, x: number, name: string, segments = 192): THREE.Mesh {
@@ -144,15 +169,7 @@ export function sampleHighPoly(kind = 'sphere'): FlatMesh {
 }
 
 export async function loadMeshFile(file: File): Promise<FlatMesh> {
-  const name = file.name.toLowerCase();
-  const data = await file.arrayBuffer();
-  if (name.endsWith('.glb') || name.endsWith('.gltf')) {
-    const gltf = await new GLTFLoader().parseAsync(data, '');
-    return flatten(gltf.scene);
-  }
-  if (name.endsWith('.obj')) return flatten(new OBJLoader().parse(new TextDecoder().decode(data)));
-  if (name.endsWith('.fbx')) return flatten(new FBXLoader().parse(data, ''));
-  throw new Error('Unsupported mesh format. Use glTF, GLB, OBJ or FBX.');
+  return flatten(await parseScene(file.name, await file.arrayBuffer()));
 }
 
 function namedMesh(geometry: THREE.BufferGeometry, material: string): THREE.Mesh {

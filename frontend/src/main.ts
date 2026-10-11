@@ -121,7 +121,7 @@ function useEnvironment(name: string): void {
   if (!name) { e.clear_environment(); $<HTMLSelectElement>('d-env').value = ''; return; }
   const image = environments.get(name);
   if (!image) throw new Error(`Environment ${name} is not loaded`);
-  e.set_environment(name, image.width, image.height, image.rgb);
+  e.set_environment(name, image.width, image.height, environmentRgb(name, image.rgb));
   const list = $<HTMLSelectElement>('d-env');
   if (![...list.options].some((o) => o.value === name)) list.add(new Option(name, name));
   list.value = name;
@@ -130,6 +130,7 @@ function useEnvironment(name: string): void {
 async function loadEnvironment(name: string, buffer: ArrayBuffer): Promise<{ width: number; height: number }> {
   const image = parseHdr(buffer);
   environments.set(name, image);
+  if (!resources.some((r) => r.target === 'environment' && r.name === name)) addResource({ name, target: 'environment', layer: 0, space: 'linear', w: image.width, h: image.height });
   useEnvironment(name);
   return { width: image.width, height: image.height };
 }
@@ -703,7 +704,7 @@ function drawPathOverlay(): void {
   drawPath(pathOverlay, pathSamples(pathPoints, closed, checked('p-smooth'), 16).map(toOverlay), pathPoints.map(toOverlay));
 }
 
-function useImage(target: 'alpha' | 'stencil' | 'fill' | 'mask', w: number, h: number, data: Uint8Array, label: string): void {
+function useImage(target: 'alpha' | 'stencil' | 'fill' | 'mask', w: number, h: number, data: Uint8Array, label: string, imageColor = true): void {
   const e = requireEngine();
   if (target === 'mask') {
     e.mask_from_image(e.active_layer(), w, h, data);
@@ -719,6 +720,7 @@ function useImage(target: 'alpha' | 'stencil' | 'fill' | 'mask', w: number, h: n
     const option = $<HTMLSelectElement>('f-pattern').querySelector<HTMLOptionElement>('option[value="image"]')!;
     option.disabled = false;
     $<HTMLSelectElement>('f-pattern').value = 'image';
+    $<HTMLInputElement>('f-imgcolor').checked = imageColor;
     syncFill();
     status(`Fill image ${label} loaded`);
     return;
@@ -741,8 +743,7 @@ function useImage(target: 'alpha' | 'stencil' | 'fill' | 'mask', w: number, h: n
 
 function useText(target: 'alpha' | 'stencil' | 'fill', text = $<HTMLInputElement>('t-text').value, font = sel('t-font'), bold = checked('t-bold')): { width: number; height: number } {
   const image = textImage(text, font, bold, target);
-  if (target === 'fill') $<HTMLInputElement>('f-imgcolor').checked = false;
-  useImage(target, image.w, image.h, image.data, `text "${text.trim().slice(0, 24)}" in ${fontLabel(font)}`);
+  useImage(target, image.w, image.h, image.data, `text "${text.trim().slice(0, 24)}" in ${fontLabel(font)}`, false);
   return { width: image.w, height: image.h };
 }
 
@@ -878,8 +879,125 @@ $('tool-mirror').addEventListener('click', () => {
 });
 for (const id of ['b-angle', 'b-density', 'b-lazy', 'b-jsize', 'b-jangle', 'b-jpos', 'b-jflow', 'b-radial', 's-scale', 's-angle', 's-x', 's-y']) $(id).addEventListener('input', () => { setOutput(id); syncBrush(); });
 for (const id of ['b-align', 'b-space', 'b-tip', 'b-sym', 'b-axis', 'b-follow', 's-on']) $(id).addEventListener('change', syncBrush);
+type ColorSpace = 'srgb' | 'linear' | 'raw';
+type ImageTarget = 'alpha' | 'stencil' | 'fill' | 'mask';
+const COLOR_SPACES: ColorSpace[] = ['srgb', 'linear', 'raw'];
+const SPACE_LABEL: Record<ColorSpace, string> = { srgb: 'sRGB', linear: 'Linear', raw: 'Raw data' };
+
+interface Resource {
+  name: string;
+  target: ImageTarget | 'environment';
+  layer: number;
+  space: ColorSpace;
+  w: number;
+  h: number;
+  rgba?: Uint8Array;
+}
+
+const resources: Resource[] = [];
+
+function convertRgba(r: Resource): Uint8Array {
+  const out = new Uint8Array(r.rgba!);
+  const color = r.target === 'fill';
+  const table = new Uint8Array(256);
+  for (let v = 0; v < 256; v++) {
+    if (color && r.space === 'linear') table[v] = Math.round(255 * Math.pow(v / 255, 1 / 2.2));
+    else if (!color && r.space === 'srgb') table[v] = Math.round(255 * Math.pow(v / 255, 2.2));
+    else table[v] = v;
+  }
+  for (let i = 0; i < out.length; i += 4) {
+    out[i] = table[out[i]];
+    out[i + 1] = table[out[i + 1]];
+    out[i + 2] = table[out[i + 2]];
+    if (!color) {
+      const l = (out[i] * 0.2126 + out[i + 1] * 0.7152 + out[i + 2] * 0.0722) * (out[i + 3] / 255);
+      out[i] = out[i + 1] = out[i + 2] = Math.round(l);
+      out[i + 3] = 255;
+    }
+  }
+  return out;
+}
+
+function environmentRgb(name: string, rgb: Float32Array): Float32Array {
+  const r = resources.find((x) => x.target === 'environment' && x.name === name);
+  if (!r || r.space !== 'srgb') return rgb;
+  return rgb.map((v) => Math.pow(Math.max(v, 0), 2.2));
+}
+
+function addResource(next: Resource): Resource {
+  const at = resources.findIndex((r) => r.name === next.name && r.target === next.target);
+  if (at >= 0) resources.splice(at, 1, next); else resources.push(next);
+  renderResources();
+  return next;
+}
+
+function applyResource(r: Resource): void {
+  const e = requireEngine();
+  if (r.target === 'environment') {
+    if (sel('d-env') === r.name) useEnvironment(r.name);
+    return;
+  }
+  const data = convertRgba(r);
+  if (r.target === 'fill') e.set_fill_image(r.layer, r.w, r.h, data);
+  else if (r.target === 'mask') e.mask_from_image(r.layer, r.w, r.h, data);
+  else if (r.target === 'alpha') e.set_alpha(r.w, r.h, data);
+  else e.set_stencil(r.w, r.h, data);
+  refreshLayers();
+}
+
+function setResourceSpace(key: string | number, space: string): Resource {
+  if (!COLOR_SPACES.includes(space as ColorSpace)) throw new Error(`color_space is one of ${COLOR_SPACES.join(', ')}`);
+  const asIndex = typeof key === 'number' ? key : /^\d+$/.test(key) ? Number(key) : -1;
+  const named = asIndex >= 0 ? [] : resources.filter((x) => x.name === key);
+  if (named.length > 1) throw new Error(`${key} is loaded ${named.length} times (${named.map((x) => `${resources.indexOf(x)} as ${x.target}`).join(', ')}); pass its index`);
+  const r = asIndex >= 0 ? resources[asIndex] : named[0];
+  if (!r) throw new Error(`No resource ${key}. Resources: ${resources.map((x, i) => `${i} ${x.name} (${x.target})`).join(', ') || 'none loaded'}`);
+  r.space = space as ColorSpace;
+  applyResource(r);
+  renderResources();
+  return r;
+}
+
+function resourceList(): Record<string, unknown>[] {
+  return resources.map((r, index) => ({ index, name: r.name, target: r.target, layer: r.layer || undefined, color_space: r.space, size: [r.w, r.h] }));
+}
+
+function renderResources(): void {
+  const list = $('res-list');
+  list.replaceChildren(...resources.map((r, index) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.gridTemplateColumns = 'minmax(0,1fr) 112px';
+    const label = document.createElement('span');
+    label.textContent = `${r.name} · ${r.target}`;
+    label.title = label.textContent;
+    label.style.overflow = 'hidden';
+    label.style.textOverflow = 'ellipsis';
+    label.style.whiteSpace = 'nowrap';
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', `Color space of ${r.name}`);
+    for (const s of COLOR_SPACES) select.add(new Option(SPACE_LABEL[s], s));
+    select.value = r.space;
+    select.addEventListener('change', () => {
+      try { setResourceSpace(index, select.value); status(`${r.name} is now read as ${SPACE_LABEL[r.space]}`); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+    });
+    row.append(label, select);
+    return row;
+  }));
+  $('res-empty').style.display = resources.length ? 'none' : '';
+}
+
+function importImage(target: ImageTarget, name: string, w: number, h: number, rgba: Uint8Array, space?: string): Resource {
+  const e = requireEngine();
+  const chosen = (space ?? (target === 'fill' ? 'srgb' : 'raw')) as ColorSpace;
+  if (!COLOR_SPACES.includes(chosen)) throw new Error(`color_space is one of ${COLOR_SPACES.join(', ')}`);
+  const r: Resource = { name, target, layer: target === 'fill' || target === 'mask' ? e.active_layer() : 0, space: chosen, w, h, rgba };
+  useImage(target, w, h, convertRgba(r), name);
+  return addResource(r);
+}
+
 const imageInput = $<HTMLInputElement>('image-file');
-let imageTarget: 'alpha' | 'stencil' | 'fill' | 'mask' = 'alpha';
+let imageTarget: ImageTarget = 'alpha';
 $('b-alpha-load').addEventListener('click', () => { imageTarget = 'alpha'; imageInput.click(); });
 $('s-load').addEventListener('click', () => { imageTarget = 'stencil'; imageInput.click(); });
 imageInput.addEventListener('change', async () => {
@@ -887,8 +1005,8 @@ imageInput.addEventListener('change', async () => {
   imageInput.value = '';
   if (!file || !engine) return;
   try {
-    const { w, h, data } = await imageRgba(file, imageTarget !== 'fill');
-    useImage(imageTarget, w, h, data, file.name);
+    const { w, h, data } = await imageRgba(file, false);
+    importImage(imageTarget, file.name, w, h, data);
   } catch (error) {
     status(error instanceof Error ? error.message : String(error), true);
   }
@@ -1578,6 +1696,24 @@ const agentLink = new AgentLink({
     if (front !== undefined) setControl('k-front', front);
     if (rear !== undefined) setControl('k-rear', rear);
     return { result: await bakeHigh(), cage: cage || (requireEngine().has_cage() ? 'custom cage kept' : 'distance cage'), maps: ['id', 'normal_baked', 'height_high', 'opacity', 'ambient_occlusion_high', 'bent_normal'] };
+  },
+  load_image: async ({ file, target, layer_id, color_space }) => {
+    const e = requireEngine();
+    const kind = String(target ?? 'fill') as ImageTarget;
+    if (!['alpha', 'stencil', 'fill', 'mask'].includes(kind)) throw new Error('target is alpha, stencil, fill or mask');
+    if (layer_id !== undefined && layer_id !== null) { e.select_layer(Number(layer_id)); refreshLayers(); }
+    const response = await fetch(`/api/images/${encodeURIComponent(String(file))}`);
+    if (!response.ok) throw new Error(`Image ${file} is not in the workspace images folder`);
+    const blob = await response.blob();
+    const { w, h, data } = await imageRgba(new File([blob], String(file)), false);
+    const r = importImage(kind, String(file), w, h, data, color_space === undefined || color_space === null ? undefined : String(color_space));
+    return { resource: resourceList()[resources.indexOf(r)], layers: layers() };
+  },
+  resources: () => ({ resources: resourceList() }),
+  resource_color_space: ({ resource, color_space }) => {
+    const key = typeof resource === 'number' ? resource : String(resource);
+    const r = setResourceSpace(key, String(color_space));
+    return { resource: resourceList()[resources.indexOf(r)] };
   },
   set_post_effects: (args) => {
     if (args.reset) resetPost();
