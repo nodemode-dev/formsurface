@@ -16,7 +16,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_add_fill_layer` | name, projection (uv, triplanar, planar, spherical, cylindrical), pattern (solid, checker, stripes, noise), base_color, roughness, metallic, height, scale, rotation_degrees, planar_axis, sharpness, fill_color, fill_roughness, fill_metallic, fill_height | id and settings |
 | `formsurface_set_fill` | layer_id, projection, pattern, base_color, roughness, metallic, height, scale, rotation_degrees, offset_u, offset_v, planar_axis, sharpness, amount | settings |
 | `formsurface_bake_maps` | directions 8 to 256 | baked flag and map names |
-| `formsurface_bake_high_poly` | mesh_file (in workspace/meshes), use_sample, sample (sphere, pair), cage_front, cage_rear (fractions of mesh radius), match_by_name | hit count, map names, matched part count |
+| `formsurface_bake_high_poly` | mesh_file (in workspace/meshes), use_sample, sample (sphere, pair), cage_front, cage_rear (fractions of mesh radius), match_by_name, ao_rays (0 to 64, default 16; 0 skips AO and bent normal) | hit count, map names (normal, ID, height, opacity, AO, bent normal), matched part count |
 | `formsurface_view_2d` | on, channel (base_color, roughness, metallic, height), center_u, center_v, zoom (frame part of the layout) | view (2d or 3d); in 2D, paint_stroke, paint_path and polygon_fill points land on the UV layout |
 | `formsurface_paint_path` | points (2 to 64 [x, y] in 0 to 1, kept on the surface), closed, smooth, erase | control points, missed points, samples; one undo step; 3D view only |
 | `formsurface_text_resource` | text, target (alpha, stencil, fill), font (sans-serif, serif, monospace or a loaded font), bold | image size, brush |
@@ -31,7 +31,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_set_environment` | file (.hdr in workspace/environments), studio, rotation_degrees, blur, background, exposure | environment, rotation, blur, background, exposure |
 | `formsurface_add_filter_layer` | name, brightness, contrast, hue_degrees, saturation, gamma, roughness_offset, metallic_offset, blur, sharpen | id and settings |
 | `formsurface_layer_mask` | layer_id, action (add_white, add_black, remove, keep), paint_target (layer, mask) | layers and whether strokes paint the mask |
-| `formsurface_update_layer` | layer_id, name, visible, opacity, blend (normal, multiply, screen, overlay, add, subtract, darken, lighten), make_active | layers and active layer |
+| `formsurface_update_layer` | layer_id, name, visible, opacity, blend (normal, multiply, screen, overlay, add, subtract, inverse_subtract, darken, lighten, disable, replace, divide, inverse_divide, difference, exclusion, signed_addition, linear_burn, color_burn, color_dodge, soft_light, hard_light, vivid_light, linear_light, pin_light, tint, saturation, color, value, normal_map_combine, normal_map_detail, normal_map_inverse_detail; the normal map modes combine height), make_active | layers and active layer |
 | `formsurface_move_layer` | layer_id, offset (positive is up) | layers |
 | `formsurface_remove_layer` | layer_id | layers |
 | `formsurface_fill_layer` | none | filled layer id |
@@ -53,7 +53,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_uv_tiles` | on (omit to read) | uv_tiles and texture sets with linked flags |
 | `formsurface_mask_source` | layer_id, source (cavity, edges, thin, top, id_color), color hex or x, y point for id_color, tolerance, level, softness, invert | layers, picked color |
 | `formsurface_quick_mask` | mode (off, edit, on), action (clear, allow_all, invert) | mode |
-| `formsurface_set_filter` | layer_id, brightness, contrast, hue_degrees, saturation, gamma, roughness_offset, metallic_offset, blur, sharpen (only given values change) | settings |
+| `formsurface_set_filter` | layer_id, brightness, contrast, hue_degrees, saturation, gamma, roughness_offset, metallic_offset, blur, sharpen, levels_in_low, levels_in_high, levels_out_low, levels_out_high, invert, posterize (0 to 32), pixelate (0 to 64) (only given values change) | settings |
 | `formsurface_polygon_fill` | x, y in 0 to 1, mode (triangle, polygon, mesh, uv_chunk) | filled triangle count, mode, layer |
 | `formsurface_export_maps` | name, template (pbr, gltf, unreal, unity_hdrp, unity_urp or a saved name), custom_maps (suffix plus rgb or r, g, b, a sources), format (png, tif, exr, hdr, jpg, psd), bit_depth (8, 16, 32 as the format allows), padding (infinite, transparent, color, diffusion), padding_width, padding_color | folder, template, format, bit depth, padding and file names; every texture set is exported, as name_material_suffix (plus .udim for tiled materials) when there is more than one |
 | `formsurface_save_export_template` | name, maps (same shape as custom_maps), label | file; the template joins the editor's list and export_maps |
