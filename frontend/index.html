@@ -52,6 +52,7 @@
     <button class="btn primary" id="export" title="Export texture maps as PNG"><svg><use href="#i-export"/></svg>Export maps</button>
     <span class="version" id="version"></span>
     <input type="file" id="mesh-file" accept=".glb,.gltf,.obj,.fbx" hidden>
+    <input type="file" id="image-file" accept="image/*" hidden>
   </header>
 
   <nav class="tools" aria-label="Tools">
@@ -79,9 +80,40 @@
       <div class="row"><label for="b-flow">Flow</label><input id="b-flow" type="range" min="0.01" max="1" step="0.01" value="0.6"><output for="b-flow">0.60</output></div>
       <div class="row"><label for="b-opacity">Stroke opacity</label><input id="b-opacity" type="range" min="0" max="1" step="0.01" value="1"><output for="b-opacity">1.00</output></div>
       <div class="row"><label for="b-spacing">Spacing</label><input id="b-spacing" type="range" min="0.02" max="1" step="0.01" value="0.12"><output for="b-spacing">0.12</output></div>
+      <div class="row"><label for="b-align">Alignment</label><select id="b-align">
+        <option value="camera">Camera</option><option value="tangent_wrap" selected>Tangent wrap</option><option value="tangent_planar">Tangent planar</option><option value="uv">UV</option>
+      </select><output></output></div>
+      <div class="row"><label for="b-space">Size space</label><select id="b-space"><option value="screen" selected>Screen</option><option value="object">Object</option></select><output></output></div>
+      <div class="row"><label for="b-angle">Angle</label><input id="b-angle" type="range" min="-180" max="180" step="1" value="0"><output for="b-angle">0</output></div>
+      <label class="check"><input type="checkbox" id="b-follow">Follow path</label>
+      <div class="row"><label for="b-tip">Tip</label><select id="b-tip">
+        <option value="round" selected>Round</option><option value="square">Square</option><option value="spray">Spray</option><option value="image" disabled>Image alpha</option>
+      </select><button class="icon-btn" id="b-alpha-load" title="Load a brush alpha image (white paints)"><svg><use href="#i-open"/></svg></button></div>
+      <div class="row"><label for="b-density">Spray density</label><input id="b-density" type="range" min="0.02" max="1" step="0.01" value="0.35"><output for="b-density">0.35</output></div>
+      <div class="row"><label for="b-lazy">Lazy mouse</label><input id="b-lazy" type="range" min="0" max="120" step="1" value="0"><output for="b-lazy">0</output></div>
+      <div class="row"><label for="b-jsize">Size jitter</label><input id="b-jsize" type="range" min="0" max="1" step="0.01" value="0"><output for="b-jsize">0.00</output></div>
+      <div class="row"><label for="b-jangle">Angle jitter</label><input id="b-jangle" type="range" min="0" max="1" step="0.01" value="0"><output for="b-jangle">0.00</output></div>
+      <div class="row"><label for="b-jpos">Position jitter</label><input id="b-jpos" type="range" min="0" max="2" step="0.01" value="0"><output for="b-jpos">0.00</output></div>
+      <div class="row"><label for="b-jflow">Flow jitter</label><input id="b-jflow" type="range" min="0" max="1" step="0.01" value="0"><output for="b-jflow">0.00</output></div>
       <label class="check"><input type="checkbox" id="b-cull" checked>Backface culling</label>
       <label class="check"><input type="checkbox" id="b-psize" checked>Pen pressure controls size</label>
       <label class="check"><input type="checkbox" id="b-pflow">Pen pressure controls flow</label>
+    </section>
+    <section class="section">
+      <h2>Symmetry</h2>
+      <div class="row"><label for="b-sym">Mode</label><select id="b-sym"><option value="off" selected>Off</option><option value="mirror">Mirror</option><option value="radial">Radial</option></select><output></output></div>
+      <div class="row"><label for="b-axis">Axis</label><select id="b-axis"><option value="0" selected>X</option><option value="1">Y</option><option value="2">Z</option></select><output></output></div>
+      <div class="row"><label for="b-radial">Radial count</label><input id="b-radial" type="range" min="2" max="32" step="1" value="6"><output for="b-radial">6</output></div>
+    </section>
+    <section class="section">
+      <h2>Stencil
+        <span><button class="icon-btn" id="s-load" title="Load a stencil image (white paints, black blocks)"><svg><use href="#i-open"/></svg></button></span>
+      </h2>
+      <label class="check"><input type="checkbox" id="s-on" disabled>Use stencil</label>
+      <div class="row"><label for="s-scale">Scale</label><input id="s-scale" type="range" min="0.1" max="4" step="0.01" value="1"><output for="s-scale">1.00</output></div>
+      <div class="row"><label for="s-angle">Rotation</label><input id="s-angle" type="range" min="-180" max="180" step="1" value="0"><output for="s-angle">0</output></div>
+      <div class="row"><label for="s-x">Offset X</label><input id="s-x" type="range" min="-0.5" max="0.5" step="0.01" value="0"><output for="s-x">0.00</output></div>
+      <div class="row"><label for="s-y">Offset Y</label><input id="s-y" type="range" min="-0.5" max="0.5" step="0.01" value="0"><output for="s-y">0.00</output></div>
     </section>
     <section class="section">
       <h2>Material</h2>

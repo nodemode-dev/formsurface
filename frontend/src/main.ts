@@ -44,8 +44,36 @@ function hex(id: string): [number, number, number] {
 function syncBrush(): void {
   engine?.set_brush(JSON.stringify({
     size_px: num('b-size'), hardness: num('b-hardness'), flow: num('b-flow'), opacity: num('b-opacity'), spacing: num('b-spacing'),
-    mode: tool, mirror_x: mirror, backface_culling: checked('b-cull'), pressure_size: checked('b-psize'), pressure_flow: checked('b-pflow'),
+    mode: tool, mirror_x: false, backface_culling: checked('b-cull'), pressure_size: checked('b-psize'), pressure_flow: checked('b-pflow'),
+    alignment: sel('b-align'), size_space: sel('b-space'), angle: num('b-angle'), follow_path: checked('b-follow'),
+    jitter_size: num('b-jsize'), jitter_angle: num('b-jangle'), jitter_position: num('b-jpos'), jitter_flow: num('b-jflow'),
+    lazy_px: num('b-lazy') * Math.min(window.devicePixelRatio || 1, 2), tip: sel('b-tip'), spray_density: num('b-density'),
+    symmetry: sel('b-sym'), symmetry_axis: Number(sel('b-axis')), radial_count: num('b-radial'),
+    stencil: checked('s-on'), stencil_scale: num('s-scale'), stencil_angle: num('s-angle'), stencil_x: num('s-x'), stencil_y: num('s-y'),
   }));
+  mirror = sel('b-sym') === 'mirror';
+  $('tool-mirror').setAttribute('aria-pressed', String(mirror));
+}
+
+function sel(id: string): string {
+  return $<HTMLSelectElement>(id).value;
+}
+
+async function imageRgba(file: File): Promise<{ w: number; h: number; data: Uint8Array }> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 2048 / Math.max(bitmap.width, bitmap.height));
+  const w = Math.max(1, Math.round(bitmap.width * scale));
+  const h = Math.max(1, Math.round(bitmap.height * scale));
+  const surface = new OffscreenCanvas(w, h);
+  const context = surface.getContext('2d')!;
+  context.drawImage(bitmap, 0, 0, w, h);
+  const pixels = context.getImageData(0, 0, w, h).data;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const l = (pixels[i] * 0.2126 + pixels[i + 1] * 0.7152 + pixels[i + 2] * 0.0722) * (pixels[i + 3] / 255);
+    pixels[i] = pixels[i + 1] = pixels[i + 2] = Math.round(l);
+    pixels[i + 3] = 255;
+  }
+  return { w, h, data: new Uint8Array(pixels.buffer) };
 }
 
 function syncChannels(): void {
@@ -229,9 +257,38 @@ $('l-blend').addEventListener('change', () => updateActiveLayer({ blend: $<HTMLS
 $('tool-paint').addEventListener('click', () => setTool('paint'));
 $('tool-erase').addEventListener('click', () => setTool('erase'));
 $('tool-mirror').addEventListener('click', () => {
-  mirror = !mirror;
-  $('tool-mirror').setAttribute('aria-pressed', String(mirror));
+  $<HTMLSelectElement>('b-sym').value = mirror ? 'off' : 'mirror';
   syncBrush();
+});
+for (const id of ['b-angle', 'b-density', 'b-lazy', 'b-jsize', 'b-jangle', 'b-jpos', 'b-jflow', 'b-radial', 's-scale', 's-angle', 's-x', 's-y']) $(id).addEventListener('input', () => { setOutput(id); syncBrush(); });
+for (const id of ['b-align', 'b-space', 'b-tip', 'b-sym', 'b-axis', 'b-follow', 's-on']) $(id).addEventListener('change', syncBrush);
+const imageInput = $<HTMLInputElement>('image-file');
+let imageTarget: 'alpha' | 'stencil' = 'alpha';
+$('b-alpha-load').addEventListener('click', () => { imageTarget = 'alpha'; imageInput.click(); });
+$('s-load').addEventListener('click', () => { imageTarget = 'stencil'; imageInput.click(); });
+imageInput.addEventListener('change', async () => {
+  const file = imageInput.files?.[0];
+  imageInput.value = '';
+  if (!file || !engine) return;
+  try {
+    const { w, h, data } = await imageRgba(file);
+    if (imageTarget === 'alpha') {
+      engine.set_alpha(w, h, data);
+      const option = $<HTMLSelectElement>('b-tip').querySelector<HTMLOptionElement>('option[value="image"]')!;
+      option.disabled = false;
+      $<HTMLSelectElement>('b-tip').value = 'image';
+      status(`Brush alpha ${file.name} loaded`);
+    } else {
+      engine.set_stencil(w, h, data);
+      const on = $<HTMLInputElement>('s-on');
+      on.disabled = false;
+      on.checked = true;
+      status(`Stencil ${file.name} loaded and enabled`);
+    }
+    syncBrush();
+  } catch (error) {
+    status(error instanceof Error ? error.message : String(error), true);
+  }
 });
 $('undo').addEventListener('click', () => engine?.undo());
 $('redo').addEventListener('click', () => engine?.redo());
@@ -382,7 +439,12 @@ function snapshotState(): Record<string, unknown> {
     layers: layers(),
     active_layer: e.active_layer(),
     tool,
-    brush: { size_px: num('b-size'), hardness: num('b-hardness'), flow: num('b-flow'), stroke_opacity: num('b-opacity'), spacing: num('b-spacing'), mirror_x: mirror, backface_culling: checked('b-cull') },
+    brush: {
+      size_px: num('b-size'), hardness: num('b-hardness'), flow: num('b-flow'), stroke_opacity: num('b-opacity'), spacing: num('b-spacing'), mirror_x: mirror, backface_culling: checked('b-cull'),
+      alignment: sel('b-align'), size_space: sel('b-space'), angle: num('b-angle'), follow_path: checked('b-follow'), tip: sel('b-tip'), spray_density: num('b-density'),
+      lazy_px: num('b-lazy'), jitter_size: num('b-jsize'), jitter_angle: num('b-jangle'), jitter_position: num('b-jpos'), jitter_flow: num('b-jflow'),
+      symmetry: sel('b-sym'), symmetry_axis: Number(sel('b-axis')), radial_count: num('b-radial'), stencil: checked('s-on'),
+    },
     paint_material: { base_color: $<HTMLInputElement>('c-color').value, roughness: num('c-rough'), metallic: num('c-metal'), height: num('c-height'), paint_color: checked('c-use-color'), paint_roughness: checked('c-use-rough'), paint_metallic: checked('c-use-metal'), paint_height: checked('c-use-height') },
     camera: JSON.parse(e.camera_json()),
     viewport: e.viewport_size(),
@@ -405,6 +467,11 @@ const agentLink = new AgentLink({
     if (args.mirror_x !== undefined && Boolean(args.mirror_x) !== mirror) $('tool-mirror').click();
     setControl('b-size', args.size_px); setControl('b-hardness', args.hardness); setControl('b-flow', args.flow);
     setControl('b-opacity', args.opacity); setControl('b-spacing', args.spacing); setControl('b-cull', args.backface_culling, 'change');
+    setControl('b-align', args.alignment, 'change'); setControl('b-space', args.size_space, 'change'); setControl('b-angle', args.angle);
+    setControl('b-follow', args.follow_path, 'change'); setControl('b-tip', args.tip, 'change'); setControl('b-density', args.spray_density);
+    setControl('b-lazy', args.lazy_px); setControl('b-jsize', args.jitter_size); setControl('b-jangle', args.jitter_angle);
+    setControl('b-jpos', args.jitter_position); setControl('b-jflow', args.jitter_flow); setControl('b-sym', args.symmetry, 'change');
+    setControl('b-axis', args.symmetry_axis, 'change'); setControl('b-radial', args.radial_count);
     return snapshotState().brush as Record<string, unknown>;
   },
   material: (args) => {
