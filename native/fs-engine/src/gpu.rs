@@ -78,12 +78,17 @@ pub struct Gpu {
     mask_image_pipe: wgpu::RenderPipeline,
     mask_id_pipe: wgpu::RenderPipeline,
     flatten_pipe: wgpu::RenderPipeline,
+    merge_pipe: wgpu::RenderPipeline,
+    merge_uniform: wgpu::Buffer,
+    layer_export_pipe: wgpu::RenderPipeline,
     mask_export_pipe: wgpu::RenderPipeline,
     group_mask: wgpu::Texture,
     quick: wgpu::Texture,
     pub quick_mode: u32,
     pub clone_offset: Option<[i32; 2]>,
+    pub clone_layer: Option<usize>,
     pub flat: bool,
+    pub flat_channel: u32,
     geometry_pipe: wgpu::RenderPipeline,
     geometry: Option<(wgpu::Texture, wgpu::Texture)>,
     patterns: std::collections::HashMap<u32, wgpu::Texture>,
@@ -379,7 +384,7 @@ pub fn view_projection(eye: Vec3, forward: Vec3, right: Vec3, up: Vec3, fov: f32
     m
 }
 
-fn read_rgba(buffer: wgpu::Buffer, width: u32, height: u32, row: u32, bgra: bool) -> js_sys::Promise {
+fn read_rgba(buffer: wgpu::Buffer, width: u32, height: u32, row: u32, bgra: bool, keep_alpha: bool) -> js_sys::Promise {
     js_sys::Promise::new(&mut |resolve, reject| {
         let readback = buffer.clone();
         buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| {
@@ -395,7 +400,8 @@ fn read_rgba(buffer: wgpu::Buffer, width: u32, height: u32, row: u32, bgra: bool
                     for y in 0..height as usize {
                         let line = &view[y * row as usize..y * row as usize + width as usize * 4];
                         for px in line.chunks_exact(4) {
-                            if bgra { out.extend_from_slice(&[px[2], px[1], px[0], 255]) } else { out.extend_from_slice(&[px[0], px[1], px[2], 255]) }
+                            let a = if keep_alpha { px[3] } else { 255 };
+                            if bgra { out.extend_from_slice(&[px[2], px[1], px[0], a]) } else { out.extend_from_slice(&[px[0], px[1], px[2], a]) }
                         }
                     }
                     out
@@ -513,12 +519,17 @@ impl Gpu {
             mask_image_pipe: pipeline(&device, "mask from image", shaders::MASK_IMAGE, false, &[LAYER_FORMAT], None, false),
             mask_id_pipe: pipeline(&device, "mask from id", shaders::MASK_ID, false, &[LAYER_FORMAT], None, false),
             flatten_pipe: pipeline(&device, "flatten", shaders::PAIR_TO_SET, false, &[LAYER_FORMAT; 3], None, false),
+            merge_pipe: pipeline(&device, "merge", shaders::MERGE, false, &[LAYER_FORMAT; 3], None, false),
+            merge_uniform: uniform("merge", 48),
+            layer_export_pipe: pipeline(&device, "layer export", shaders::LAYER_EXPORT, false, &[wgpu::TextureFormat::Rgba8Unorm], None, false),
             mask_export_pipe: pipeline(&device, "mask export", shaders::MASK_MUL, false, &[wgpu::TextureFormat::Rgba8Unorm], None, false),
             group_mask: texture(&device, size, LAYER_FORMAT, "folder mask"),
             quick: texture(&device, size, LAYER_FORMAT, "quick mask"),
             quick_mode: 0,
             clone_offset: None,
+            clone_layer: None,
             flat: false,
+            flat_channel: 0,
             geometry_pipe: pipeline(&device, "geometry", shaders::GEOMETRY, true, &[wgpu::TextureFormat::Rgba32Float, LAYER_FORMAT], None, false),
             geometry: None,
             patterns: std::collections::HashMap::new(),
@@ -809,6 +820,82 @@ impl Gpu {
         self.queue.submit([encoder.finish()]);
     }
 
+    pub fn merge_layers(&mut self, top: usize, bottom: usize, target: usize, top_params: [f32; 2], bottom_params: [f32; 2], blend: u32) {
+        let data: [f32; 12] = [top_params[0], top_params[1], 0.0, 0.0, bottom_params[0], bottom_params[1], 0.0, 0.0, f32::from_bits(blend), 0.0, 0.0, 0.0];
+        self.queue.write_buffer(&self.merge_uniform, 0, bytemuck::cast_slice(&data));
+        let out = self.take_set();
+        {
+            let (t, b) = (&self.layers[top].set, &self.layers[bottom].set);
+            let views = [&t.color, &t.val, &t.cov, &t.mask, &b.color, &b.val, &b.cov, &b.mask].map(view_of);
+            let mut entries = vec![self.merge_uniform.as_entire_binding()];
+            entries.extend(views.iter().map(wgpu::BindingResource::TextureView));
+            let group = bind(&self.device, &self.merge_pipe, &entries);
+            let (c, v, k) = (view_of(&out.color), view_of(&out.val), view_of(&out.cov));
+            let mut encoder = self.device.create_command_encoder(&Default::default());
+            {
+                let clear = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&c, clear), attach(&v, clear), attach(&k, clear)], ..Default::default() });
+                pass.set_pipeline(&self.merge_pipe);
+                pass.set_bind_group(0, &group, &[]);
+                pass.draw(0..3, 0..1);
+            }
+            let extent = wgpu::Extent3d { width: self.size, height: self.size, depth_or_array_layers: 1 };
+            let dest = &self.layers[target].set;
+            for (a, b) in [(&out.color, &dest.color), (&out.val, &dest.val), (&out.cov, &dest.cov)] {
+                encoder.copy_texture_to_texture(a.as_image_copy(), b.as_image_copy(), extent);
+            }
+            self.queue.submit([encoder.finish()]);
+        }
+        self.pool.push(out);
+    }
+
+    pub fn copy_mask(&mut self, from: usize, to: usize) {
+        let extent = wgpu::Extent3d { width: self.size, height: self.size, depth_or_array_layers: 1 };
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        encoder.copy_texture_to_texture(self.layers[from].set.mask.as_image_copy(), self.layers[to].set.mask.as_image_copy(), extent);
+        self.queue.submit([encoder.finish()]);
+    }
+
+    pub fn export_layer(&mut self, index: usize, channel: u32) -> js_sys::Promise {
+        let size = self.size;
+        let target = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("layer export"),
+            size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let sel = [channel, 0, 0, 0];
+        self.queue.write_buffer(&self.export_uniform, 0, bytemuck::cast_slice(&sel));
+        let set = &self.layers[index].set;
+        let (c, v, k) = (view_of(&set.color), view_of(&set.val), view_of(&set.cov));
+        let group = bind(&self.device, &self.layer_export_pipe, &[
+            self.export_uniform.as_entire_binding(),
+            wgpu::BindingResource::TextureView(&c),
+            wgpu::BindingResource::TextureView(&v),
+            wgpu::BindingResource::TextureView(&k),
+        ]);
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("layer readback"), size: (size * size * 4) as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+        let tv = view_of(&target);
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&tv, wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT))], ..Default::default() });
+            pass.set_pipeline(&self.layer_export_pipe);
+            pass.set_bind_group(0, &group, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        encoder.copy_texture_to_buffer(
+            target.as_image_copy(),
+            wgpu::TexelCopyBufferInfo { buffer: &buffer, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(size * 4), rows_per_image: Some(size) } },
+            wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
+        );
+        self.queue.submit([encoder.finish()]);
+        read_rgba(buffer, size, size, size * 4, false, true)
+    }
+
     pub fn export_mask(&mut self, index: usize) -> js_sys::Promise {
         let size = self.size;
         let target = self.device.create_texture(&wgpu::TextureDescriptor {
@@ -838,7 +925,7 @@ impl Gpu {
             wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
         );
         self.queue.submit([encoder.finish()]);
-        read_rgba(buffer, size, size, size * 4, false)
+        read_rgba(buffer, size, size, size * 4, false, false)
     }
 
     fn fill_target(&self, id: u32, set: &Set, uniform: &[f32; 36]) {
@@ -1224,7 +1311,16 @@ impl Gpu {
             return;
         }
         let (sc, sv, sk, mk) = (view_of(&snap.set.color), view_of(&snap.set.val), view_of(&snap.set.cov), view_of(stroke_tex));
-        let (cc, cm) = (view_of(&self.final_set.color), view_of(&self.final_set.mat));
+        let layer_source = self.clone_layer.filter(|&i| i < self.layers.len());
+        let (cc, cm, ck) = match layer_source {
+            Some(i) if i == index => (view_of(&snap.set.color), view_of(&snap.set.val), view_of(&snap.set.cov)),
+            Some(i) => (view_of(&self.layers[i].set.color), view_of(&self.layers[i].set.val), view_of(&self.layers[i].set.cov)),
+            None => (view_of(&self.final_set.color), view_of(&self.final_set.mat), view_of(&self.white)),
+        };
+        if layer_source.is_some() && paint[14] > 0.5 {
+            paint[15] = 1.0;
+            self.queue.write_buffer(&self.paint_uniform, 0, bytemuck::cast_slice(&paint));
+        }
         let group = bind(&self.device, &self.apply_pipe, &[
             self.paint_uniform.as_entire_binding(),
             wgpu::BindingResource::TextureView(&sc),
@@ -1233,6 +1329,7 @@ impl Gpu {
             wgpu::BindingResource::TextureView(&mk),
             wgpu::BindingResource::TextureView(&cc),
             wgpu::BindingResource::TextureView(&cm),
+            wgpu::BindingResource::TextureView(&ck),
         ]);
         let target = &self.layers[index].set;
         let (tc, tv, tk) = (view_of(&target.color), view_of(&target.val), view_of(&target.cov));
@@ -1360,7 +1457,7 @@ impl Gpu {
         );
         self.queue.submit([encoder.finish()]);
         let bgra = matches!(self.config.format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
-        read_rgba(buffer, width, height, row, bgra)
+        read_rgba(buffer, width, height, row, bgra, false)
     }
 
     fn encode_view(&self, encoder: &mut wgpu::CommandEncoder, target: &wgpu::Texture, view_proj: [f32; 16], eye: Vec3, cursor: Option<(Vec3, Vec3, f32)>, exposure: f32, normal_strength: f32) {
@@ -1368,6 +1465,9 @@ impl Gpu {
         let mut bytes = camera_bytes(view_proj, eye, cursor, exposure, normal_strength, overlay);
         if let Some(last) = bytes.last_mut() {
             *last = if self.flat { 1.0 } else { 0.0 };
+        }
+        if bytes.len() > 27 {
+            bytes[27] = self.flat_channel as f32;
         }
         self.queue.write_buffer(&self.camera, 0, bytemuck::cast_slice(&bytes));
         self.queue.write_buffer(&self.env_uniform, 0, bytemuck::cast_slice(&self.env_params));

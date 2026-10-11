@@ -101,6 +101,14 @@ fn sky(dir: vec3<f32>) -> vec3<f32> {
 fn fs(i: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
     if (cam.params.w > 0.5) {
         var flat_color = textureSampleLevel(color_tex, samp, i.uv, 0.0).rgb;
+        let flat_channel = cam.cursor_normal.w;
+        if (flat_channel > 0.5) {
+            let fm = textureSampleLevel(mat_tex, samp, i.uv, 0.0);
+            var gray = fm.r;
+            if (flat_channel > 1.5) { gray = fm.g; }
+            if (flat_channel > 2.5) { gray = fm.b; }
+            flat_color = vec3<f32>(pow(clamp(gray, 0.0, 1.0), 2.2));
+        }
         if (cam.cursor.w > 0.0) {
             let d = distance(i.uv, cam.cursor.xy) / cam.cursor.w;
             flat_color = mix(flat_color, vec3<f32>(1.0), smoothstep(0.90, 0.95, d) * (1.0 - smoothstep(0.98, 1.03, d)) * 0.8);
@@ -359,6 +367,7 @@ struct Paint {
 @group(0) @binding(4) var mask: texture_2d<f32>;
 @group(0) @binding(5) var clone_color: texture_2d<f32>;
 @group(0) @binding(6) var clone_mat: texture_2d<f32>;
+@group(0) @binding(7) var clone_cov: texture_2d<f32>;
 
 struct Out {
     @location(0) color: vec4<f32>,
@@ -369,6 +378,7 @@ struct Out {
 @fragment
 fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     let p = vec2<i32>(pos.xy);
+    var source_cov = vec4<f32>(1.0);
     let sc = textureLoad(snap_color, p, 0);
     let sv = textureLoad(snap_val, p, 0);
     let sk = textureLoad(snap_cov, p, 0);
@@ -387,12 +397,20 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     if (paint.mode.z > 0.5) {
         let dims = vec2<i32>(textureDimensions(clone_color));
         let q = clamp(p + vec2<i32>(i32(paint.color.w), i32(paint.values.w)), vec2<i32>(0), dims - vec2<i32>(1));
-        src_color = textureLoad(clone_color, q, 0).rgb;
-        src_values = textureLoad(clone_mat, q, 0).rgb;
+        let cc = textureLoad(clone_color, q, 0);
+        let cm = textureLoad(clone_mat, q, 0);
+        src_color = cc.rgb;
+        src_values = cm.rgb;
+        if (paint.mode.w > 0.5) {
+            let ck = textureLoad(clone_cov, q, 0);
+            source_cov = vec4<f32>(cc.a, ck.rgb);
+            src_color = cc.rgb / max(cc.a, 1e-4);
+            src_values = cm.rgb / max(ck.rgb, vec3<f32>(1e-4));
+        }
     }
-    let ac = a * paint.flags.x;
+    let ac = a * paint.flags.x * source_cov.x;
     o.color = vec4<f32>(src_color * ac + sc.rgb * (1.0 - ac), ac + sc.a * (1.0 - ac));
-    let am = a * paint.flags.yzw;
+    let am = a * paint.flags.yzw * source_cov.yzw;
     o.val = vec4<f32>(src_values * am + sv.rgb * (1.0 - am), 0.0);
     o.cov = vec4<f32>(am + sk.rgb * (1.0 - am), 0.0);
     return o;
@@ -715,6 +733,93 @@ fn fs(@builtin(position) frag: vec4<f32>) -> Out {
         o.val = vec4<f32>(0.0);
         o.cov = vec4<f32>(0.0);
     }
+    return o;
+}
+"#;
+
+pub const LAYER_EXPORT: &str = r#"
+@group(0) @binding(0) var<uniform> sel: vec4<u32>;
+@group(0) @binding(1) var l_color: texture_2d<f32>;
+@group(0) @binding(2) var l_val: texture_2d<f32>;
+@group(0) @binding(3) var l_cov: texture_2d<f32>;
+
+@fragment
+fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    let p = vec2<i32>(pos.xy);
+    let c = textureLoad(l_color, p, 0);
+    let v = textureLoad(l_val, p, 0);
+    let k = textureLoad(l_cov, p, 0);
+    switch sel.x {
+        case 0u: {
+            let a = clamp(c.a, 0.0, 1.0);
+            return vec4<f32>(pow(clamp(c.rgb / max(c.a, 1e-4), vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / 2.2)), a);
+        }
+        case 1u: { return vec4<f32>(vec3<f32>(clamp(v.r / max(k.r, 1e-4), 0.0, 1.0)), clamp(k.r, 0.0, 1.0)); }
+        case 2u: { return vec4<f32>(vec3<f32>(clamp(v.g / max(k.g, 1e-4), 0.0, 1.0)), clamp(k.g, 0.0, 1.0)); }
+        default: { return vec4<f32>(vec3<f32>(clamp(v.b / max(k.b, 1e-4), 0.0, 1.0)), clamp(k.b, 0.0, 1.0)); }
+    }
+}
+"#;
+
+pub const MERGE: &str = r#"
+struct Merge {
+    top: vec4<f32>,
+    bottom: vec4<f32>,
+    mode: vec4<u32>,
+};
+@group(0) @binding(0) var<uniform> merge: Merge;
+@group(0) @binding(1) var top_color: texture_2d<f32>;
+@group(0) @binding(2) var top_val: texture_2d<f32>;
+@group(0) @binding(3) var top_cov: texture_2d<f32>;
+@group(0) @binding(4) var top_mask: texture_2d<f32>;
+@group(0) @binding(5) var bottom_color: texture_2d<f32>;
+@group(0) @binding(6) var bottom_val: texture_2d<f32>;
+@group(0) @binding(7) var bottom_cov: texture_2d<f32>;
+@group(0) @binding(8) var bottom_mask: texture_2d<f32>;
+
+struct Out { @location(0) color: vec4<f32>, @location(1) val: vec4<f32>, @location(2) cov: vec4<f32>, };
+
+fn blend3(m: u32, a: vec3<f32>, b: vec3<f32>) -> vec3<f32> {
+    switch m {
+        case 1u: { return a * b; }
+        case 2u: { return 1.0 - (1.0 - a) * (1.0 - b); }
+        case 3u: { return select(1.0 - 2.0 * (1.0 - a) * (1.0 - b), 2.0 * a * b, a < vec3<f32>(0.5)); }
+        case 4u: { return a + b; }
+        case 5u: { return a - b; }
+        case 6u: { return min(a, b); }
+        case 7u: { return max(a, b); }
+        default: { return b; }
+    }
+}
+
+@fragment
+fn fs(@builtin(position) pos: vec4<f32>) -> Out {
+    let p = vec2<i32>(pos.xy);
+    var kt = merge.top.x;
+    if (merge.top.y > 0.5) { kt = kt * clamp(textureLoad(top_mask, p, 0).r, 0.0, 1.0); }
+    var kb = merge.bottom.x;
+    if (merge.bottom.y > 0.5) { kb = kb * clamp(textureLoad(bottom_mask, p, 0).r, 0.0, 1.0); }
+    let tc = textureLoad(top_color, p, 0);
+    let tv = textureLoad(top_val, p, 0);
+    let tk = textureLoad(top_cov, p, 0);
+    let bc = textureLoad(bottom_color, p, 0);
+    let bv = textureLoad(bottom_val, p, 0);
+    let bk = textureLoad(bottom_cov, p, 0);
+    let at = clamp(tc.a, 0.0, 1.0) * kt;
+    let ab = clamp(bc.a, 0.0, 1.0) * kb;
+    let top_rgb = tc.rgb / max(tc.a, 1e-4);
+    let bottom_rgb = bc.rgb / max(bc.a, 1e-4);
+    let blended = mix(top_rgb, blend3(merge.mode.x, bottom_rgb, top_rgb), select(0.0, 1.0, ab > 0.0));
+    let color_a = at + ab * (1.0 - at);
+    let color_pm = at * (ab * blended + (1.0 - ab) * top_rgb) + (1.0 - at) * ab * bottom_rgb;
+    let vt = clamp(tk.rgb, vec3<f32>(0.0), vec3<f32>(1.0)) * kt;
+    let vb = clamp(bk.rgb, vec3<f32>(0.0), vec3<f32>(1.0)) * kb;
+    let top_v = tv.rgb / max(tk.rgb, vec3<f32>(1e-4));
+    let bottom_v = bv.rgb / max(bk.rgb, vec3<f32>(1e-4));
+    var o: Out;
+    o.color = vec4<f32>(color_pm, color_a);
+    o.val = vec4<f32>(vt * top_v + (1.0 - vt) * vb * bottom_v, 0.0);
+    o.cov = vec4<f32>(vt + vb * (1.0 - vt), 0.0);
     return o;
 }
 "#;

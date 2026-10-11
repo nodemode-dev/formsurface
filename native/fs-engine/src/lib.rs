@@ -65,6 +65,7 @@ pub struct Engine {
     last_uv: Option<[f32; 2]>,
     environment: Option<String>,
     env_view: [f32; 3],
+    clone_layer: Option<u32>,
 }
 
 #[wasm_bindgen]
@@ -117,6 +118,7 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         last_uv: None,
         environment: None,
         env_view: [0.0, 0.0, 1.0],
+        clone_layer: None,
     };
     engine.add_layer("Layer 1".into());
     Ok(engine)
@@ -242,6 +244,23 @@ impl Engine {
         Ok(())
     }
 
+    pub fn set_clone_layer(&mut self, id: u32) -> Result<(), JsValue> {
+        if id == 0 {
+            self.clone_layer = None;
+            return Ok(());
+        }
+        let layer = self.layers.iter().find(|l| l.id == id).ok_or_else(|| JsValue::from_str("No layer with that id in the active texture set"))?;
+        if layer.kind == LayerKind::Folder || layer.kind == LayerKind::Filter {
+            return Err(JsValue::from_str("Clone from a paint or fill layer; folders and filters hold no pixels of their own"));
+        }
+        self.clone_layer = Some(id);
+        Ok(())
+    }
+
+    pub fn clone_layer(&self) -> u32 {
+        self.clone_layer.unwrap_or(0)
+    }
+
     pub fn has_clone_source(&self) -> bool {
         self.clone_source.is_some()
     }
@@ -271,6 +290,124 @@ impl Engine {
         self.active = id;
         self.normalize();
         id
+    }
+
+    fn merge_partner(&self, id: u32) -> Result<(usize, usize), String> {
+        let i = self.layers.iter().position(|l| l.id == id).ok_or("No layer with that id in the active texture set")?;
+        let top = &self.layers[i];
+        if top.kind != LayerKind::Paint && top.kind != LayerKind::Fill {
+            return Err("Merge down works on paint and fill layers; use flatten for a folder".into());
+        }
+        let j = (0..i).rev().find(|&j| self.layers[j].parent == top.parent).ok_or("There is no layer below it in the same folder")?;
+        let bottom = &self.layers[j];
+        if bottom.kind != LayerKind::Paint && bottom.kind != LayerKind::Fill {
+            return Err(format!("The layer below is a {}; merge down needs a paint or fill layer below", if bottom.kind == LayerKind::Folder { "folder" } else { "filter" }));
+        }
+        Ok((i, j))
+    }
+
+    pub fn merge_down(&mut self, id: u32) -> Result<u32, JsValue> {
+        if self.stroking {
+            return Err(JsValue::from_str("Finish the stroke first"));
+        }
+        self.merge_partner(id).map_err(|e| JsValue::from_str(&e))?;
+        if let Some(r) = self.relay_new(|e| e.merge_down_here(id)) {
+            return Ok(r);
+        }
+        Ok(self.merge_down_here(id))
+    }
+
+    fn merge_down_here(&mut self, id: u32) -> u32 {
+        let Ok((i, j)) = self.merge_partner(id) else { return 0 };
+        self.flush();
+        let (top, bottom) = (self.layers[i].clone(), self.layers[j].clone());
+        let nid = self.next_id;
+        self.next_id += 1;
+        self.layers.insert(j, LayerInfo { id: nid, name: bottom.name.clone(), visible: true, opacity: 1.0, blend: bottom.blend, kind: LayerKind::Paint, mask: false, parent: bottom.parent, instance: false });
+        self.gpu.insert_layer(j, nid);
+        let vis = |l: &LayerInfo| if l.visible { l.opacity } else { 0.0 };
+        let mask = |l: &LayerInfo| if l.mask { 1.0 } else { 0.0 };
+        self.gpu.merge_layers(i + 1, j + 1, j, [vis(&top), mask(&top)], [vis(&bottom), mask(&bottom)], top.blend.code());
+        for old in [top.id, bottom.id] {
+            if let Some(index) = self.layers.iter().position(|l| l.id == old) {
+                self.layers.remove(index);
+                self.gpu.remove_layer(index, old);
+            }
+            self.fills.remove(&old);
+            self.mask_gens.remove(&old);
+        }
+        self.active = nid;
+        self.normalize();
+        nid
+    }
+
+    pub fn flatten_folder(&mut self, id: u32) -> Result<u32, JsValue> {
+        if self.stroking {
+            return Err(JsValue::from_str("Finish the stroke first"));
+        }
+        self.folder_children(id).map_err(|e| JsValue::from_str(&e))?;
+        if let Some(r) = self.relay_new(|e| e.flatten_folder_here(id)) {
+            return Ok(r);
+        }
+        Ok(self.flatten_folder_here(id))
+    }
+
+    fn folder_children(&self, id: u32) -> Result<Vec<u32>, String> {
+        let folder = self.layers.iter().find(|l| l.id == id).ok_or("No layer with that id in the active texture set")?;
+        if folder.kind != LayerKind::Folder {
+            return Err("That layer is not a folder; use merge down for layers".into());
+        }
+        let children: Vec<&LayerInfo> = self.layers.iter().filter(|l| l.parent == id).collect();
+        if children.is_empty() {
+            return Err("The folder is empty".into());
+        }
+        if let Some(bad) = children.iter().find(|l| l.kind != LayerKind::Paint && l.kind != LayerKind::Fill) {
+            return Err(format!("{} is a {}; flatten nested folders first, and move filter layers out of the folder", bad.name, if bad.kind == LayerKind::Folder { "folder" } else { "filter" }));
+        }
+        Ok(children.iter().map(|l| l.id).collect())
+    }
+
+    fn flatten_folder_here(&mut self, id: u32) -> u32 {
+        let Ok(children) = self.folder_children(id) else { return 0 };
+        self.flush();
+        let Some(fi) = self.layers.iter().position(|l| l.id == id) else { return 0 };
+        let folder = self.layers[fi].clone();
+        let nid = self.next_id;
+        self.next_id += 1;
+        self.layers.insert(fi, LayerInfo { id: nid, name: folder.name.clone(), visible: folder.visible, opacity: folder.opacity, blend: BlendMode::Normal, kind: LayerKind::Paint, mask: folder.mask, parent: folder.parent, instance: false });
+        self.gpu.insert_layer(fi, nid);
+        for child in &children {
+            let (Some(ci), Some(ni)) = (self.layers.iter().position(|l| l.id == *child), self.layers.iter().position(|l| l.id == nid)) else { continue };
+            let c = self.layers[ci].clone();
+            let k = if c.visible { c.opacity } else { 0.0 };
+            self.gpu.merge_layers(ci, ni, ni, [k, if c.mask { 1.0 } else { 0.0 }], [1.0, 0.0], c.blend.code());
+        }
+        if folder.mask {
+            if let (Some(from), Some(to)) = (self.layers.iter().position(|l| l.id == id), self.layers.iter().position(|l| l.id == nid)) {
+                self.gpu.copy_mask(from, to);
+            }
+        }
+        for old in children.iter().copied().chain([id]) {
+            if let Some(index) = self.layers.iter().position(|l| l.id == old) {
+                self.layers.remove(index);
+                self.gpu.remove_layer(index, old);
+            }
+            self.fills.remove(&old);
+            self.mask_gens.remove(&old);
+        }
+        self.active = nid;
+        self.normalize();
+        nid
+    }
+
+    pub fn export_layer(&mut self, id: u32, channel: u32) -> Result<js_sys::Promise, JsValue> {
+        let index = self.layers.iter().position(|l| l.id == id).ok_or_else(|| JsValue::from_str("No layer with that id"))?;
+        let kind = self.layers[index].kind;
+        if kind == LayerKind::Folder || kind == LayerKind::Filter {
+            return Err(JsValue::from_str("Folders and filter layers hold no pixels of their own; flatten the folder first"));
+        }
+        self.flush();
+        Ok(self.gpu.export_layer(index, channel.min(3)))
     }
 
     pub fn export_layer_mask(&mut self, id: u32) -> Result<js_sys::Promise, JsValue> {
@@ -655,6 +792,17 @@ impl Engine {
 
     pub fn view_2d(&self) -> bool {
         self.flat.is_some()
+    }
+
+    pub fn uv_to_screen(&self, u: f32, v: f32) -> Vec<f32> {
+        match self.flat {
+            Some(f) => vec![(u - f[0]) * f[2] + self.width as f32 * 0.5, (v - f[1]) * f[2] + self.height as f32 * 0.5],
+            None => Vec::new(),
+        }
+    }
+
+    pub fn set_view_2d_channel(&mut self, channel: u32) {
+        self.gpu.flat_channel = channel.min(3);
     }
 
     pub fn uv_at(&self, x: f32, y: f32) -> Vec<f32> {
@@ -1119,21 +1267,23 @@ impl Engine {
         if self.stroking {
             return Err(JsValue::from_str("Finish the stroke first"));
         }
-        if self.flat.is_some() {
-            return Err(JsValue::from_str("Polygon fill works in the 3D view; press U to return to it"));
-        }
-        let hit = self.pick(x, y).ok_or_else(|| JsValue::from_str("Click on the mesh to fill"))?;
         let info = &self.sets[self.set_index].info;
         let (first, last) = (info.start / 3, (info.start + info.count) / 3);
-        if hit.triangle < first || hit.triangle >= last {
-            return Err(JsValue::from_str("That part belongs to another texture set; select it first"));
-        }
+        let triangle = if let Some(uv) = self.flat_uv(x, y) {
+            self.uv_triangle(uv, first, last).ok_or_else(|| JsValue::from_str("Click inside a UV island to fill"))?
+        } else {
+            let hit = self.pick(x, y).ok_or_else(|| JsValue::from_str("Click on the mesh to fill"))?;
+            if hit.triangle < first || hit.triangle >= last {
+                return Err(JsValue::from_str("That part belongs to another texture set; select it first"));
+            }
+            hit.triangle
+        };
         let index = self.layer_index(self.active);
         if self.layers[index].kind != LayerKind::Paint && !self.layers[index].mask && self.gpu.quick_mode != 1 {
             return Err(JsValue::from_str("Fill, filter and folder layers are filled through their mask: choose a mask first"));
         }
         let (mesh, _) = self.mesh.as_ref().unwrap();
-        let region = fs_core::regions::select(mesh, hit.triangle, first, last, fs_core::regions::Mode::from_code(mode));
+        let region = fs_core::regions::select(mesh, triangle, first, last, fs_core::regions::Mode::from_code(mode));
         self.gpu.begin_stroke(index);
         self.gpu.mask_triangles(&mesh.indices, &region);
         let (forward, right, up, eye) = self.basis();
@@ -1392,6 +1542,21 @@ impl Engine {
         Some([f[0] + (x - self.width as f32 * 0.5) / f[2], f[1] + (y - self.height as f32 * 0.5) / f[2]])
     }
 
+    fn uv_triangle(&self, uv: [f32; 2], first: u32, last: u32) -> Option<u32> {
+        let (mesh, _) = self.mesh.as_ref()?;
+        (first..last).find(|&t| {
+            let i = t as usize * 3;
+            let [a, b, c] = [mesh.indices[i], mesh.indices[i + 1], mesh.indices[i + 2]].map(|v| mesh.uvs[v as usize]);
+            let area = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+            if area.abs() < 1e-12 {
+                return false;
+            }
+            let w0 = ((b[0] - uv[0]) * (c[1] - uv[1]) - (b[1] - uv[1]) * (c[0] - uv[0])) / area;
+            let w1 = ((c[0] - uv[0]) * (a[1] - uv[1]) - (c[1] - uv[1]) * (a[0] - uv[0])) / area;
+            w0 >= 0.0 && w1 >= 0.0 && w0 + w1 <= 1.0
+        })
+    }
+
     fn flat_radius(&self, pressure: f32) -> f32 {
         let p = if self.brush.pressure_size { pressure.clamp(0.05, 1.0) } else { 1.0 };
         let s = self.flat.map(|f| f[2]).unwrap_or(1.0);
@@ -1544,6 +1709,7 @@ impl Engine {
         let view_proj = gpu::view_projection(eye, forward, right, up, self.fov, aspect, (self.distance - r * 2.0).max(r * 0.01), self.distance + r * 3.0);
         let stamps = std::mem::take(&mut self.pending);
         let to_mask = self.paints_mask();
+        self.gpu.clone_layer = self.clone_layer.and_then(|id| self.layers.iter().position(|l| l.id == id));
         self.gpu.paint(&stamps, view_proj, eye, &self.brush, &self.channels, self.layer_index(self.active), to_mask);
         let active = self.active;
         if self.flat.is_some() {
@@ -1553,6 +1719,7 @@ impl Engine {
         self.each_sibling(|e| {
             let index = e.layer_index(active);
             let to_mask = e.paints_mask();
+            e.gpu.clone_layer = e.clone_layer.and_then(|id| e.layers.iter().position(|l| l.id == id));
             e.gpu.paint(&stamps, view_proj, eye, &e.brush, &e.channels, index, to_mask);
             e.gpu.composite(&e.layers, &e.filters);
         });
