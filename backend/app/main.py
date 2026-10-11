@@ -32,15 +32,26 @@ def folder(kind: str, name: str) -> Path:
     return path
 
 
+MAP_SIGNATURES = {
+    ".png": (b"\x89PNG\r\n\x1a\n",),
+    ".tif": (b"II*\x00", b"MM\x00*"),
+    ".exr": (b"\x76\x2f\x31\x01",),
+    ".hdr": (b"#?RADIANCE",),
+    ".jpg": (b"\xff\xd8\xff",),
+    ".psd": (b"8BPS",),
+}
+
+
 async def write_maps(path: Path, maps: list[UploadFile]) -> list[str]:
     written = []
     for upload in maps:
         name = Path(upload.filename or "").name
-        if not name.endswith(".png") or not SAFE.match(name):
+        signatures = MAP_SIGNATURES.get(Path(name).suffix.lower())
+        if signatures is None or not SAFE.match(name):
             raise HTTPException(400, f"Unexpected map file {name!r}")
         data = await upload.read()
-        if not data.startswith(b"\x89PNG\r\n\x1a\n"):
-            raise HTTPException(400, f"{name} is not a PNG")
+        if not data.startswith(signatures):
+            raise HTTPException(400, f"{name} does not match its {Path(name).suffix} format")
         (path / name).write_bytes(data)
         written.append(name)
     return written
@@ -171,6 +182,52 @@ async def save_library(name: str, request: Request):
     root.mkdir(parents=True, exist_ok=True)
     path = root / f"{name}.json"
     path.write_text(json.dumps({"name": name, "layers": layers}, indent=2))
+    return {"file": str(path)}
+
+
+TEMPLATE_SOURCES = {"basecolor", "normal_gl", "normal_dx", "roughness", "smoothness", "metallic", "height", "ao", "curvature", "thickness", "one", "zero"}
+SUFFIX = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
+
+
+@app.get("/api/templates")
+def list_templates():
+    root = DATA / "templates"
+    templates = []
+    for path in sorted(root.glob("*.json")) if root.exists() else []:
+        try:
+            templates.append(json.loads(path.read_text()))
+        except json.JSONDecodeError:
+            continue
+    return {"templates": templates}
+
+
+@app.post("/api/templates/{name}")
+async def save_template(name: str, request: Request):
+    if not SAFE.match(name) or name.startswith("."):
+        raise HTTPException(400, "Names may use letters, digits, spaces, dot, dash and underscore")
+    body = await request.json()
+    maps = body.get("maps") if isinstance(body, dict) else None
+    if not isinstance(maps, list) or not 1 <= len(maps) <= 16:
+        raise HTTPException(400, "A template needs 1 to 16 maps")
+    clean = []
+    for item in maps:
+        if not isinstance(item, dict) or not isinstance(item.get("suffix"), str) or not SUFFIX.match(item["suffix"]):
+            raise HTTPException(400, "Each map needs a suffix of letters, digits, dash or underscore")
+        entry = {"suffix": item["suffix"]}
+        for key in ("rgb", "r", "g", "b", "a"):
+            value = item.get(key)
+            if value is None:
+                continue
+            if value not in TEMPLATE_SOURCES or (key == "rgb" and value not in {"basecolor", "normal_gl", "normal_dx"}):
+                raise HTTPException(400, f"Unknown source {value!r} for {key} in {item['suffix']}")
+            entry[key] = value
+        if "rgb" not in entry and "r" not in entry:
+            raise HTTPException(400, f"Map {item['suffix']} needs rgb or r")
+        clean.append(entry)
+    root = DATA / "templates"
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f"{name}.json"
+    path.write_text(json.dumps({"name": name, "label": str(body.get("label") or name)[:80], "maps": clean}, indent=2))
     return {"file": str(path)}
 
 
