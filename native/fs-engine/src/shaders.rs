@@ -591,6 +591,33 @@ fn fs(@builtin(position) frag: vec4<f32>) -> Out {
 }
 "#;
 
+pub const MASK_IMAGE: &str = r#"
+@group(0) @binding(0) var image: texture_2d<f32>;
+@group(0) @binding(1) var samp: sampler;
+
+@fragment
+fn fs(i: FOut) -> @location(0) vec4<f32> {
+    let c = textureSampleLevel(image, samp, i.uv, 0.0);
+    let l = dot(c.rgb, vec3<f32>(0.2126, 0.7152, 0.0722)) * c.a;
+    return vec4<f32>(l, l, l, 1.0);
+}
+"#;
+
+pub const MASK_ID: &str = r#"
+struct Pick { color: vec4<f32>, };
+@group(0) @binding(0) var<uniform> pick: Pick;
+@group(0) @binding(1) var id_tex: texture_2d<f32>;
+
+@fragment
+fn fs(i: FOut) -> @location(0) vec4<f32> {
+    let dims = vec2<i32>(textureDimensions(id_tex));
+    let p = clamp(vec2<i32>(i.uv * vec2<f32>(dims)), vec2<i32>(0), dims - vec2<i32>(1));
+    let c = textureLoad(id_tex, p, 0).rgb;
+    let m = select(0.0, 1.0, distance(c, pick.color.rgb) <= pick.color.w);
+    return vec4<f32>(m, m, m, 1.0);
+}
+"#;
+
 pub const WHITE: &str = r#"
 @fragment
 fn fs() -> @location(0) vec4<f32> {

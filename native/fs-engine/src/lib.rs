@@ -12,6 +12,7 @@ struct Parked {
     active: u32,
     fills: HashMap<u32, FillSettings>,
     filters: HashMap<u32, FilterSettings>,
+    mask_gens: HashMap<u32, FillSettings>,
 }
 
 struct SetEntry {
@@ -50,6 +51,10 @@ pub struct Engine {
     dirty: bool,
     exposure: f32,
     normal_strength: f32,
+    uv_tiles: bool,
+    relaying: bool,
+    mask_gens: HashMap<u32, FillSettings>,
+    id_maps: HashMap<usize, (u32, Vec<u8>)>,
 }
 
 #[wasm_bindgen]
@@ -88,6 +93,10 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         dirty: true,
         exposure: 1.0,
         normal_strength: 1.0,
+        uv_tiles: false,
+        relaying: false,
+        mask_gens: HashMap::new(),
+        id_maps: HashMap::new(),
     };
     engine.add_layer("Layer 1".into());
     Ok(engine)
@@ -135,6 +144,7 @@ impl Engine {
         self.gpu.upload_mesh(&mesh, &ranges);
         self.sets = split.sets.into_iter().map(|info| SetEntry { info, parked: None }).collect();
         self.set_index = 0;
+        self.id_maps.clear();
         self.target = mesh.center;
         self.distance = mesh.radius * 2.8;
         let count = self.sets.len();
@@ -145,6 +155,9 @@ impl Engine {
             Ok(())
         })
         .map_err(|e| JsValue::from_str(&e))?;
+        if self.uv_tiles {
+            self.set_uv_tiles(true);
+        }
         Ok(info)
     }
 
@@ -155,7 +168,7 @@ impl Engine {
             .enumerate()
             .map(|(k, s)| {
                 let layers = if k == self.set_index { self.layers.len() } else { s.parked.as_ref().map(|p| p.layers.len()).unwrap_or(1) };
-                serde_json::json!({ "index": k, "name": s.info.name(), "material": s.info.material, "udim": s.info.udim, "tiled": s.info.tiled, "triangles": s.info.count / 3, "layers": layers })
+                serde_json::json!({ "index": k, "name": s.info.name(), "material": s.info.material, "udim": s.info.udim, "tiled": s.info.tiled, "triangles": s.info.count / 3, "layers": layers, "linked": self.uv_tiles && s.info.tiled })
             })
             .collect();
         serde_json::Value::Array(list).to_string()
@@ -166,18 +179,189 @@ impl Engine {
     }
 
     pub fn select_texture_set(&mut self, index: u32) -> bool {
-        let to = index as usize;
-        if self.stroking || to >= self.sets.len() {
+        if self.stroking || index as usize >= self.sets.len() {
             return false;
         }
-        if to == self.set_index {
+        self.switch_set(index as usize);
+        true
+    }
+
+    pub fn uv_tiles(&self) -> bool {
+        self.uv_tiles
+    }
+
+    pub fn set_uv_tiles(&mut self, on: bool) -> bool {
+        if self.stroking {
+            return false;
+        }
+        self.uv_tiles = on;
+        if !on {
             return true;
+        }
+        let original = self.set_index;
+        let mut materials: Vec<String> = self.sets.iter().filter(|s| s.info.tiled).map(|s| s.info.material.clone()).collect();
+        materials.dedup();
+        for material in materials {
+            let group: Vec<usize> = (0..self.sets.len()).filter(|&k| self.sets[k].info.tiled && self.sets[k].info.material == material).collect();
+            let leader = if group.contains(&original) { original } else { group[0] };
+            self.switch_set(leader);
+            let (layers, fills, filters, gens, base, active) = (self.layers.clone(), self.fills.clone(), self.filters.clone(), self.mask_gens.clone(), self.gpu.base, self.active);
+            for &k in group.iter().filter(|&&k| k != leader) {
+                self.switch_set(k);
+                while let Some(layer) = self.layers.pop() {
+                    let index = self.layers.len();
+                    self.gpu.remove_layer(index, layer.id);
+                }
+                for (i, layer) in layers.iter().enumerate() {
+                    self.layers.push(layer.clone());
+                    self.gpu.insert_layer(i, layer.id);
+                }
+                self.fills = fills.clone();
+                self.filters = filters.clone();
+                self.mask_gens = gens.clone();
+                self.gpu.base = base;
+                self.active = active;
+                self.render_fills();
+                self.gpu.composite(&self.layers, &self.filters);
+            }
+        }
+        self.switch_set(original);
+        self.dirty = true;
+        true
+    }
+
+    pub fn mask_generator(&mut self, id: u32, json: &str) -> Result<(), JsValue> {
+        if let Some(r) = self.relay(|e| e.mask_generator(id, json)) {
+            return r;
+        }
+        let settings: FillSettings = serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let index = self.layers.iter().position(|l| l.id == id).ok_or_else(|| JsValue::from_str("No layer with that id"))?;
+        self.layers[index].mask = true;
+        self.mask_gens.insert(id, settings);
+        self.render_mask_gen(id);
+        Ok(())
+    }
+
+    pub fn mask_generator_settings(&self, id: u32) -> String {
+        self.mask_gens.get(&id).map(|f| serde_json::to_string(f).unwrap_or_default()).unwrap_or_default()
+    }
+
+    pub fn mask_from_image(&mut self, id: u32, width: u32, height: u32, rgba: &[u8]) -> Result<(), JsValue> {
+        if let Some(r) = self.relay(|e| e.mask_from_image(id, width, height, rgba)) {
+            return r;
+        }
+        let index = self.layers.iter().position(|l| l.id == id).ok_or_else(|| JsValue::from_str("No layer with that id"))?;
+        self.mask_gens.remove(&id);
+        self.gpu.mask_from_image(index, width, height, rgba).map_err(|e| JsValue::from_str(&e))?;
+        self.layers[index].mask = true;
+        self.dirty = true;
+        Ok(())
+    }
+
+    pub fn mask_from_id(&mut self, id: u32, r: f32, g: f32, b: f32, tolerance: f32) -> Result<(), JsValue> {
+        if let Some(out) = self.relay(|e| e.mask_from_id(id, r, g, b, tolerance)) {
+            return out;
+        }
+        let index = self.layers.iter().position(|l| l.id == id).ok_or_else(|| JsValue::from_str("No layer with that id"))?;
+        self.mask_gens.remove(&id);
+        self.gpu.mask_from_id(index, [r, g, b], tolerance.clamp(0.0, 1.0)).map_err(|e| JsValue::from_str(&e))?;
+        self.layers[index].mask = true;
+        self.dirty = true;
+        Ok(())
+    }
+
+    pub fn id_color_at(&self, x: f32, y: f32) -> Result<String, JsValue> {
+        let hit = self.pick(x, y).ok_or_else(|| JsValue::from_str("Click on the mesh to pick an ID color"))?;
+        let set = self.sets.iter().position(|s| hit.triangle >= s.info.start / 3 && hit.triangle < (s.info.start + s.info.count) / 3).unwrap_or(self.set_index);
+        let (size, bytes) = self.id_maps.get(&set).ok_or_else(|| JsValue::from_str("Bake normal and ID from a high-poly mesh first"))?;
+        let s = *size as f32;
+        let px = ((hit.uv[0] * s) as i64).clamp(0, *size as i64 - 1) as usize;
+        let py = ((hit.uv[1] * s) as i64).clamp(0, *size as i64 - 1) as usize;
+        let o = (py * *size as usize + px) * 4;
+        Ok(format!("#{:02x}{:02x}{:02x}", bytes[o], bytes[o + 1], bytes[o + 2]))
+    }
+}
+
+impl Engine {
+    fn siblings(&self) -> Vec<usize> {
+        let Some(entry) = self.sets.get(self.set_index) else { return Vec::new() };
+        if !self.uv_tiles || !entry.info.tiled {
+            return Vec::new();
+        }
+        (0..self.sets.len()).filter(|&k| k != self.set_index && self.sets[k].info.tiled && self.sets[k].info.material == entry.info.material).collect()
+    }
+
+    fn relay<R>(&mut self, mut work: impl FnMut(&mut Engine) -> R) -> Option<R> {
+        if self.relaying {
+            return None;
+        }
+        let siblings = self.siblings();
+        if siblings.is_empty() {
+            return None;
+        }
+        self.relaying = true;
+        let first = work(self);
+        let original = self.set_index;
+        for k in siblings {
+            self.switch_set(k);
+            work(self);
+            self.flush_set();
+        }
+        self.switch_set(original);
+        self.relaying = false;
+        self.dirty = true;
+        Some(first)
+    }
+
+    fn each_sibling(&mut self, mut work: impl FnMut(&mut Engine)) {
+        let siblings = self.siblings();
+        if siblings.is_empty() {
+            return;
+        }
+        let original = self.set_index;
+        for k in siblings {
+            self.switch_set(k);
+            work(self);
+        }
+        self.switch_set(original);
+    }
+
+    fn relay_new(&mut self, mut work: impl FnMut(&mut Engine) -> u32) -> Option<u32> {
+        let id = self.next_id;
+        self.relay(|e| {
+            let saved = e.next_id;
+            e.next_id = id;
+            let r = work(e);
+            e.next_id = saved.max(id + 1);
+            r
+        })
+    }
+
+    fn flush_set(&mut self) {
+        self.gpu.composite(&self.layers, &self.filters);
+    }
+
+    fn render_mask_gen(&mut self, id: u32) {
+        let Some(mut settings) = self.mask_gens.get(&id).copied() else { return };
+        let Some((mesh, _)) = &self.mesh else { return };
+        settings.use_roughness = true;
+        settings.opacity = 1.0;
+        let uniform = settings.uniform(mesh.center, mesh.radius);
+        let Some(index) = self.layers.iter().position(|l| l.id == id) else { return };
+        self.gpu.mask_from_fill(index, &uniform);
+        self.dirty = true;
+    }
+
+    fn switch_set(&mut self, to: usize) {
+        if to >= self.sets.len() || to == self.set_index {
+            return;
         }
         let current = Parked {
             layers: std::mem::take(&mut self.layers),
             active: self.active,
             fills: std::mem::take(&mut self.fills),
             filters: std::mem::take(&mut self.filters),
+            mask_gens: std::mem::take(&mut self.mask_gens),
         };
         self.sets[self.set_index].parked = Some(current);
         self.gpu.select_set(to);
@@ -188,15 +372,21 @@ impl Engine {
                 self.active = p.active;
                 self.fills = p.fills;
                 self.filters = p.filters;
+                self.mask_gens = p.mask_gens;
             }
             None => {
+                let saved = self.relaying;
+                self.relaying = true;
                 self.add_layer("Layer 1".into());
+                self.relaying = saved;
             }
         }
         self.dirty = true;
-        true
     }
+}
 
+#[wasm_bindgen]
+impl Engine {
     pub fn base_json(&self) -> String {
         let b = self.gpu.base;
         serde_json::json!({ "base_color": [b[0], b[1], b[2]], "roughness": b[3], "metallic": b[4] }).to_string()
@@ -247,6 +437,9 @@ impl Engine {
     }
 
     pub fn set_base(&mut self, r: f32, g: f32, b: f32, roughness: f32, metallic: f32) {
+        if self.relay(|e| e.set_base(r, g, b, roughness, metallic)).is_some() {
+            return;
+        }
         self.gpu.base = [r, g, b, roughness, metallic];
         self.dirty = true;
     }
@@ -269,6 +462,11 @@ impl Engine {
             return false;
         }
         self.gpu.begin_stroke(index);
+        let active = self.active;
+        self.each_sibling(|e| {
+            let i = e.layer_index(active);
+            e.gpu.begin_stroke(i);
+        });
         self.stroking = true;
         self.lazy = Some((x, y));
         self.last_stamp = self.pick(x, y);
@@ -332,6 +530,7 @@ impl Engine {
         if self.stroking {
             self.flush();
             self.gpu.end_stroke();
+            self.each_sibling(|e| e.gpu.end_stroke());
         }
         self.stroking = false;
         self.last_stamp = None;
@@ -346,6 +545,9 @@ impl Engine {
     }
 
     pub fn fill_layer(&mut self) -> bool {
+        if let Some(r) = self.relay(|e| e.fill_layer()) {
+            return r;
+        }
         if self.mesh.is_none() || self.stroking {
             return false;
         }
@@ -375,18 +577,27 @@ impl Engine {
     }
 
     pub fn undo(&mut self) -> bool {
+        if let Some(r) = self.relay(|e| e.undo()) {
+            return r;
+        }
         let ok = self.gpu.undo(&self.layer_ids());
         self.dirty |= ok;
         ok
     }
 
     pub fn redo(&mut self) -> bool {
+        if let Some(r) = self.relay(|e| e.redo()) {
+            return r;
+        }
         let ok = self.gpu.redo(&self.layer_ids());
         self.dirty |= ok;
         ok
     }
 
     pub fn add_layer(&mut self, name: String) -> u32 {
+        if let Some(r) = self.relay_new(|e| e.add_layer(name.clone())) {
+            return r;
+        }
         let id = self.next_id;
         self.next_id += 1;
         let (at, parent) = if self.layers.is_empty() {
@@ -404,6 +615,9 @@ impl Engine {
     }
 
     pub fn add_folder(&mut self, name: String) -> u32 {
+        if let Some(r) = self.relay_new(|e| e.add_folder(name.clone())) {
+            return r;
+        }
         let id = self.add_layer(name);
         let index = self.layer_index(id);
         self.layers[index].kind = LayerKind::Folder;
@@ -412,6 +626,9 @@ impl Engine {
     }
 
     pub fn set_parent(&mut self, id: u32, parent: u32) -> bool {
+        if let Some(r) = self.relay(|e| e.set_parent(id, parent)) {
+            return r;
+        }
         let Some(index) = self.layers.iter().position(|l| l.id == id) else { return false };
         if parent != 0 {
             let is_folder = self.layers.iter().any(|l| l.id == parent && l.kind == LayerKind::Folder);
@@ -427,6 +644,9 @@ impl Engine {
     }
 
     pub fn remove_layer(&mut self, id: u32) -> bool {
+        if let Some(r) = self.relay(|e| e.remove_layer(id)) {
+            return r;
+        }
         let Some(first) = self.layers.iter().position(|l| l.id == id) else { return false };
         let mut doomed = vec![id];
         doomed.extend(fs_core::descendants(&self.layers, id));
@@ -438,6 +658,7 @@ impl Engine {
             self.layers.remove(index);
             self.fills.remove(d);
             self.filters.remove(d);
+            self.mask_gens.remove(d);
             self.gpu.remove_layer(index, *d);
         }
         if doomed.contains(&self.active) {
@@ -448,6 +669,9 @@ impl Engine {
     }
 
     pub fn move_layer(&mut self, id: u32, offset: i32) {
+        if self.relay(|e| e.move_layer(id, offset)).is_some() {
+            return;
+        }
         for _ in 0..offset.unsigned_abs().min(64) {
             let Some(index) = self.layers.iter().position(|l| l.id == id) else { return };
             let parent = self.layers[index].parent;
@@ -463,6 +687,9 @@ impl Engine {
     }
 
     pub fn update_layer(&mut self, json: &str) -> Result<(), JsValue> {
+        if let Some(r) = self.relay(|e| e.update_layer(json)) {
+            return r;
+        }
         let mut info: LayerInfo = serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let index = self.layers.iter().position(|l| l.id == info.id).ok_or_else(|| JsValue::from_str("No layer with that id"))?;
         info.kind = self.layers[index].kind;
@@ -473,6 +700,9 @@ impl Engine {
     }
 
     pub fn add_fill_layer(&mut self, name: String) -> u32 {
+        if let Some(r) = self.relay_new(|e| e.add_fill_layer(name.clone())) {
+            return r;
+        }
         let id = self.add_layer(name);
         let index = self.layer_index(id);
         self.layers[index].kind = LayerKind::Fill;
@@ -486,6 +716,9 @@ impl Engine {
     }
 
     pub fn set_fill(&mut self, id: u32, json: &str) -> Result<(), JsValue> {
+        if let Some(r) = self.relay(|e| e.set_fill(id, json)) {
+            return r;
+        }
         if !self.fills.contains_key(&id) {
             return Err(JsValue::from_str("That layer is not a fill layer"));
         }
@@ -496,18 +729,31 @@ impl Engine {
     }
 
     pub fn set_fill_image(&mut self, id: u32, width: u32, height: u32, rgba: &[u8]) -> Result<(), JsValue> {
+        if let Some(r) = self.relay(|e| e.set_fill_image(id, width, height, rgba)) {
+            return r;
+        }
         self.gpu.set_pattern(id, width, height, rgba).map_err(|e| JsValue::from_str(&e))?;
         self.render_fill(id);
         Ok(())
     }
 
     pub fn set_mask(&mut self, id: u32, enabled: bool) {
+        if self.relay(|e| e.set_mask(id, enabled)).is_some() {
+            return;
+        }
         let index = self.layer_index(id);
         self.layers[index].mask = enabled;
+        if !enabled {
+            self.mask_gens.remove(&id);
+        }
         self.dirty = true;
     }
 
     pub fn fill_mask(&mut self, id: u32, white: bool) {
+        if self.relay(|e| e.fill_mask(id, white)).is_some() {
+            return;
+        }
+        self.mask_gens.remove(&id);
         let index = self.layer_index(id);
         self.layers[index].mask = true;
         self.gpu.fill_mask_value(index, if white { 1.0 } else { 0.0 });
@@ -523,6 +769,9 @@ impl Engine {
     }
 
     pub fn select_layer(&mut self, id: u32) {
+        if self.relay(|e| e.select_layer(id)).is_some() {
+            return;
+        }
         self.active = id;
     }
 
@@ -579,6 +828,12 @@ impl Engine {
         let to_mask = self.paints_mask();
         self.gpu.paint(&[], view_proj, eye, &self.brush, &self.channels, index, to_mask);
         self.gpu.end_stroke();
+        let active = self.active;
+        self.each_sibling(|e| {
+            let i = e.layer_index(active);
+            e.gpu.begin_stroke(i);
+            e.gpu.end_stroke();
+        });
         self.dirty = true;
         Ok(region.len() as u32)
     }
@@ -625,6 +880,7 @@ impl Engine {
             hits += result.hits;
             texels += result.texels;
             engine.gpu.set_high_bake(size as u32, &result.normal, &result.id);
+            engine.id_maps.insert(engine.set_index, (size as u32, result.id.clone()));
             Ok(())
         })
         .map_err(|e| JsValue::from_str(&e))?;
@@ -675,6 +931,7 @@ impl Engine {
             return Err(JsValue::from_str("No such texture set"));
         }
         self.gpu.set_high_bake_for(index as usize, size, normal, id);
+        self.id_maps.insert(index as usize, (size, id.to_vec()));
         self.dirty = true;
         Ok(())
     }
@@ -688,6 +945,9 @@ impl Engine {
     }
 
     pub fn add_filter_layer(&mut self, name: String) -> u32 {
+        if let Some(r) = self.relay_new(|e| e.add_filter_layer(name.clone())) {
+            return r;
+        }
         let id = self.add_layer(name);
         let index = self.layer_index(id);
         self.layers[index].kind = LayerKind::Filter;
@@ -701,6 +961,9 @@ impl Engine {
     }
 
     pub fn set_filter(&mut self, id: u32, json: &str) -> Result<(), JsValue> {
+        if let Some(r) = self.relay(|e| e.set_filter(id, json)) {
+            return r;
+        }
         if !self.filters.contains_key(&id) {
             return Err(JsValue::from_str("That layer is not a filter layer"));
         }
@@ -851,6 +1114,13 @@ impl Engine {
         let stamps = std::mem::take(&mut self.pending);
         let to_mask = self.paints_mask();
         self.gpu.paint(&stamps, view_proj, eye, &self.brush, &self.channels, self.layer_index(self.active), to_mask);
+        let active = self.active;
+        self.each_sibling(|e| {
+            let index = e.layer_index(active);
+            let to_mask = e.paints_mask();
+            e.gpu.paint(&stamps, view_proj, eye, &e.brush, &e.channels, index, to_mask);
+            e.gpu.composite(&e.layers, &e.filters);
+        });
         self.dirty = true;
     }
 
@@ -889,6 +1159,10 @@ impl Engine {
         let ids: Vec<u32> = self.fills.keys().copied().collect();
         for id in ids {
             self.render_fill(id);
+        }
+        let gens: Vec<u32> = self.mask_gens.keys().copied().collect();
+        for id in gens {
+            self.render_mask_gen(id);
         }
     }
 
