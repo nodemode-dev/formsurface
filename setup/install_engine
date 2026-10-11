@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -e
+command -v cargo >/dev/null || { echo "Rust is required: https://rustup.rs"; exit 1; }
+rustup target add wasm32-unknown-unknown
+command -v wasm-bindgen >/dev/null && wasm-bindgen --version | grep -q 0.2.129 || cargo install wasm-bindgen-cli --version 0.2.129 --locked

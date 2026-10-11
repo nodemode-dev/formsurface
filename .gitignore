@@ -1,0 +1,11 @@
+node_modules/
+dist/
+venv/
+.venv/
+__pycache__/
+*.pyc
+native/target/
+frontend/src/engine/pkg/
+workspace/
+.env
+.DS_Store

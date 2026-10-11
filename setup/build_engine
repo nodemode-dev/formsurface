@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")/.."
+profile="${1:-release}"
+flag="--release"
+[ "$profile" = "debug" ] && flag=""
+cd native
+cargo build $flag --target wasm32-unknown-unknown -p fs-engine ${FS_CARGO_FLAGS:-}
+cd ..
+wasm-bindgen --target web --out-dir frontend/src/engine/pkg "native/target/wasm32-unknown-unknown/$profile/fs_engine.wasm"
+echo "engine built into frontend/src/engine/pkg"

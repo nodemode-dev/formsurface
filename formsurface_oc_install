@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")"
+setup/install_engine
+(cd backend && ./oc_install)
+(cd frontend && ./oc_install)
+setup/build_engine
+echo "FormSurface installed. Run ./formsurface"

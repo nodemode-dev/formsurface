@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")"
+usage() {
+  cat << 'EOF2'
+formsurface 0.1.0 · 3D texture painting
+
+usage: ./formsurface [command]
+
+  (none) | boot   build the engine if needed, then boot backend (8766) and frontend (5176)
+  install         install the Rust wasm target, wasm-bindgen, backend venv and frontend packages
+  engine          rebuild the Rust engine into frontend/src/engine/pkg
+  backend         boot the backend only
+  frontend        boot the frontend only
+  help            this text
+EOF2
+}
+cmd="${1:-boot}"
+case "$cmd" in
+  boot) [ -f frontend/src/engine/pkg/fs_engine.js ] || setup/build_engine; (cd backend && ./boot_backend) & (cd frontend && ./boot_frontend) & wait ;;
+  install) exec ./formsurface_oc_install ;;
+  engine) exec setup/build_engine ;;
+  backend) cd backend && exec ./boot_backend ;;
+  frontend) cd frontend && exec ./boot_frontend ;;
+  help|-h|--help) usage ;;
+  *) usage; exit 2 ;;
+esac
