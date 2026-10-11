@@ -65,6 +65,10 @@ A stamp is 16 floats: center and world radius, normal and a mirrored flag, tange
 
 With `uv_tiles` on, tiled sets of one material are siblings. A public engine call that changes the stack starts with `relay`: if not already relaying and siblings exist, it sets `relaying`, runs the call on the active set, then switches to each sibling, runs it again and composites it, then switches back. Calls that create layers use `relay_new` so every tile gets the same id. Strokes are not relayed; `stroke_begin`, `flush` and `stroke_end` walk `each_sibling` themselves because pending stamps and stroke state on the Engine are shared. Each set therefore owns its stroke mask and `stroke` snapshot (both in SetState). Any new public method that changes layers must add its relay line, and any new undoable operation must push an entry on every sibling (see `polygon_fill`) or linked undo drifts. Mask generators live in `mask_gens` per set, render through the FILL shader into `scratch` and copy its coverage R (roughness coverage, forced on) into the layer mask; `render_fills` re-renders them after bakes and mesh loads.
 
+## Mesh export, flatten, clone (v0.12.0)
+
+`mesh_obj` restores each set's UDIM offset and flips V back to the importer's convention, so an exported OBJ re-imports into the same texture sets. `flatten_stack` composites, writes `final_set` into a new top layer at full coverage through PAIR_TO_SET and removes every other layer; it is relayed like other stack changes and is not undoable. Clone is `StrokeMode::Clone`: `push_stamp` fixes `gpu.clone_offset` in texels from the first stamp after a source is set, and APPLY reads `final_set` at that offset (color.w and values.w carry it, mode.z enables it). It reads the live composite, so a stroke that overlaps its own source repeats what it just painted.
+
 ## Next capabilities, in plan order
 
 Per-tile resolution; isolated folder blending; the whole engine in a Worker with OffscreenCanvas; a shared layer stack across UDIM tiles (Painter's UV tiles workflow); match-by-name and bent normal baking; tile paging for 4K and 8K; color management; EXR and 32-bit export.

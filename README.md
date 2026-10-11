@@ -10,6 +10,8 @@ Paint directly on 3D models, layer by layer, the way Substance 3D Painter works.
 - **GPU engine in Rust.** wgpu running on WebGPU in the browser. Painting, compositing and the viewport never leave the GPU; nothing round-trips through the server while you paint.
 - **Channels:** base color, roughness, metallic, height (shown as bump in the viewport, exported as a normal map). Each channel can be switched on or off per stroke.
 - **Polygon fill:** click to fill a triangle, a flat polygon, a whole mesh part or a UV chunk with the paint material, in one undoable step.
+- **Clone (C):** Ctrl+click a source, then paint to copy what is visible there at a fixed offset.
+- **Flatten and mask export:** collapse a texture set into one paint layer; save any layer mask as PNG.
 - **Quick mask (T):** paint a temporary mask, shown in red where protected, that limits every stroke and fill until you turn it off; clear, allow all and invert.
 - **Brush:** size in screen or object space, hardness, flow, stroke opacity, spacing, pen pressure on size or flow, backface culling, eraser.
 - **Alignment and tips:** Painter's camera, tangent wrap, tangent planar and UV alignments; round, square and spray tips or any image as a brush alpha; angle, follow path, size, angle, position and flow jitter, lazy mouse.
@@ -21,11 +23,11 @@ Paint directly on 3D models, layer by layer, the way Substance 3D Painter works.
 - **Viewport:** PBR shading with tone mapping, exposure, brush cursor drawn on the surface, orbit, pan, zoom, frame. Seam padding (dilation) on the composited maps.
 - **Texture sets and UDIM:** one texture set per material, split per UDIM tile when UVs leave 0 to 1, each with its own layers, base material, undo, bakes and maps; the viewport shows them all. The UV tiles switch gives a material's tiles one shared layer stack, and a stroke paints across tile borders.
 - **Meshes:** glTF, GLB, OBJ, FBX with their material names, plus built-in samples (sphere, torus, capsule, torus knot, and a two-material figure on UDIM 1001 and 1002).
-- **Export:** templates for separate PBR maps, glTF (packed occlusion, roughness, metallic), Unreal Engine (ORM, DirectX normal), Unity HDRP (mask map) and Unity URP, or custom packed maps from agents; 8 or 16-bit PNG; one set of PNGs per texture set (material_suffix, with .udim for tiled materials), and a viewport screenshot.
+- **Export:** templates for separate PBR maps, glTF (packed occlusion, roughness, metallic), Unreal Engine (ORM, DirectX normal), Unity HDRP (mask map) and Unity URP, or custom packed maps from agents; 8 or 16-bit PNG; one set of PNGs per texture set (material_suffix, with .udim for tiled materials); the mesh as OBJ with its UDIM UVs; and a viewport screenshot.
 
 ## Agents (MCP)
 
-FormSurface ships an MCP server with 37 `formsurface_*` tools that drive the editor you have open: texture sets, layers, folders, export templates, fill layers, masks, baking (including from a high-poly mesh), generators, filters, smart materials, brush, paint and base material, camera, strokes, fill, undo, screenshot and map export. Claude Code picks it up from `.mcp.json`; other clients run `./formsurface mcp` (stdio). Press **Agent link** in the editor's top bar to let agents in; it is off by default. The `formsurface-painting` skill (`.claude/skills`, mirrored in `.agents/skills`) teaches agents the order of work.
+FormSurface ships an MCP server with 41 `formsurface_*` tools that drive the editor you have open: texture sets, layers, folders, export templates, fill layers, masks, baking (including from a high-poly mesh), generators, filters, smart materials, brush, paint and base material, camera, strokes, fill, undo, screenshot and map export. Claude Code picks it up from `.mcp.json`; other clients run `./formsurface mcp` (stdio). Press **Agent link** in the editor's top bar to let agents in; it is off by default. The `formsurface-painting` skill (`.claude/skills`, mirrored in `.agents/skills`) teaches agents the order of work.
 
 ## Parity
 
@@ -57,7 +59,8 @@ Windows: `formsurface_oc_install.bat`, then `formsurface.bat`.
 | Middle drag or Alt + right drag | Pan |
 | Wheel | Zoom |
 | `[` `]` | Brush size |
-| `B` / `E` / `P` / `M` | Paint / eraser / polygon fill / mirror |
+| `B` / `E` / `P` / `C` / `M` | Paint / eraser / polygon fill / clone / mirror |
+| Ctrl + click (clone) | Set the clone source |
 | `T` | Quick mask: edit, then use |
 | `F` | Frame mesh |
 | Ctrl+Z, Ctrl+Shift+Z | Undo, redo |

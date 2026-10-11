@@ -1,4 +1,4 @@
-# FormSurface MCP tools (server 0.11.0)
+# FormSurface MCP tools (server 0.12.0)
 
 When this table and the server disagree, the server wins and this file is stale.
 
@@ -35,6 +35,10 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_add_folder` | name, layer_ids to move inside | folder id, moved ids, layers |
 | `formsurface_set_layer_folder` | layer_id, folder_id (0 for top level) | layers |
 | `formsurface_list_export_templates` | none | templates with their maps and packed sources |
+| `formsurface_clone_source` | x, y in 0 to 1 on the active set | clone tool on; the next stroke fixes the offset |
+| `formsurface_flatten_stack` | name | new layer id, layers (destructive, not undoable) |
+| `formsurface_export_layer_mask` | layer_id, name | folder |
+| `formsurface_export_mesh` | name | folder (OBJ with UDIM UVs, one group per texture set) |
 | `formsurface_uv_tiles` | on (omit to read) | uv_tiles and texture sets with linked flags |
 | `formsurface_mask_source` | layer_id, source (cavity, edges, thin, top, id_color), color hex or x, y point for id_color, tolerance, level, softness, invert | layers, picked color |
 | `formsurface_quick_mask` | mode (off, edit, on), action (clear, allow_all, invert) | mode |
