@@ -1,4 +1,4 @@
-# FormSurface MCP tools (server 0.4.0)
+# FormSurface MCP tools (server 0.5.0)
 
 When this table and the server disagree, the server wins and this file is stale.
 
@@ -13,6 +13,9 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_add_layer` | name | new id and layers |
 | `formsurface_add_fill_layer` | name, projection (uv, triplanar, planar, spherical, cylindrical), pattern (solid, checker, stripes, noise), base_color, roughness, metallic, height, scale, rotation_degrees, planar_axis, sharpness, fill_color, fill_roughness, fill_metallic, fill_height | id and settings |
 | `formsurface_set_fill` | layer_id, projection, pattern, base_color, roughness, metallic, height, scale, rotation_degrees, offset_u, offset_v, planar_axis, sharpness, amount | settings |
+| `formsurface_bake_maps` | directions 8 to 256 | baked flag and map names |
+| `formsurface_set_generator` | layer_id, generator (none, cavity, edges, thin, top), level, softness, invert | fill settings |
+| `formsurface_add_filter_layer` | name, brightness, contrast, hue_degrees, saturation, gamma, roughness_offset, metallic_offset | id and settings |
 | `formsurface_layer_mask` | layer_id, action (add_white, add_black, remove, keep), paint_target (layer, mask) | layers and whether strokes paint the mask |
 | `formsurface_update_layer` | layer_id, name, visible, opacity, blend (normal, multiply, screen, overlay, add, subtract, darken, lighten), make_active | layers and active layer |
 | `formsurface_move_layer` | layer_id, offset (positive is up) | layers |

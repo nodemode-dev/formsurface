@@ -186,6 +186,39 @@ def formsurface_set_fill(
 
 
 @server.tool()
+def formsurface_bake_maps(directions: Annotated[int, Field(ge=8, le=256)] = 64) -> dict:
+    """Bake ambient occlusion, curvature, thickness, position and world normal from the current mesh on the GPU. Needed before fill generators cavity, edges and thin; more directions give smoother maps and take longer. Exported with formsurface_export_maps once baked."""
+    return call("bake", {"directions": directions}, timeout=300)
+
+
+@server.tool()
+def formsurface_set_generator(
+    layer_id: int,
+    generator: Literal["none", "cavity", "edges", "thin", "top"],
+    level: Unit = 0.5,
+    softness: Annotated[float, Field(ge=0.001, le=0.5)] = 0.1,
+    invert: bool = False,
+) -> dict:
+    """Drive where a fill layer shows from baked maps: cavity puts it in occluded crevices (dirt), edges on convex curvature (wear), thin on thin parts, top fades it from the top of the mesh down. level moves the threshold, softness widens the transition. Bake first for cavity, edges and thin."""
+    return call("set_fill", {"id": layer_id, "settings": {"generator": generator, "generator_level": level, "generator_softness": softness, "generator_invert": invert}})
+
+
+@server.tool()
+def formsurface_add_filter_layer(
+    name: str = "Filter",
+    brightness: Annotated[float, Field(ge=-0.5, le=0.5)] = 0.0,
+    contrast: Annotated[float, Field(ge=-1, le=1)] = 0.0,
+    hue_degrees: Annotated[float, Field(ge=-180, le=180)] = 0.0,
+    saturation: Annotated[float, Field(ge=0, le=2)] = 1.0,
+    gamma: Annotated[float, Field(ge=0.2, le=3)] = 1.0,
+    roughness_offset: Annotated[float, Field(ge=-1, le=1)] = 0.0,
+    metallic_offset: Annotated[float, Field(ge=-1, le=1)] = 0.0,
+) -> dict:
+    """Add a filter layer that adjusts every layer below it: brightness, contrast, hue, saturation and gamma of base color, and offsets for roughness and metallic. Limit it with a mask like any layer."""
+    return call("add_filter_layer", {"name": name, "settings": {"brightness": brightness, "contrast": contrast, "hue": hue_degrees, "saturation": saturation, "gamma": gamma, "roughness_offset": roughness_offset, "metallic_offset": metallic_offset}})
+
+
+@server.tool()
 def formsurface_layer_mask(
     layer_id: int,
     action: Literal["add_white", "add_black", "remove", "keep"] = "keep",

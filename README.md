@@ -12,6 +12,7 @@ Paint directly on 3D models, layer by layer, the way Substance 3D Painter works.
 - **Brush:** size in screen or object space, hardness, flow, stroke opacity, spacing, pen pressure on size or flow, backface culling, eraser.
 - **Alignment and tips:** Painter's camera, tangent wrap, tangent planar and UV alignments; round, square and spray tips or any image as a brush alpha; angle, follow path, size, angle, position and flow jitter, lazy mouse.
 - **Stencil and symmetry:** a screen-space stencil from any image (scale, rotation, offset); mirror or radial symmetry on X, Y or Z.
+- **Baking, generators and filters:** GPU baking of ambient occlusion, curvature, thickness, position and world normal from the mesh; fill layers driven by them (cavity dirt, edge wear, thin areas, from top); filter layers for brightness, contrast, hue, saturation, gamma and roughness or metallic offsets.
 - **Fill layers and masks:** fill layers projected by UV, tri-planar, planar, spherical or cylindrical mapping, with solid, checker, stripes, noise or image patterns; a white or black mask on any layer, painted with the full brush.
 - **Layers:** add, delete, reorder, hide, opacity, 8 blend modes, undo and redo (24 strokes).
 - **Viewport:** PBR shading with tone mapping, exposure, brush cursor drawn on the surface, orbit, pan, zoom, frame. Seam padding (dilation) on the composited maps.
@@ -20,7 +21,7 @@ Paint directly on 3D models, layer by layer, the way Substance 3D Painter works.
 
 ## Agents (MCP)
 
-FormSurface ships an MCP server with 19 `formsurface_*` tools that drive the editor you have open: layers, fill layers, masks, brush, paint and base material, camera, strokes, fill, undo, screenshot and map export. Claude Code picks it up from `.mcp.json`; other clients run `./formsurface mcp` (stdio). Press **Agent link** in the editor's top bar to let agents in; it is off by default. The `formsurface-painting` skill (`.claude/skills`, mirrored in `.agents/skills`) teaches agents the order of work.
+FormSurface ships an MCP server with 22 `formsurface_*` tools that drive the editor you have open: layers, fill layers, masks, baking, generators, filters, brush, paint and base material, camera, strokes, fill, undo, screenshot and map export. Claude Code picks it up from `.mcp.json`; other clients run `./formsurface mcp` (stdio). Press **Agent link** in the editor's top bar to let agents in; it is off by default. The `formsurface-painting` skill (`.claude/skills`, mirrored in `.agents/skills`) teaches agents the order of work.
 
 ## Parity
 

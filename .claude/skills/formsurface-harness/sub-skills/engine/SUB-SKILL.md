@@ -37,6 +37,10 @@ A stamp is 16 floats: center and world radius, normal and a mirrored flag, tange
 
 `upload_mesh` rasterizes world position (Rgba32Float) and normal into UV space once; `fill_layer_content` evaluates a fill layer per texel from those maps with the FILL shader and overwrites the layer's color, values and coverage, so fill layers are regenerated whenever their settings or the mesh change and are never painted directly. Each layer set carries a fourth texture, the mask (white by default), copied into undo snapshots; strokes on a mask go through `apply_mask`, and the composite scales opacity by it when `LayerInfo.mask` is on.
 
+## Baking, generators and filters (v0.5.0)
+
+`bake_maps` is rasterized, not ray traced: for each Fibonacci direction it renders an orthographic depth map of the mesh, then BAKE_ACCUM adds, per UV texel, visibility (AO, front-facing texels) or distance to the facing surface (thickness, back-facing texels); BAKE_FINAL divides and derives curvature from neighbouring geometry texels (scale 0.05 times the mesh radius). The result lives in `bake` (AO, curvature, thickness); position and world normal export straight from the geometry maps. Fill generators read `bake` per texel. Filter layers are evaluated inside the composite (mode.z) on the stack below them.
+
 ## Next capabilities, in plan order
 
-Filters (levels, blur, sharpen) and folders; mesh map baking (normal, AO, curvature, position, thickness, ID) feeding generators and smart masks; engine in a Worker; tile paging for 4K and 8K; texture sets per material.
+High-to-low baking with a cage (tangent-space normal, ID) by ray casting a high-poly BVH; blur and sharpen filters and folders; smart material and mask presets; engine in a Worker; tile paging for 4K and 8K; texture sets per material.
