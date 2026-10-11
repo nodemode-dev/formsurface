@@ -1,0 +1,69 @@
+# FormSurface
+
+Paint directly on 3D models, layer by layer, the way Substance 3D Painter works. Part of the Form family.
+
+![version](https://img.shields.io/badge/version-v0.1.0-e0793a) ![engine](https://img.shields.io/badge/engine-Rust%20%2B%20wgpu-555) ![license](https://img.shields.io/badge/license-Apache--2.0-555)
+
+## What works in v0.1.0
+
+- **3D projection painting.** The brush hits the mesh in world space and writes into the UV textures, so strokes keep a constant on-screen size, cross UV seams and do not stretch on distorted islands. Occluded and back-facing surfaces are protected.
+- **GPU engine in Rust.** wgpu running on WebGPU in the browser. Painting, compositing and the viewport never leave the GPU; nothing round-trips through the server while you paint.
+- **Channels:** base color, roughness, metallic, height (shown as bump in the viewport, exported as a normal map). Each channel can be switched on or off per stroke.
+- **Brush:** size (screen pixels), hardness, flow, stroke opacity, spacing, pen pressure on size or flow, backface culling, eraser, mirror X symmetry.
+- **Layers:** add, delete, reorder, hide, opacity, 8 blend modes, undo and redo (24 strokes).
+- **Viewport:** PBR shading with tone mapping, exposure, brush cursor drawn on the surface, orbit, pan, zoom, frame. Seam padding (dilation) on the composited maps.
+- **Meshes:** glTF, GLB, OBJ, FBX, plus built-in samples (sphere, torus, capsule, torus knot).
+- **Export:** base color, roughness, metallic, height and normal (OpenGL) PNG maps, and a viewport screenshot.
+
+The parity matrix in the planning sidecar lists exactly what is still missing against Painter.
+
+## Quick start
+
+Requirements: Rust (rustup), Node 22.12+, Python 3.11+, and a browser with WebGPU (Chrome, Edge, Safari 26, Firefox on Windows or macOS).
+
+```bash
+./formsurface install     # wasm target, wasm-bindgen 0.2.129, backend venv, npm packages, engine build
+./formsurface             # backend on 127.0.0.1:8766, editor on http://localhost:5176
+```
+
+Windows: `formsurface_oc_install.bat`, then `formsurface.bat`.
+
+| Command | Does |
+| --- | --- |
+| `./formsurface engine` | Rebuild the Rust engine into `frontend/src/engine/pkg` |
+| `./formsurface backend` | Backend only |
+| `./formsurface frontend` | Editor only |
+
+## Controls
+
+| Input | Action |
+| --- | --- |
+| Left drag | Paint |
+| Right drag or Alt + left drag | Orbit |
+| Middle drag or Alt + right drag | Pan |
+| Wheel | Zoom |
+| `[` `]` | Brush size |
+| `B` / `E` / `M` | Paint / eraser / mirror |
+| `F` | Frame mesh |
+| Ctrl+Z, Ctrl+Shift+Z | Undo, redo |
+
+## Layout
+
+```
+native/fs-core     mesh, BVH picking, brush and layer model (pure Rust)
+native/fs-engine   wgpu engine: projection paint, compositing, dilation, PBR viewport, export
+frontend/          TypeScript + Vite editor; three.js is used only for its file loaders
+backend/           FastAPI service: saves projects and exported maps under workspace/
+setup/             install and engine build scripts
+```
+
+## Ports
+
+| Service | Address |
+| --- | --- |
+| Editor | http://localhost:5176 |
+| Service | http://127.0.0.1:8766 |
+
+## License
+
+Apache-2.0. See `LICENSE` and `NOTICE`.
