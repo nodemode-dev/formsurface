@@ -225,10 +225,37 @@ def formsurface_bake_high_poly(
     match_by_name: bool | None = None,
     sample: Literal["sphere", "pair"] | None = None,
     ao_rays: Annotated[int, Field(ge=0, le=64)] | None = None,
+    cage_file: str | None = None,
+    distance_cage: bool = False,
 ) -> dict:
-    """Bake from a high-poly mesh onto the painted mesh: a tangent-space normal map, an ID map (one color per high-poly part), height (high surface above or below the low one, mid gray is level, cage range maps to 0 to 1), opacity (white where the high mesh was found) and, with ao_rays above 0 (default 16, more is smoother and slower), ambient occlusion and a bent normal map from the high-poly detail. The extra maps export as ambient_occlusion_high, height_high, opacity and bent_normal, and ao_high, height_high and opacity are template sources. mesh_file is a glb, gltf, obj or fbx the person put in the workspace meshes folder; use_sample (or sample sphere) loads a low sphere with a bumpy two-part high-poly sphere, and sample pair loads two touching low spheres named left_low and right_low with high-poly left_high and right_high. Cage distances are fractions of the mesh radius in front of and behind the low surface; raise them if parts of the high-poly are missed. match_by_name pairs low and high parts whose mesh names match once _low and _high (or _lo and _hi) are removed, so close parts never bake onto each other; unmatched parts bake only against unmatched high-poly parts."""
+    """Bake from a high-poly mesh onto the painted mesh: a tangent-space normal map, an ID map (one color per high-poly part), height (high surface above or below the low one, mid gray is level, cage range maps to 0 to 1), opacity (white where the high mesh was found) and, with ao_rays above 0 (default 16, more is smoother and slower), ambient occlusion and a bent normal map from the high-poly detail. The extra maps export as ambient_occlusion_high, height_high, opacity and bent_normal, and ao_high, height_high and opacity are template sources. mesh_file is a glb, gltf, obj or fbx the person put in the workspace meshes folder; use_sample (or sample sphere) loads a low sphere with a bumpy two-part high-poly sphere, and sample pair loads two touching low spheres named left_low and right_low with high-poly left_high and right_high. Cage distances are fractions of the mesh radius in front of and behind the low surface; raise them if parts of the high-poly are missed. match_by_name pairs low and high parts whose mesh names match once _low and _high (or _lo and _hi) are removed, so close parts never bake onto each other; unmatched parts bake only against unmatched high-poly parts. cage_file is a custom cage in the workspace meshes folder: the low-poly mesh with its vertices moved (same triangles in the same order); rays then run from the cage to the low surface and cage_rear still reaches behind it. It stays set for later bakes until distance_cage is true or another mesh is loaded."""
     chosen = sample or ("sphere" if use_sample else None)
-    return call("bake_high", drop_none(file=mesh_file, sample=chosen, front=cage_front, rear=cage_rear, match_by_name=match_by_name, ao_rays=ao_rays), timeout=600)
+    return call("bake_high", drop_none(file=mesh_file, sample=chosen, front=cage_front, rear=cage_rear, match_by_name=match_by_name, ao_rays=ao_rays, cage_file=cage_file, distance_cage=distance_cage or None), timeout=600)
+
+
+@server.tool()
+def formsurface_set_post_effects(
+    reset: bool = False,
+    bloom: Annotated[float | None, Field(ge=0, le=2)] = None,
+    bloom_threshold: Annotated[float | None, Field(ge=0, le=0.99)] = None,
+    glare: Annotated[float | None, Field(ge=0, le=2)] = None,
+    lens_flare: Annotated[float | None, Field(ge=0, le=2)] = None,
+    dof_aperture: Annotated[float | None, Field(ge=0, le=24)] = None,
+    dof_focus: Annotated[float | None, Field(ge=-1, le=1)] = None,
+    aberration: Unit | None = None,
+    sharpen: Annotated[float | None, Field(ge=0, le=2)] = None,
+    vignette: Unit | None = None,
+    vignette_softness: Unit | None = None,
+    grain: Unit | None = None,
+    gain: Annotated[float | None, Field(ge=0, le=2)] = None,
+    contrast: Annotated[float | None, Field(ge=-1, le=1)] = None,
+    saturation: Annotated[float | None, Field(ge=0, le=2)] = None,
+    temperature: Annotated[float | None, Field(ge=-1, le=1)] = None,
+    tint: Annotated[float | None, Field(ge=-1, le=1)] = None,
+) -> dict:
+    """Viewport post effects, applied after tone mapping to the viewport and screenshots only (exported maps never change): bloom above a brightness threshold, glare streaks and lens flare ghosts from the same bright areas, depth of field (dof_aperture is the largest blur in pixels, 0 off; dof_focus -1 is the model's front, 0 its centre, 1 its back), chromatic aberration, sharpen, vignette with softness, film grain, and color correction (gain is brightness, contrast, saturation, temperature warm or cool, tint green or magenta). reset puts every effect back to off first; only the values given change."""
+    values = drop_none(bloom=bloom, bloom_threshold=bloom_threshold, glare=glare, lens_flare=lens_flare, dof_aperture=dof_aperture, dof_focus=dof_focus, aberration=aberration, sharpen=sharpen, vignette=vignette, vignette_softness=vignette_softness, grain=grain, gain=gain, contrast=contrast, saturation=saturation, temperature=temperature, tint=tint)
+    return call("set_post_effects", {"reset": reset, **values})
 
 
 @server.tool()
@@ -532,7 +559,7 @@ Source = Literal["basecolor", "normal_gl", "normal_dx", "roughness", "smoothness
 
 class MapSpec(BaseModel):
     suffix: Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,40}$")]
-    rgb: Literal["basecolor", "normal_gl", "normal_dx"] | None = None
+    rgb: Literal["basecolor", "normal_gl", "normal_dx", "diffuse", "specular"] | None = None
     r: Source | None = None
     g: Source | None = None
     b: Source | None = None
@@ -556,7 +583,7 @@ def formsurface_export_maps(
     padding_width: Annotated[int, Field(ge=0, le=256)] | None = None,
     padding_color: Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$")] | None = None,
 ) -> dict:
-    """Export maps for every texture set into the FormSurface workspace and return the folder. template is pbr (base color, roughness, metallic, height and normal plus baked maps), gltf, unreal, unity_hdrp, unity_urp, or a template saved with formsurface_save_export_template (see formsurface_list_export_templates). custom_maps defines files for this export only: each has a suffix and either rgb (basecolor, normal_gl, normal_dx) or r, g, b, a sources; smoothness is 1 minus roughness and ao is white until baked. With several sets, files are named name_material_suffix, with .udim for tiled materials. format and bit_depth: png 8 or 16, tif 8, 16 or 32 (float), exr 16 (half) or 32 (float), hdr 32, jpg 8, psd 8, 16 or 32; float files store base color linear, everything else as in PNG. padding fills texels outside the UV islands: infinite dilation (default), or padding_width texels of dilation followed by transparent (alpha 0; not jpg or hdr), color (padding_color) or diffusion (a smooth blur fill). Omitted values use the editor's Export choices."""
+    """Export maps for every texture set into the FormSurface workspace and return the folder. template is pbr (base color, roughness, metallic, height and normal plus baked maps), gltf, unreal, unity_hdrp, unity_urp, unity_standard_specular, godot, blender, arnold, redshift, usd, sketchfab, spec_gloss, or a template saved with formsurface_save_export_template (see formsurface_list_export_templates). custom_maps defines files for this export only: each has a suffix and either rgb (basecolor, normal_gl, normal_dx, or diffuse and specular converted from base color and metallic for specular glossiness workflows) or r, g, b, a sources; smoothness is 1 minus roughness (glossiness) and ao is white until baked. With several sets, files are named name_material_suffix, with .udim for tiled materials. format and bit_depth: png 8 or 16, tif 8, 16 or 32 (float), exr 16 (half) or 32 (float), hdr 32, jpg 8, psd 8, 16 or 32; float files store base color linear, everything else as in PNG. padding fills texels outside the UV islands: infinite dilation (default), or padding_width texels of dilation followed by transparent (alpha 0; not jpg or hdr), color (padding_color) or diffusion (a smooth blur fill). Omitted values use the editor's Export choices."""
     maps = [m.model_dump(exclude_none=True) for m in custom_maps] if custom_maps else None
     return call("export", drop_none(name=name, template=template, maps=maps, format=format, bit_depth=bit_depth, padding=padding, padding_width=padding_width, padding_color=padding_color), timeout=600)
 
