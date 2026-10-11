@@ -1,5 +1,5 @@
 import init, { create_engine, type Engine } from './engine/pkg/fs_engine.js';
-import { loadMeshFile, sampleMesh, type FlatMesh } from './engine/meshes';
+import { loadHighPoly, loadMeshFile, sampleHighPoly, sampleMesh, type FlatMesh } from './engine/meshes';
 import { VERSION } from './version';
 import { LayerList, type LayerInfo } from './ui/layers';
 import { api } from './ui/api';
@@ -407,6 +407,34 @@ $('layer-add-filter').addEventListener('click', () => {
   engine.add_filter_layer(`Filter ${layers().length + 1}`);
   refreshLayers();
 });
+function setHigh(next: FlatMesh, name: string): string {
+  const info = requireEngine().set_high_mesh(next.positions, next.normals, next.indices, next.parts);
+  $('k-high-state').textContent = `High-poly ${name}: ${info}`;
+  return info;
+}
+function bakeHigh(): string {
+  const result = requireEngine().bake_high(num('k-front'), num('k-rear'));
+  $('k-high-state').textContent = `Baked normal and ID: ${result}`;
+  return result;
+}
+for (const id of ['k-front', 'k-rear']) $(id).addEventListener('input', () => setOutput(id));
+const highInput = $<HTMLInputElement>('high-file');
+$('k-high-load').addEventListener('click', () => highInput.click());
+highInput.addEventListener('change', async () => {
+  const file = highInput.files?.[0];
+  highInput.value = '';
+  if (!file || !engine) return;
+  try { setHigh(await loadHighPoly(file.name, await file.arrayBuffer()), file.name); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+});
+$('k-high-sample').addEventListener('click', () => {
+  if (!engine) return;
+  applyMesh(sampleMesh('sphere'), 'sphere');
+  setHigh(sampleHighPoly(), 'bumpy sphere (two parts)');
+  status('Low-poly sphere loaded with a bumpy two-part high-poly sphere; press Bake normal and ID');
+});
+$('k-bake-high').addEventListener('click', () => {
+  try { status(bakeHigh()); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+});
 $('k-bake').addEventListener('click', () => {
   if (!engine) return;
   try {
@@ -460,7 +488,7 @@ $('tex-size').addEventListener('change', () => {
   void boot();
 });
 
-const CHANNELS = ['basecolor', 'roughness', 'metallic', 'height', 'normal', 'ambient_occlusion', 'curvature', 'thickness', 'position', 'world_normal'];
+const CHANNELS = ['basecolor', 'roughness', 'metallic', 'height', 'normal', 'ambient_occlusion', 'curvature', 'thickness', 'position', 'world_normal', 'id', 'normal_baked'];
 
 async function pngOf(bytes: Uint8Array, size: number): Promise<Blob> {
   const surface = new OffscreenCanvas(size, size);
@@ -473,8 +501,8 @@ async function renderMaps(): Promise<Map<string, Blob>> {
   const maps = new Map<string, Blob>();
   if (!engine) return maps;
   const size = engine.texture_size();
-  const count = engine.is_baked() ? CHANNELS.length : 5;
-  for (let i = 0; i < count; i++) {
+  const wanted = [0, 1, 2, 3, 4, ...(engine.is_baked() ? [5, 6, 7, 8, 9] : []), ...(engine.is_high_baked() ? [10, 11] : [])];
+  for (const i of wanted) {
     const bytes = await engine.export_channel(i) as Uint8Array;
     maps.set(CHANNELS[i], await pngOf(bytes, size));
   }
@@ -633,6 +661,19 @@ const agentLink = new AgentLink({
     e.set_fill(id, JSON.stringify({ ...JSON.parse(raw), ...patch }));
     refreshLayers();
     return { id, settings: JSON.parse(e.fill_settings(id)) };
+  },
+  bake_high: async ({ file, sample, front, rear }) => {
+    if (sample) {
+      applyMesh(sampleMesh('sphere'), 'sphere');
+      setHigh(sampleHighPoly(), 'bumpy sphere (two parts)');
+    } else if (file) {
+      const response = await fetch(`/api/meshes/${encodeURIComponent(String(file))}`);
+      if (!response.ok) throw new Error(`High-poly ${file} is not in the workspace meshes folder`);
+      setHigh(await loadHighPoly(String(file), await response.arrayBuffer()), String(file));
+    }
+    if (front !== undefined) setControl('k-front', front);
+    if (rear !== undefined) setControl('k-rear', rear);
+    return { result: bakeHigh(), maps: ['id', 'normal_baked'] };
   },
   bake: ({ directions }) => {
     const e = requireEngine();

@@ -191,6 +191,15 @@
       <div class="row"><label for="k-dirs">Samples</label><select id="k-dirs"><option value="32">32 directions</option><option value="64" selected>64 directions</option><option value="128">128 directions</option></select><output></output></div>
       <button class="btn" id="k-bake" style="width:100%;justify-content:center"><svg><use href="#i-bake"/></svg>Bake AO, curvature, thickness, position, normal</button>
       <p class="check" id="k-state" style="min-height:28px;margin:6px 0 0">Not baked</p>
+      <div class="row" style="grid-template-columns:1fr 1fr;gap:8px">
+        <button class="btn" id="k-high-load" style="justify-content:center"><svg><use href="#i-open"/></svg>High-poly</button>
+        <button class="btn" id="k-high-sample" style="justify-content:center"><svg><use href="#i-shape"/></svg>Bumpy sample</button>
+      </div>
+      <div class="row"><label for="k-front">Cage front</label><input id="k-front" type="range" min="0" max="0.2" step="0.001" value="0.05"><output for="k-front">0.05</output></div>
+      <div class="row"><label for="k-rear">Cage rear</label><input id="k-rear" type="range" min="0" max="0.2" step="0.001" value="0.05"><output for="k-rear">0.05</output></div>
+      <button class="btn" id="k-bake-high" style="width:100%;justify-content:center;margin-top:6px"><svg><use href="#i-bake"/></svg>Bake normal and ID from high-poly</button>
+      <p class="check" id="k-high-state" style="min-height:28px;margin:6px 0 0">No high-poly mesh</p>
+      <input type="file" id="high-file" accept=".glb,.gltf,.obj,.fbx" hidden>
     </section>
     <section class="section">
       <h2>Base material</h2>

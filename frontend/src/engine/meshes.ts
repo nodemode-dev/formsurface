@@ -8,15 +8,18 @@ export interface FlatMesh {
   normals: Float32Array;
   uvs: Float32Array;
   indices: Uint32Array;
+  parts: Uint32Array;
   skipped: number;
 }
 
-function flatten(root: THREE.Object3D): FlatMesh {
+function flatten(root: THREE.Object3D, requireUv = true): FlatMesh {
   root.updateMatrixWorld(true);
   const positions: number[] = [];
   const normals: number[] = [];
   const uvs: number[] = [];
   const indices: number[] = [];
+  const parts: number[] = [];
+  let part = 0;
   let skipped = 0;
   const p = new THREE.Vector3();
   const n = new THREE.Vector3();
@@ -27,7 +30,7 @@ function flatten(root: THREE.Object3D): FlatMesh {
     const geometry = mesh.geometry as THREE.BufferGeometry;
     const pos = geometry.getAttribute('position');
     const uv = geometry.getAttribute('uv');
-    if (!pos || !uv) { skipped++; return; }
+    if (!pos || (!uv && requireUv)) { skipped++; return; }
     if (!geometry.getAttribute('normal')) geometry.computeVertexNormals();
     const nor = geometry.getAttribute('normal');
     normalMatrix.getNormalMatrix(mesh.matrixWorld);
@@ -37,13 +40,42 @@ function flatten(root: THREE.Object3D): FlatMesh {
       n.fromBufferAttribute(nor, i).applyMatrix3(normalMatrix).normalize();
       positions.push(p.x, p.y, p.z);
       normals.push(n.x, n.y, n.z);
-      uvs.push(uv.getX(i), 1 - uv.getY(i));
+      if (uv) uvs.push(uv.getX(i), 1 - uv.getY(i)); else uvs.push(0, 0);
     }
+    const before = indices.length;
     const index = geometry.getIndex();
     if (index) for (let i = 0; i < index.count; i++) indices.push(base + index.getX(i));
     else for (let i = 0; i < pos.count; i++) indices.push(base + i);
+    for (let t = 0; t < (indices.length - before) / 3; t++) parts.push(part);
+    part++;
   });
-  return { positions: new Float32Array(positions), normals: new Float32Array(normals), uvs: new Float32Array(uvs), indices: new Uint32Array(indices), skipped };
+  return { positions: new Float32Array(positions), normals: new Float32Array(normals), uvs: new Float32Array(uvs), indices: new Uint32Array(indices), parts: new Uint32Array(parts), skipped };
+}
+
+export async function loadHighPoly(name: string, data: ArrayBuffer): Promise<FlatMesh> {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.glb') || lower.endsWith('.gltf')) return flatten((await new GLTFLoader().parseAsync(data, '')).scene, false);
+  if (lower.endsWith('.obj')) return flatten(new OBJLoader().parse(new TextDecoder().decode(data)), false);
+  if (lower.endsWith('.fbx')) return flatten(new FBXLoader().parse(data, ''), false);
+  throw new Error('Unsupported high-poly format. Use glTF, GLB, OBJ or FBX.');
+}
+
+export function sampleHighPoly(): FlatMesh {
+  const group = new THREE.Group();
+  for (const half of [0, 1]) {
+    const geometry = new THREE.SphereGeometry(1, 384, 192, 0, Math.PI * 2, half * Math.PI / 2, Math.PI / 2);
+    const pos = geometry.getAttribute('position');
+    const v = new THREE.Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      const bumps = 0.025 * Math.sin(v.x * 14) * Math.sin(v.y * 14) * Math.sin(v.z * 14) + (Math.abs(v.y) < 0.05 ? -0.02 : 0);
+      v.multiplyScalar(1 + bumps);
+      pos.setXYZ(i, v.x, v.y, v.z);
+    }
+    geometry.computeVertexNormals();
+    group.add(new THREE.Mesh(geometry));
+  }
+  return flatten(group, false);
 }
 
 export async function loadMeshFile(file: File): Promise<FlatMesh> {
