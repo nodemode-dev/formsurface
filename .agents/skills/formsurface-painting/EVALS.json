@@ -1,0 +1,25 @@
+{
+  "skill": "formsurface-painting",
+  "evaluations": [
+    {
+      "request": "Make the model in FormSurface look like dark gunmetal with a brass band around the middle.",
+      "expected": "Calls formsurface_status first, sets the base material, adds a named layer, sets paint material with metallic on, takes a screenshot to aim, paints a stroke whose points_on_surface is above zero, checks a second angle and reports the layer name."
+    },
+    {
+      "request": "Paint a red stripe in FormSurface.",
+      "expected": "When status fails with no editor linked, tells the person to open the editor and press Agent link instead of retrying."
+    },
+    {
+      "request": "Export the texture maps from FormSurface.",
+      "expected": "Calls formsurface_export_maps and reports the returned folder and five map names."
+    },
+    {
+      "request": "Change how the FormSurface brush shader computes falloff.",
+      "expected": "Does not trigger; source changes belong to formsurface-harness."
+    }
+  ],
+  "trigger_test": {
+    "should_trigger": ["paint this model in formsurface", "add wear to the edges in formsurface", "export pbr maps from formsurface", "formsurface_paint_stroke missed the mesh"],
+    "should_not_trigger": ["refactor fs-engine", "paint this photo in formvis", "what is a normal map"]
+  }
+}

@@ -1,0 +1,24 @@
+# FormSurface MCP tools (server 0.2.0)
+
+When this table and the server disagree, the server wins and this file is stale.
+
+| Tool | Parameters | Returns |
+| --- | --- | --- |
+| `formsurface_status` | none | mesh, texture size, layers, active layer, brush, paint material, camera, viewport |
+| `formsurface_load_sample` | kind: sphere, torus, capsule, knot | status |
+| `formsurface_set_camera` | yaw_degrees, pitch_degrees, zoom (1 frames the mesh) | camera |
+| `formsurface_set_brush` | size_px 1 to 400, hardness, flow, stroke_opacity, spacing, eraser, mirror_x, backface_culling | brush |
+| `formsurface_set_paint_material` | base_color hex, roughness, metallic, height, paint_color, paint_roughness, paint_metallic, paint_height | paint material |
+| `formsurface_set_base_material` | base_color hex, roughness, metallic | empty |
+| `formsurface_add_layer` | name | new id and layers |
+| `formsurface_update_layer` | layer_id, name, visible, opacity, blend (normal, multiply, screen, overlay, add, subtract, darken, lighten), make_active | layers and active layer |
+| `formsurface_move_layer` | layer_id, offset (positive is up) | layers |
+| `formsurface_remove_layer` | layer_id | layers |
+| `formsurface_fill_layer` | none | filled layer id |
+| `formsurface_paint_stroke` | points: list of [x, y] in 0 to 1, pressure | points, points_on_surface, layer |
+| `formsurface_undo` | steps 1 to 24 | undone count |
+| `formsurface_redo` | steps 1 to 24 | redone count |
+| `formsurface_screenshot` | none | PNG image of the viewport |
+| `formsurface_export_maps` | name | folder and map names |
+
+Errors arrive as text naming the fix: no editor linked (turn on Agent link), service not running (run ./formsurface), or a timeout.
