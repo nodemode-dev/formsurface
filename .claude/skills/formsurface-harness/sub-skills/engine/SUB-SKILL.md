@@ -69,6 +69,10 @@ With `uv_tiles` on, tiled sets of one material are siblings. A public engine cal
 
 `mesh_obj` restores each set's UDIM offset and flips V back to the importer's convention, so an exported OBJ re-imports into the same texture sets. `flatten_stack` composites, writes `final_set` into a new top layer at full coverage through PAIR_TO_SET and removes every other layer; it is relayed like other stack changes and is not undoable. Clone is `StrokeMode::Clone`: `push_stamp` fixes `gpu.clone_offset` in texels from the first stamp after a source is set, and APPLY reads `final_set` at that offset (color.w and values.w carry it, mode.z enables it). It reads the live composite, so a stroke that overlaps its own source repeats what it just painted.
 
+## Match by name and instancing (v0.13.0)
+
+`set_match_names` takes the low-poly part index per triangle and both name lists; `match_key` strips _low/_high/_lo/_hi (case-insensitive) and the keys go to `bake_high_matched`, where `Bvh::raycast_filter` only accepts high-poly triangles whose key matches the texel's low part (unmatched low parts hit only unmatched high parts). Sets map back to whole-mesh triangles through `SplitMesh.order`, so keys must be re-sliced per set (`texture_set_match_keys`). Instancing keeps `instance_groups`: lists of (set index, layer id). `propagate(id, work)` runs `work` on every other member after switching sets, and is skipped while `instancing` or `relaying` so it never recurses. Only public stack calls (`set_fill`, `set_filter`, `mask_generator`, `update_layer`) propagate; a new layer property that should follow instances needs its own propagate line. `set_mesh` clears the groups because set indices change.
+
 ## Next capabilities, in plan order
 
-Per-tile resolution; isolated folder blending; the whole engine in a Worker with OffscreenCanvas; a shared layer stack across UDIM tiles (Painter's UV tiles workflow); match-by-name and bent normal baking; tile paging for 4K and 8K; color management; EXR and 32-bit export.
+Per-tile resolution; isolated folder blending; the whole engine in a Worker with OffscreenCanvas (also what a headless batch needs); bent normal baking; tile paging for 4K and 8K; color management; EXR and 32-bit export; stacked mask effects.

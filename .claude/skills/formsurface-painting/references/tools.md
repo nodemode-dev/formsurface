@@ -16,7 +16,9 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_add_fill_layer` | name, projection (uv, triplanar, planar, spherical, cylindrical), pattern (solid, checker, stripes, noise), base_color, roughness, metallic, height, scale, rotation_degrees, planar_axis, sharpness, fill_color, fill_roughness, fill_metallic, fill_height | id and settings |
 | `formsurface_set_fill` | layer_id, projection, pattern, base_color, roughness, metallic, height, scale, rotation_degrees, offset_u, offset_v, planar_axis, sharpness, amount | settings |
 | `formsurface_bake_maps` | directions 8 to 256 | baked flag and map names |
-| `formsurface_bake_high_poly` | mesh_file (in workspace/meshes), use_sample, cage_front, cage_rear (fractions of mesh radius) | hit count and map names |
+| `formsurface_bake_high_poly` | mesh_file (in workspace/meshes), use_sample, sample (sphere, pair), cage_front, cage_rear (fractions of mesh radius), match_by_name | hit count, map names, matched part count |
+| `formsurface_load_mesh` | file (glb, gltf, obj, fbx in workspace/meshes) | status; bakes reset, first set keeps its layers |
+| `formsurface_instance_layer` | layer_id (fill or filter on the active set), texture_set (name or index) | new layer id in the target set; edits to any copy update all copies |
 | `formsurface_list_smart_materials` | none | materials with layer names, smart mask names |
 | `formsurface_apply_smart_material` | name | new layer ids, baked flag |
 | `formsurface_save_smart_material` | name | saved file |
@@ -45,5 +47,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_set_filter` | layer_id, brightness, contrast, hue_degrees, saturation, gamma, roughness_offset, metallic_offset, blur, sharpen (only given values change) | settings |
 | `formsurface_polygon_fill` | x, y in 0 to 1, mode (triangle, polygon, mesh, uv_chunk) | filled triangle count, mode, layer |
 | `formsurface_export_maps` | name, template (pbr, gltf, unreal, unity_hdrp, unity_urp), custom_maps (suffix plus rgb or r, g, b, a sources), bit_depth (8 or 16) | folder, template and map names; every texture set is exported, as name_material_suffix (plus .udim for tiled materials) when there is more than one |
+
+The same tools run from a JSON script with `./formsurface batch script.json` (a list of `[tool, arguments]` pairs; `--pause`, `--keep-going`, `--out`). Suggest it when the person wants the same job repeated on many meshes.
 
 Errors arrive as text after "Error executing tool name:" and name the fix: no editor linked (turn on Agent link), service not running (run ./formsurface), or a timeout.

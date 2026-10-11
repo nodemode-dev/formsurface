@@ -9,6 +9,8 @@ description: The FormSurface FastAPI service, the editor relay and the MCP serve
 
 MCP client, then `mcp/server.py` (stdio, MCPServer from mcp 2.3.0), then `POST /api/agent {command, args, timeout}`, then the relay sends `{id, command, args}` over `/api/live` to the editor, which runs the handler and answers `{id, ok, result | error}`. No editor linked returns 409, an editor refusal 422, a timeout 504, each with a sentence the agent can act on.
 
+`mcp/batch.py` (`./formsurface batch`) imports the server module and calls `server.call_tool` in process, so batch steps get the same argument validation as MCP clients. In process, tool failures raise `ToolError` rather than returning an error result; the runner catches every exception per step and reports it as FAILED. On lavapipe, back-to-back heavy steps can drop the GPU device, which is what `--pause` is for.
+
 ## Adding or changing a tool
 
 1. Add or change the editor handler in `frontend/src/main.ts` (the `AgentLink` map). It must call the same engine methods and controls a person uses.
