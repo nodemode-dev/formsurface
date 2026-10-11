@@ -185,7 +185,8 @@ async def save_library(name: str, request: Request):
     return {"file": str(path)}
 
 
-TEMPLATE_SOURCES = {"basecolor", "normal_gl", "normal_dx", "roughness", "smoothness", "metallic", "height", "ao", "curvature", "thickness", "ao_high", "height_high", "opacity", "one", "zero"}
+TEMPLATE_SOURCES = {"basecolor", "normal_gl", "normal_dx", "roughness", "smoothness", "metallic", "height", "ao", "curvature", "thickness", "ao_high", "height_high", "opacity", "diffuse", "specular", "one", "zero"}
+RGB_SOURCES = {"basecolor", "normal_gl", "normal_dx", "diffuse", "specular"}
 SUFFIX = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 
 
@@ -218,7 +219,8 @@ async def save_template(name: str, request: Request):
             value = item.get(key)
             if value is None:
                 continue
-            if value not in TEMPLATE_SOURCES or (key == "rgb" and value not in {"basecolor", "normal_gl", "normal_dx"}):
+            color_only = value in {"diffuse", "specular"}
+            if value not in TEMPLATE_SOURCES or (key == "rgb" and value not in RGB_SOURCES) or (key != "rgb" and color_only):
                 raise HTTPException(400, f"Unknown source {value!r} for {key} in {item['suffix']}")
             entry[key] = value
         if "rgb" not in entry and "r" not in entry:
