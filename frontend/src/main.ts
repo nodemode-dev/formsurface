@@ -2,6 +2,7 @@ import init, { create_engine, type Engine } from './engine/pkg/fs_engine.js';
 import { loadHighPoly, loadMeshFile, sampleHighPoly, sampleMesh, type FlatMesh } from './engine/meshes';
 import { VERSION } from './version';
 import { LayerList, type LayerInfo } from './ui/layers';
+import { TextureSetList, type TextureSetInfo } from './ui/sets';
 import { api } from './ui/api';
 import { AgentLink } from './ui/agent-link';
 import { BUILT_IN_MATERIALS, SMART_MASKS, saveMaterial, savedMaterials, type SmartMaterial } from './ui/smart';
@@ -103,6 +104,32 @@ function layers(): LayerInfo[] {
   return engine ? JSON.parse(engine.layers_json()) as LayerInfo[] : [];
 }
 
+const setList = new TextureSetList($('texture-sets'), (index) => { selectTextureSet(index); });
+
+function textureSets(): TextureSetInfo[] {
+  return engine ? JSON.parse(engine.texture_sets_json()) as TextureSetInfo[] : [];
+}
+
+function refreshSets(): void {
+  if (engine) setList.render(textureSets(), engine.active_texture_set());
+}
+
+function selectTextureSet(index: number): TextureSetInfo {
+  const e = requireEngine();
+  const set = textureSets().find((s) => s.index === index);
+  if (!set) throw new Error(`No texture set ${index}`);
+  if (!e.select_texture_set(index)) throw new Error('Finish the stroke before switching texture sets');
+  const base = JSON.parse(e.base_json()) as { base_color: number[]; roughness: number; metallic: number };
+  $<HTMLInputElement>('m-color').value = `#${base.base_color.map((v) => Math.round(Math.pow(Math.max(0, v), 1 / 2.2) * 255).toString(16).padStart(2, '0')).join('')}`;
+  $<HTMLInputElement>('m-rough').value = String(base.roughness);
+  $<HTMLInputElement>('m-metal').value = String(base.metallic);
+  setOutput('m-rough'); setOutput('m-metal');
+  bakeState();
+  refreshLayers();
+  status(`Texture set ${set.name}: strokes, layers, bakes and the base material now apply to it`);
+  return set;
+}
+
 function refreshLayers(): void {
   if (!engine) return;
   const all = layers();
@@ -126,6 +153,7 @@ function refreshLayers(): void {
     if (isFilter) loadFilterControls(JSON.parse(engine.filter_settings(layer.id)) as Record<string, number>);
     if (isFilter) target.disabled = true;
   }
+  refreshSets();
 }
 
 const FILL_FIELDS: [string, string][] = [
@@ -234,9 +262,10 @@ function applyMesh(next: FlatMesh, name: string): void {
   if (!engine) return;
   mesh = next;
   meshName = name;
-  const info = engine.set_mesh(next.positions, next.normals, next.uvs, next.indices);
+  const info = engine.set_mesh(next.positions, next.normals, next.uvs, next.indices, next.materials, JSON.stringify(next.materialNames));
   $('mesh-info').textContent = `${name} · ${info}`;
   bakeState();
+  refreshLayers();
   status(next.skipped ? `Loaded ${name}. ${next.skipped} part(s) without UVs were skipped.` : `Loaded ${name}`);
 }
 
@@ -565,7 +594,7 @@ fileInput.addEventListener('change', async () => {
 });
 
 $('tex-size').addEventListener('change', () => {
-  status('Texture size changed: the texture set was rebuilt and its layers cleared.');
+  status('Texture size changed: the texture sets were rebuilt and their layers cleared.');
   void boot();
 });
 
@@ -581,11 +610,23 @@ async function pngOf(bytes: Uint8Array, size: number): Promise<Blob> {
 async function renderMaps(): Promise<Map<string, Blob>> {
   const maps = new Map<string, Blob>();
   if (!engine) return maps;
-  const size = engine.texture_size();
-  const wanted = [0, 1, 2, 3, 4, ...(engine.is_baked() ? [5, 6, 7, 8, 9] : []), ...(engine.is_high_baked() ? [10, 11] : [])];
-  for (const i of wanted) {
-    const bytes = await engine.export_channel(i) as Uint8Array;
-    maps.set(CHANNELS[i], await pngOf(bytes, size));
+  const e = engine;
+  const size = e.texture_size();
+  const sets = textureSets();
+  const original = e.active_texture_set();
+  try {
+    for (const set of sets) {
+      if (!e.select_texture_set(set.index)) throw new Error('Finish the stroke before exporting');
+      const wanted = [0, 1, 2, 3, 4, ...(e.is_baked() ? [5, 6, 7, 8, 9] : []), ...(e.is_high_baked() ? [10, 11] : [])];
+      const prefix = sets.length > 1 ? `${set.material.replace(/[^A-Za-z0-9_-]/g, '_')}_` : '';
+      const suffix = set.tiled ? `.${set.udim}` : '';
+      for (const i of wanted) {
+        const bytes = await e.export_channel(i) as Uint8Array;
+        maps.set(`${prefix}${CHANNELS[i]}${suffix}`, await pngOf(bytes, size));
+      }
+    }
+  } finally {
+    e.select_texture_set(original);
   }
   return maps;
 }
@@ -667,6 +708,8 @@ function snapshotState(): Record<string, unknown> {
     mesh: meshName,
     mesh_info: $('mesh-info').textContent,
     texture_size: e.texture_size(),
+    texture_sets: textureSets(),
+    active_texture_set: e.active_texture_set(),
     layers: layers(),
     active_layer: e.active_layer(),
     tool,
@@ -791,6 +834,14 @@ const agentLink = new AgentLink({
     if (paint_target === 'mask' || paint_target === 'layer') e.set_paint_target(paint_target === 'mask');
     refreshLayers();
     return { layers: layers(), paints_mask: e.paint_target_is_mask() };
+  },
+  texture_sets: () => ({ texture_sets: textureSets(), active_texture_set: requireEngine().active_texture_set() }),
+  select_texture_set: ({ index, name }) => {
+    const all = textureSets();
+    const match = name !== undefined && name !== null ? all.find((s) => s.name === String(name) || s.material === String(name)) : all.find((s) => s.index === Number(index));
+    if (!match) throw new Error(`No texture set ${name ?? index}. Sets: ${all.map((s) => s.name).join(', ')}`);
+    const set = selectTextureSet(match.index);
+    return { active_texture_set: set, layers: layers(), active_layer: requireEngine().active_layer() };
   },
   move_layer: ({ id, offset }) => { requireEngine().move_layer(Number(id), Number(offset)); refreshLayers(); return { layers: layers() }; },
   remove_layer: ({ id }) => {

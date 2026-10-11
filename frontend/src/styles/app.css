@@ -53,6 +53,11 @@ svg { width: var(--icon); height: var(--icon); flex: none; }
 .layer .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layer-props { margin-top: var(--space-2); }
 .layer .kind { font: 10px var(--mono); color: var(--text-muted); margin-left: var(--space-1); }
+.sets { display: flex; flex-direction: column; gap: 2px; min-height: 34px; }
+.set-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--space-1); height: 30px; padding: 0 var(--space-2); border-radius: var(--radius); background: var(--surface-2); border: 1px solid transparent; cursor: pointer; }
+.set-row.active { border-color: var(--accent); background: var(--accent-soft); }
+.set-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.set-row .kind { font: 10px var(--mono); color: var(--text-muted); }
 #fill-section[aria-disabled="true"], #filter-section[aria-disabled="true"] { opacity: .45; }
 #fill-section[aria-disabled="true"] input, #fill-section[aria-disabled="true"] select, #fill-section[aria-disabled="true"] button,
 #filter-section[aria-disabled="true"] input { pointer-events: none; }

@@ -43,6 +43,7 @@
         <button data-sample="knot">Torus knot (many UV seams)</button>
         <button data-sample="torus">Torus</button>
         <button data-sample="capsule">Capsule</button>
+        <button data-sample="sets">Figure (2 materials, UDIM 1001 and 1002)</button>
       </div>
     </div>
     <div class="row" style="grid-template-columns:auto 96px;width:auto;gap:6px"><label for="tex-size">Texture</label>
@@ -126,6 +127,10 @@
       <div class="channel"><input type="checkbox" id="c-use-height" aria-label="Paint height"><label for="c-height">Height</label><input id="c-height" type="range" min="0" max="1" step="0.01" value="0.75"><output for="c-height">0.75</output></div>
     </section>
     <section class="section">
+      <h2>Texture sets</h2>
+      <div class="sets" id="texture-sets"></div>
+    </section>
+    <section class="section">
       <h2>Layers
         <span>
           <button class="icon-btn" id="layer-add" title="Add paint layer"><svg><use href="#i-plus"/></svg></button>
@@ -150,7 +155,7 @@
     <section class="section">
       <h2>Smart materials</h2>
       <div class="row" style="grid-template-columns:1fr 64px"><select id="sm-list" aria-label="Smart material"></select><button class="btn" id="sm-apply" style="justify-content:center">Apply</button></div>
-      <div class="row" style="grid-template-columns:1fr 64px"><input id="sm-name" type="text" placeholder="Save fill and filter layers as" style="height:28px;padding:0 8px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius)"><button class="btn" id="sm-save" style="justify-content:center">Save</button></div>
+      <div class="row" style="grid-template-columns:1fr 64px"><input id="sm-name" type="text" placeholder="Save fill and filter layers as" style="min-width:0;height:28px;padding:0 8px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius)"><button class="btn" id="sm-save" style="justify-content:center">Save</button></div>
       <div class="row" style="grid-template-columns:1fr 64px"><select id="sm-mask" aria-label="Smart mask"></select><button class="btn" id="sm-mask-apply" style="justify-content:center" title="Apply to the active fill layer">Mask</button></div>
     </section>
     <section class="section" id="fill-section">

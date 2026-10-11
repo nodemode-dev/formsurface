@@ -9,6 +9,8 @@ export interface FlatMesh {
   uvs: Float32Array;
   indices: Uint32Array;
   parts: Uint32Array;
+  materials: Uint32Array;
+  materialNames: string[];
   skipped: number;
 }
 
@@ -19,6 +21,14 @@ function flatten(root: THREE.Object3D, requireUv = true): FlatMesh {
   const uvs: number[] = [];
   const indices: number[] = [];
   const parts: number[] = [];
+  const materials: number[] = [];
+  const materialNames: string[] = [];
+  const materialId = (material: THREE.Material | undefined, fallback: string): number => {
+    const name = (material?.name || fallback).trim();
+    let id = materialNames.indexOf(name);
+    if (id < 0) { id = materialNames.length; materialNames.push(name); }
+    return id;
+  };
   let part = 0;
   let skipped = 0;
   const p = new THREE.Vector3();
@@ -46,10 +56,23 @@ function flatten(root: THREE.Object3D, requireUv = true): FlatMesh {
     const index = geometry.getIndex();
     if (index) for (let i = 0; i < index.count; i++) indices.push(base + index.getX(i));
     else for (let i = 0; i < pos.count; i++) indices.push(base + i);
-    for (let t = 0; t < (indices.length - before) / 3; t++) parts.push(part);
+    const count = (indices.length - before) / 3;
+    const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const perTriangle = new Array<number>(count).fill(materialId(list[0], 'default'));
+    if (Array.isArray(mesh.material)) {
+      for (const group of geometry.groups) {
+        const slot = group.materialIndex ?? 0;
+        const id = materialId(list[slot], `material_${slot}`);
+        for (let t = Math.floor(group.start / 3); t < Math.min(count, Math.floor((group.start + group.count) / 3)); t++) perTriangle[t] = id;
+      }
+    }
+    for (let t = 0; t < count; t++) { parts.push(part); materials.push(perTriangle[t]); }
     part++;
   });
-  return { positions: new Float32Array(positions), normals: new Float32Array(normals), uvs: new Float32Array(uvs), indices: new Uint32Array(indices), parts: new Uint32Array(parts), skipped };
+  return {
+    positions: new Float32Array(positions), normals: new Float32Array(normals), uvs: new Float32Array(uvs), indices: new Uint32Array(indices),
+    parts: new Uint32Array(parts), materials: new Uint32Array(materials), materialNames, skipped,
+  };
 }
 
 export async function loadHighPoly(name: string, data: ArrayBuffer): Promise<FlatMesh> {
@@ -90,7 +113,29 @@ export async function loadMeshFile(file: File): Promise<FlatMesh> {
   throw new Error('Unsupported mesh format. Use glTF, GLB, OBJ or FBX.');
 }
 
+function namedMesh(geometry: THREE.BufferGeometry, material: string): THREE.Mesh {
+  const standard = new THREE.MeshStandardMaterial();
+  standard.name = material;
+  return new THREE.Mesh(geometry, standard);
+}
+
+function sampleSets(): FlatMesh {
+  const group = new THREE.Group();
+  group.add(namedMesh(new THREE.CapsuleGeometry(0.5, 1.0, 16, 48), 'body'));
+  const ring = namedMesh(new THREE.TorusGeometry(0.56, 0.09, 32, 128), 'trim');
+  ring.rotation.x = Math.PI / 2;
+  group.add(ring);
+  const headGeometry = new THREE.SphereGeometry(0.34, 64, 32);
+  const uv = headGeometry.getAttribute('uv');
+  for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) + 1);
+  const head = namedMesh(headGeometry, 'body');
+  head.position.y = 1.32;
+  group.add(head);
+  return flatten(group);
+}
+
 export function sampleMesh(kind: string): FlatMesh {
+  if (kind === 'sets') return sampleSets();
   const geometry =
     kind === 'knot' ? new THREE.TorusKnotGeometry(0.7, 0.24, 360, 48) :
     kind === 'torus' ? new THREE.TorusGeometry(0.8, 0.32, 96, 192) :
