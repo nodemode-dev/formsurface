@@ -8,6 +8,8 @@ import { TEMPLATES, encodePng, halfToUnit16, pack, sourcesOf, validateMaps, type
 import { api } from './ui/api';
 import { AgentLink } from './ui/agent-link';
 import { BUILT_IN_MATERIALS, SMART_MASKS, saveMaterial, savedMaterials, type SmartMaterial } from './ui/smart';
+import { clearOverlay, drawPath, pathSamples, type Vec3 } from './ui/path';
+import { fontLabel, loadFont, textImage } from './ui/text';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>('canvas');
@@ -16,7 +18,10 @@ const statusEl = $('status');
 let engine: Engine | undefined;
 let mesh: FlatMesh | undefined;
 let meshName = 'sphere';
-let tool: 'paint' | 'erase' | 'polyfill' | 'clone' = 'paint';
+type Tool = 'paint' | 'erase' | 'polyfill' | 'clone' | 'path';
+let tool: Tool = 'paint';
+const pathOverlay = $<HTMLCanvasElement>('path-overlay');
+const pathPoints: Vec3[] = [];
 let mirror = false;
 let painting = false;
 let nav: 'orbit' | 'pan' | undefined;
@@ -332,14 +337,60 @@ function updateActiveLayer(patch: Partial<LayerInfo>): void {
   refreshLayers();
 }
 
-function setTool(next: 'paint' | 'erase' | 'polyfill' | 'clone'): void {
+function setTool(next: Tool): void {
   tool = next;
   $('tool-paint').setAttribute('aria-pressed', String(next === 'paint'));
   $('tool-erase').setAttribute('aria-pressed', String(next === 'erase'));
   $('tool-polyfill').setAttribute('aria-pressed', String(next === 'polyfill'));
   $('tool-clone').setAttribute('aria-pressed', String(next === 'clone'));
+  $('tool-path').setAttribute('aria-pressed', String(next === 'path'));
   if (next === 'clone' && engine && !engine.has_clone_source()) status('Clone: Ctrl+click the mesh to set the source, then paint where the copy should go');
+  if (next === 'path') status('Path: click points on the surface, then Enter or Stroke path paints a curve through them with the current brush');
+  if (next !== 'path') { pathPoints.length = 0; clearOverlay(pathOverlay); }
   syncBrush();
+}
+
+function setView2d(on: boolean): boolean {
+  const e = requireEngine();
+  if (!e.set_view_2d(on)) throw new Error('Finish the stroke first');
+  $('view-2d').setAttribute('aria-pressed', String(on));
+  if (on && tool === 'path') setTool('paint');
+  status(on ? '2D view: the active texture set\'s UV layout. Strokes paint straight into the texture; U returns to 3D' : '3D view');
+  return on;
+}
+
+function addPathPoint(x: number, y: number): boolean {
+  const p = requireEngine().surface_point(x, y);
+  if (p.length !== 3) return false;
+  pathPoints.push([p[0], p[1], p[2]]);
+  return true;
+}
+
+const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+async function strokePath(closed = checked('p-closed'), smooth = checked('p-smooth'), erase = checked('p-erase')): Promise<number> {
+  const e = requireEngine();
+  if (pathPoints.length < 2) throw new Error('A path needs at least two points on the surface');
+  if (e.view_2d()) throw new Error('The path tool works in the 3D view');
+  const screen = pathSamples(pathPoints, closed && pathPoints.length > 2, smooth).map((p) => e.screen_point(p[0], p[1], p[2]));
+  const first = screen.findIndex((s) => s.length === 2);
+  if (first < 0) throw new Error('The path is behind the camera');
+  const keep = tool;
+  if (erase) { tool = 'erase'; syncBrush(); }
+  let landed = 0;
+  try {
+    if (!e.stroke_begin(screen[first][0], screen[first][1], 1)) throw new Error('The active layer cannot take paint: pick a paint layer or a mask');
+    for (const s of screen.slice(first + 1)) {
+      if (s.length !== 2) continue;
+      e.stroke_to(s[0], s[1], 1);
+      landed++;
+      if (landed % 12 === 0) await nextFrame();
+    }
+    e.stroke_end();
+  } finally {
+    if (erase) { tool = keep; syncBrush(); }
+  }
+  return landed;
 }
 
 function resize(): void {
@@ -429,6 +480,12 @@ canvas.addEventListener('pointerdown', (event) => {
     }
     return;
   }
+  if (tool === 'path') {
+    if (engine.view_2d()) { status('The path tool works in the 3D view; press U to return to it', true); return; }
+    if (addPathPoint(x, y)) status(`Path: ${pathPoints.length} point${pathPoints.length === 1 ? '' : 's'}; Enter strokes it, Backspace removes the last, Esc clears`);
+    else status('Click on the mesh to place a path point', true);
+    return;
+  }
   if (tool === 'polyfill') {
     try {
       const count = engine.polygon_fill(x, y, Number(sel('pf-mode')));
@@ -473,11 +530,21 @@ canvas.addEventListener('pointerleave', () => { if (!painting) engine?.clear_hov
 canvas.addEventListener('wheel', (event) => { event.preventDefault(); engine?.zoom(event.deltaY); }, { passive: false });
 
 window.addEventListener('keydown', (event) => {
-  if (!engine || (event.target as HTMLElement).tagName === 'INPUT' && (event.target as HTMLInputElement).type !== 'range') return;
+  if (!engine || (event.target as HTMLElement).tagName === 'INPUT' && !['range', 'checkbox'].includes((event.target as HTMLInputElement).type)) return;
   const key = event.key.toLowerCase();
   if ((event.ctrlKey || event.metaKey) && key === 'z') { event.preventDefault(); if (event.shiftKey) engine.redo(); else engine.undo(); return; }
   if ((event.ctrlKey || event.metaKey) && key === 'y') { event.preventDefault(); engine.redo(); return; }
+  if (tool === 'path' && pathPoints.length && (key === 'enter' || key === 'backspace' || key === 'escape')) {
+    event.preventDefault();
+    if (key === 'enter') runPathStroke();
+    else if (key === 'backspace') pathPoints.pop();
+    else pathPoints.length = 0;
+    if (!pathPoints.length) clearOverlay(pathOverlay);
+    return;
+  }
   if (key === 'b') setTool('paint');
+  else if (key === 'l') setTool('path');
+  else if (key === 'u') { try { setView2d(!engine.view_2d()); } catch (error) { status(error instanceof Error ? error.message : String(error), true); } }
   else if (key === 'p') setTool('polyfill');
   else if (key === 'c' && !event.ctrlKey && !event.metaKey) setTool('clone');
   else if (key === 't') setQuickMask(engine.quick_mask_mode() === 1 ? 2 : 1);
@@ -505,6 +572,97 @@ $('tool-paint').addEventListener('click', () => setTool('paint'));
 $('tool-erase').addEventListener('click', () => setTool('erase'));
 $('tool-polyfill').addEventListener('click', () => setTool('polyfill'));
 $('tool-clone').addEventListener('click', () => setTool('clone'));
+$('tool-path').addEventListener('click', () => setTool('path'));
+$('view-2d').addEventListener('click', () => { if (!engine) return; try { setView2d(!engine.view_2d()); } catch (error) { status(error instanceof Error ? error.message : String(error), true); } });
+
+let pathBusy = false;
+
+function runPathStroke(): void {
+  if (pathBusy) return;
+  pathBusy = true;
+  strokePath().then((landed) => {
+    pathPoints.length = 0;
+    clearOverlay(pathOverlay);
+    status(`Path stroked through ${landed} samples (Ctrl+Z undoes it)`);
+  }, (error) => status(error instanceof Error ? error.message : String(error), true)).finally(() => { pathBusy = false; });
+}
+$('p-stroke').addEventListener('click', runPathStroke);
+$('p-clear').addEventListener('click', () => { pathPoints.length = 0; clearOverlay(pathOverlay); status('Path cleared'); });
+
+function drawPathOverlay(): void {
+  if (!engine || !pathPoints.length) return;
+  const e = engine;
+  const ratio = pathOverlay.getBoundingClientRect().width ? pathOverlay.getBoundingClientRect().width / canvas.getBoundingClientRect().width : 1;
+  const toOverlay = (p: Vec3): [number, number] | undefined => {
+    const s = e.screen_point(p[0], p[1], p[2]);
+    return s.length === 2 ? [s[0] * ratio, s[1] * ratio] : undefined;
+  };
+  const closed = checked('p-closed') && pathPoints.length > 2;
+  drawPath(pathOverlay, pathSamples(pathPoints, closed, checked('p-smooth'), 16).map(toOverlay), pathPoints.map(toOverlay));
+}
+
+function useImage(target: 'alpha' | 'stencil' | 'fill' | 'mask', w: number, h: number, data: Uint8Array, label: string): void {
+  const e = requireEngine();
+  if (target === 'mask') {
+    e.mask_from_image(e.active_layer(), w, h, data);
+    e.set_paint_target(true);
+    refreshLayers();
+    status(`Mask loaded from ${label}: white shows the layer, mapped over the UV layout`);
+    return;
+  }
+  if (target === 'fill') {
+    const id = e.active_layer();
+    if (layers().find((l) => l.id === id)?.kind !== 'fill') throw new Error('Select a fill layer first');
+    e.set_fill_image(id, w, h, data);
+    const option = $<HTMLSelectElement>('f-pattern').querySelector<HTMLOptionElement>('option[value="image"]')!;
+    option.disabled = false;
+    $<HTMLSelectElement>('f-pattern').value = 'image';
+    syncFill();
+    status(`Fill image ${label} loaded`);
+    return;
+  }
+  if (target === 'alpha') {
+    e.set_alpha(w, h, data);
+    const option = $<HTMLSelectElement>('b-tip').querySelector<HTMLOptionElement>('option[value="image"]')!;
+    option.disabled = false;
+    $<HTMLSelectElement>('b-tip').value = 'image';
+    status(`Brush alpha ${label} loaded`);
+  } else {
+    e.set_stencil(w, h, data);
+    const on = $<HTMLInputElement>('s-on');
+    on.disabled = false;
+    on.checked = true;
+    status(`Stencil ${label} loaded and enabled`);
+  }
+  syncBrush();
+}
+
+function useText(target: 'alpha' | 'stencil' | 'fill', text = $<HTMLInputElement>('t-text').value, font = sel('t-font'), bold = checked('t-bold')): { width: number; height: number } {
+  const image = textImage(text, font, bold, target);
+  if (target === 'fill') $<HTMLInputElement>('f-imgcolor').checked = false;
+  useImage(target, image.w, image.h, image.data, `text "${text.trim().slice(0, 24)}" in ${fontLabel(font)}`);
+  return { width: image.w, height: image.h };
+}
+
+for (const target of ['alpha', 'stencil', 'fill'] as const) {
+  $(`t-${target}`).addEventListener('click', () => { try { useText(target); } catch (error) { status(error instanceof Error ? error.message : String(error), true); } });
+}
+const fontInput = $<HTMLInputElement>('font-file');
+$('t-font-load').addEventListener('click', () => fontInput.click());
+fontInput.addEventListener('change', async () => {
+  const file = fontInput.files?.[0];
+  fontInput.value = '';
+  if (!file) return;
+  try {
+    const family = await loadFont(file);
+    const select = $<HTMLSelectElement>('t-font');
+    if (!select.querySelector(`option[value="${CSS.escape(family)}"]`)) select.add(new Option(file.name, family));
+    select.value = family;
+    status(`Font ${file.name} loaded`);
+  } catch (error) {
+    status(`Could not load ${file.name}: ${error instanceof Error ? error.message : String(error)}`, true);
+  }
+});
 
 function downloadBlob(blob: Blob, name: string): void {
   const link = document.createElement('a');
@@ -583,37 +741,7 @@ imageInput.addEventListener('change', async () => {
   if (!file || !engine) return;
   try {
     const { w, h, data } = await imageRgba(file, imageTarget !== 'fill');
-    if (imageTarget === 'mask') {
-      engine.mask_from_image(engine.active_layer(), w, h, data);
-      engine.set_paint_target(true);
-      refreshLayers();
-      status(`Mask loaded from ${file.name}: white shows the layer, mapped over the UV layout`);
-      return;
-    }
-    if (imageTarget === 'fill') {
-      const id = engine.active_layer();
-      engine.set_fill_image(id, w, h, data);
-      const option = $<HTMLSelectElement>('f-pattern').querySelector<HTMLOptionElement>('option[value="image"]')!;
-      option.disabled = false;
-      $<HTMLSelectElement>('f-pattern').value = 'image';
-      syncFill();
-      status(`Fill image ${file.name} loaded`);
-      return;
-    }
-    if (imageTarget === 'alpha') {
-      engine.set_alpha(w, h, data);
-      const option = $<HTMLSelectElement>('b-tip').querySelector<HTMLOptionElement>('option[value="image"]')!;
-      option.disabled = false;
-      $<HTMLSelectElement>('b-tip').value = 'image';
-      status(`Brush alpha ${file.name} loaded`);
-    } else {
-      engine.set_stencil(w, h, data);
-      const on = $<HTMLInputElement>('s-on');
-      on.disabled = false;
-      on.checked = true;
-      status(`Stencil ${file.name} loaded and enabled`);
-    }
-    syncBrush();
+    useImage(imageTarget, w, h, data, file.name);
   } catch (error) {
     status(error instanceof Error ? error.message : String(error), true);
   }
@@ -1014,6 +1142,8 @@ function snapshotState(): Record<string, unknown> {
     active_texture_set: e.active_texture_set(),
     quick_mask: ['off', 'edit', 'on'][e.quick_mask_mode()],
     uv_tiles: e.uv_tiles(),
+    view: e.view_2d() ? '2d' : '3d',
+    path_points: pathPoints.length,
     layers: layers(),
     active_layer: e.active_layer(),
     tool,
@@ -1168,6 +1298,47 @@ const agentLink = new AgentLink({
     setTool('clone');
     return { tool: 'clone', source_set: true };
   },
+  view_2d: ({ on, center_u, center_v, zoom }) => {
+    const e = requireEngine();
+    if (on !== undefined && on !== null && Boolean(on) !== e.view_2d()) setView2d(Boolean(on));
+    if (e.view_2d() && (center_u !== undefined || center_v !== undefined || zoom !== undefined)) {
+      e.frame_mesh();
+      const [w, h] = e.viewport_size();
+      const z = Math.max(0.25, Math.min(32, Number(zoom ?? 1)));
+      if (z !== 1) e.zoom((1 - z) * 1000);
+      const [u, v] = e.uv_at(w / 2, h / 2);
+      const scale = (e.uv_at(w / 2 + 100, h / 2)[0] - u) / 100;
+      e.pan(-(Number(center_u ?? 0.5) - u) / scale, -(Number(center_v ?? 0.5) - v) / scale);
+    }
+    return { view: e.view_2d() ? '2d' : '3d' };
+  },
+  paint_path: async ({ points, closed, smooth, erase }) => {
+    const e = requireEngine();
+    if (!Array.isArray(points) || points.length < 2) throw new Error('points is a list of at least two [x, y] pairs in 0 to 1');
+    if (e.view_2d()) throw new Error('The path tool works in the 3D view; call formsurface_view_2d with on false first');
+    const [w, h] = e.viewport_size();
+    pathPoints.length = 0;
+    let missed = 0;
+    for (const p of points as unknown[]) {
+      const [x, y] = Array.isArray(p) ? p.map(Number) : [NaN, NaN];
+      if (!addPathPoint(x * w, y * h)) missed++;
+    }
+    try {
+      const samples = await strokePath(Boolean(closed), smooth === undefined ? true : Boolean(smooth), Boolean(erase));
+      return { control_points: pathPoints.length, missed_points: missed, samples, layer: e.active_layer() };
+    } finally {
+      pathPoints.length = 0;
+      clearOverlay(pathOverlay);
+    }
+  },
+  text_resource: ({ text, font, bold, target }) => {
+    const where = String(target ?? 'alpha');
+    if (where !== 'alpha' && where !== 'stencil' && where !== 'fill') throw new Error('target is alpha, stencil or fill');
+    const family = String(font ?? 'sans-serif');
+    if (!['sans-serif', 'serif', 'monospace'].includes(family) && !$<HTMLSelectElement>('t-font').querySelector(`option[value="${CSS.escape(family)}"]`)) throw new Error('font is sans-serif, serif, monospace or a font the person loaded in the Text section');
+    const size = useText(where, String(text ?? ''), family, bold === undefined ? true : Boolean(bold));
+    return { target: where, image: size, brush: snapshotState().brush };
+  },
   uv_tiles: ({ on }) => {
     if (on !== undefined && on !== null) setUvTiles(Boolean(on));
     return { uv_tiles: requireEngine().uv_tiles(), texture_sets: textureSets() };
@@ -1282,6 +1453,7 @@ let lastFps = performance.now();
 function tick(now: number): void {
   resize();
   engine?.frame();
+  drawPathOverlay();
   frames++;
   if (now - lastFps > 1000) {
     $('fps').textContent = `${Math.round((frames * 1000) / (now - lastFps))} fps`;
