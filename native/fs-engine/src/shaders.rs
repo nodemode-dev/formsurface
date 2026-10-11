@@ -417,12 +417,98 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
 }
 "#;
 
+pub const BLEND: &str = r#"
+fn rgb_to_hsv(c: vec3<f32>) -> vec3<f32> {
+    let mx = max(c.r, max(c.g, c.b));
+    let mn = min(c.r, min(c.g, c.b));
+    let d = mx - mn;
+    var h = 0.0;
+    if (d > 1e-6) {
+        if (mx == c.r) { h = (c.g - c.b) / d; }
+        else if (mx == c.g) { h = 2.0 + (c.b - c.r) / d; }
+        else { h = 4.0 + (c.r - c.g) / d; }
+        h = fract(h / 6.0 + 1.0);
+    }
+    return vec3<f32>(h, select(0.0, d / mx, mx > 1e-6), mx);
+}
+
+fn hsv_to_rgb(c: vec3<f32>) -> vec3<f32> {
+    let k = vec3<f32>(1.0, 2.0 / 3.0, 1.0 / 3.0);
+    let p = abs(fract(vec3<f32>(c.x) + k) * 6.0 - 3.0);
+    return c.z * mix(vec3<f32>(1.0), clamp(p - 1.0, vec3<f32>(0.0), vec3<f32>(1.0)), c.y);
+}
+
+fn soft_light(a: vec3<f32>, b: vec3<f32>) -> vec3<f32> {
+    let d = select(sqrt(a), ((16.0 * a - 12.0) * a + 4.0) * a, a <= vec3<f32>(0.25));
+    return select(a + (2.0 * b - 1.0) * (d - a), a - (1.0 - 2.0 * b) * a * (1.0 - a), b <= vec3<f32>(0.5));
+}
+
+fn blend_any(m: u32, a: vec3<f32>, b: vec3<f32>, values: bool) -> vec3<f32> {
+    let e = vec3<f32>(1e-4);
+    switch m {
+        case 1u: { return a * b; }
+        case 2u: { return 1.0 - (1.0 - a) * (1.0 - b); }
+        case 3u: { return select(1.0 - 2.0 * (1.0 - a) * (1.0 - b), 2.0 * a * b, a < vec3<f32>(0.5)); }
+        case 4u: { return a + b; }
+        case 5u: { return a - b; }
+        case 6u: { return min(a, b); }
+        case 7u: { return max(a, b); }
+        case 8u: { return a; }
+        case 9u: { return b; }
+        case 10u: { return a / max(b, e); }
+        case 11u: { return b / max(a, e); }
+        case 12u: { return abs(a - b); }
+        case 13u: { return a + b - 2.0 * a * b; }
+        case 14u: { return a + 2.0 * b - 1.0; }
+        case 15u: { return a + b - 1.0; }
+        case 16u: { return 1.0 - (1.0 - a) / max(b, e); }
+        case 17u: { return a / max(1.0 - b, e); }
+        case 18u: { return soft_light(a, b); }
+        case 19u: { return select(1.0 - 2.0 * (1.0 - a) * (1.0 - b), 2.0 * a * b, b < vec3<f32>(0.5)); }
+        case 20u: { return select(a / max(2.0 * (1.0 - b), e), 1.0 - (1.0 - a) / max(2.0 * b, e), b < vec3<f32>(0.5)); }
+        case 21u: { return a + 2.0 * b - 1.0; }
+        case 22u: { return select(max(a, 2.0 * b - 1.0), min(a, 2.0 * b), b < vec3<f32>(0.5)); }
+        case 23u: {
+            if (values) { return b; }
+            let l = dot(a, vec3<f32>(0.2126, 0.7152, 0.0722));
+            return b * l / max(dot(b, vec3<f32>(0.2126, 0.7152, 0.0722)), 1e-4);
+        }
+        case 24u: {
+            if (values) { return b; }
+            let ha = rgb_to_hsv(a);
+            return hsv_to_rgb(vec3<f32>(ha.x, rgb_to_hsv(b).y, ha.z));
+        }
+        case 25u: {
+            if (values) { return b; }
+            let hb = rgb_to_hsv(b);
+            return hsv_to_rgb(vec3<f32>(hb.x, hb.y, rgb_to_hsv(a).z));
+        }
+        case 26u: {
+            if (values) { return b; }
+            let ha = rgb_to_hsv(a);
+            return hsv_to_rgb(vec3<f32>(ha.x, ha.y, rgb_to_hsv(b).z));
+        }
+        case 27u, 28u: {
+            if (!values) { return b; }
+            return vec3<f32>(b.x, b.y, a.z + b.z - 0.5);
+        }
+        case 29u: {
+            if (!values) { return b; }
+            return vec3<f32>(b.x, b.y, a.z - (b.z - 0.5));
+        }
+        default: { return b; }
+    }
+}
+"#;
+
 pub const COMPOSITE: &str = r#"
 struct Layer {
     opacity: vec4<f32>,
     mode: vec4<u32>,
     base_color: vec4<f32>,
     base_values: vec4<f32>,
+    levels: vec4<f32>,
+    style: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> layer: Layer;
 @group(0) @binding(1) var prev_color: texture_2d<f32>;
@@ -434,19 +520,6 @@ struct Layer {
 @group(0) @binding(7) var uv_cover: texture_2d<f32>;
 
 struct Out { @location(0) color: vec4<f32>, @location(1) mat: vec4<f32>, };
-
-fn blend3(m: u32, a: vec3<f32>, b: vec3<f32>) -> vec3<f32> {
-    switch m {
-        case 1u: { return a * b; }
-        case 2u: { return 1.0 - (1.0 - a) * (1.0 - b); }
-        case 3u: { return select(1.0 - 2.0 * (1.0 - a) * (1.0 - b), 2.0 * a * b, a < vec3<f32>(0.5)); }
-        case 4u: { return a + b; }
-        case 5u: { return a - b; }
-        case 6u: { return min(a, b); }
-        case 7u: { return max(a, b); }
-        default: { return b; }
-    }
-}
 
 @fragment
 fn fs(@builtin(position) pos: vec4<f32>) -> Out {
@@ -467,6 +540,13 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     if (layer.mode.z == 1u) {
         var pcb = pc.rgb;
         var pmb = pm.rgb;
+        let block = i32(layer.style.y);
+        if (block > 1) {
+            let dims_p = vec2<i32>(textureDimensions(prev_color));
+            let q = clamp((p / vec2<i32>(block)) * block + vec2<i32>(block / 2), vec2<i32>(0), dims_p - vec2<i32>(1));
+            pcb = textureLoad(prev_color, q, 0).rgb;
+            pmb = textureLoad(prev_mat, q, 0).rgb;
+        }
         let radius = layer.opacity.z;
         let sharpen = layer.opacity.w;
         if (radius > 0.5 || sharpen > 0.0) {
@@ -499,6 +579,10 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
             }
         }
         var c = pow(max(pcb, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.2));
+        c = clamp((c - layer.levels.x) / max(layer.levels.y - layer.levels.x, 1e-3), vec3<f32>(0.0), vec3<f32>(1.0));
+        c = layer.levels.z + c * (layer.levels.w - layer.levels.z);
+        if (layer.style.z > 0.5) { c = 1.0 - c; }
+        if (layer.style.x > 1.5) { c = clamp(floor(c * layer.style.x) / (layer.style.x - 1.0), vec3<f32>(0.0), vec3<f32>(1.0)); }
         c = (c - 0.5) * (1.0 + layer.base_color.y) + 0.5 + layer.base_color.x;
         let l = dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
         c = mix(vec3<f32>(l), c, layer.base_color.w);
@@ -514,11 +598,11 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     var col = pc.rgb;
     if (lc.a > 1e-5) {
         let straight = lc.rgb / lc.a;
-        col = mix(pc.rgb, clamp(blend3(layer.mode.x, pc.rgb, straight), vec3<f32>(0.0), vec3<f32>(1.0)), lc.a * op);
+        col = mix(pc.rgb, clamp(blend_any(layer.mode.x, pc.rgb, straight, false), vec3<f32>(0.0), vec3<f32>(1.0)), lc.a * op);
     }
     var vals = pm.rgb;
     let straight_v = select(vec3<f32>(0.0), lv.rgb / max(lk.rgb, vec3<f32>(1e-5)), lk.rgb > vec3<f32>(1e-5));
-    vals = mix(pm.rgb, clamp(blend3(layer.mode.x, pm.rgb, straight_v), vec3<f32>(0.0), vec3<f32>(1.0)), lk.rgb * op);
+    vals = mix(pm.rgb, clamp(blend_any(layer.mode.x, pm.rgb, straight_v, true), vec3<f32>(0.0), vec3<f32>(1.0)), lk.rgb * op);
     o.color = vec4<f32>(col, 1.0);
     o.mat = vec4<f32>(vals, 1.0);
     return o;
@@ -779,19 +863,6 @@ struct Merge {
 
 struct Out { @location(0) color: vec4<f32>, @location(1) val: vec4<f32>, @location(2) cov: vec4<f32>, };
 
-fn blend3(m: u32, a: vec3<f32>, b: vec3<f32>) -> vec3<f32> {
-    switch m {
-        case 1u: { return a * b; }
-        case 2u: { return 1.0 - (1.0 - a) * (1.0 - b); }
-        case 3u: { return select(1.0 - 2.0 * (1.0 - a) * (1.0 - b), 2.0 * a * b, a < vec3<f32>(0.5)); }
-        case 4u: { return a + b; }
-        case 5u: { return a - b; }
-        case 6u: { return min(a, b); }
-        case 7u: { return max(a, b); }
-        default: { return b; }
-    }
-}
-
 @fragment
 fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     let p = vec2<i32>(pos.xy);
@@ -809,7 +880,7 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     let ab = clamp(bc.a, 0.0, 1.0) * kb;
     let top_rgb = tc.rgb / max(tc.a, 1e-4);
     let bottom_rgb = bc.rgb / max(bc.a, 1e-4);
-    let blended = mix(top_rgb, blend3(merge.mode.x, bottom_rgb, top_rgb), select(0.0, 1.0, ab > 0.0));
+    let blended = mix(top_rgb, blend_any(merge.mode.x, bottom_rgb, top_rgb, false), select(0.0, 1.0, ab > 0.0));
     let color_a = at + ab * (1.0 - at);
     let color_pm = at * (ab * blended + (1.0 - ab) * top_rgb) + (1.0 - at) * ab * bottom_rgb;
     let vt = clamp(tk.rgb, vec3<f32>(0.0), vec3<f32>(1.0)) * kt;

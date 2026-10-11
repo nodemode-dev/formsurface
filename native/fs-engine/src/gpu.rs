@@ -477,7 +477,7 @@ impl Gpu {
             env_params: [0.0; 16],
             paint_pipe: pipeline(&device, "paint", shaders::PAINT, true, &[LAYER_FORMAT], Some(union), false),
             apply_pipe: pipeline(&device, "apply", shaders::APPLY, false, &[LAYER_FORMAT; 3], None, false),
-            composite_pipe: pipeline(&device, "composite", shaders::COMPOSITE, false, &[LAYER_FORMAT; 2], None, false),
+            composite_pipe: pipeline(&device, "composite", &format!("{}{}", shaders::BLEND, shaders::COMPOSITE), false, &[LAYER_FORMAT; 2], None, false),
             dilate_pipe: pipeline(&device, "dilate", shaders::DILATE, false, &[LAYER_FORMAT; 2], None, false),
             coverage_pipe: pipeline(&device, "coverage", shaders::COVERAGE, true, &[wgpu::TextureFormat::R8Unorm], None, false),
             export_pipe: pipeline(&device, "export", shaders::EXPORT, false, &[wgpu::TextureFormat::Rgba8Unorm], None, false),
@@ -519,7 +519,7 @@ impl Gpu {
             mask_image_pipe: pipeline(&device, "mask from image", shaders::MASK_IMAGE, false, &[LAYER_FORMAT], None, false),
             mask_id_pipe: pipeline(&device, "mask from id", shaders::MASK_ID, false, &[LAYER_FORMAT], None, false),
             flatten_pipe: pipeline(&device, "flatten", shaders::PAIR_TO_SET, false, &[LAYER_FORMAT; 3], None, false),
-            merge_pipe: pipeline(&device, "merge", shaders::MERGE, false, &[LAYER_FORMAT; 3], None, false),
+            merge_pipe: pipeline(&device, "merge", &format!("{}{}", shaders::BLEND, shaders::MERGE), false, &[LAYER_FORMAT; 3], None, false),
             merge_uniform: uniform("merge", 48),
             layer_export_pipe: pipeline(&device, "layer export", shaders::LAYER_EXPORT, false, &[wgpu::TextureFormat::Rgba8Unorm], None, false),
             mask_export_pipe: pipeline(&device, "mask export", shaders::MASK_MUL, false, &[wgpu::TextureFormat::Rgba8Unorm], None, false),
@@ -538,7 +538,7 @@ impl Gpu {
             alpha_tex: white_texture(&device, &queue),
             stencil_tex: white_texture(&device, &queue),
             paint_uniform: uniform("paint", 64),
-            layer_uniform: uniform("layer", 64),
+            layer_uniform: uniform("layer", 96),
             export_uniform: uniform("export", 32),
             vertices: None,
             indices: None,
@@ -1346,7 +1346,7 @@ impl Gpu {
         self.queue.submit([encoder.finish()]);
     }
 
-    fn layer_pass(&self, uniform: [f32; 16], prev: &Pair, out: &Pair, layer: &Set, mask: &wgpu::Texture) {
+    fn layer_pass(&self, uniform: [f32; 24], prev: &Pair, out: &Pair, layer: &Set, mask: &wgpu::Texture) {
         self.queue.write_buffer(&self.layer_uniform, 0, bytemuck::cast_slice(&uniform));
         let (pc, pm, lc, lv, lk, lm) = (view_of(&prev.color), view_of(&prev.mat), view_of(&layer.color), view_of(&layer.val), view_of(&layer.cov), view_of(mask));
         let cover = view_of(&self.coverage);
@@ -1373,7 +1373,7 @@ impl Gpu {
 
     pub fn composite(&mut self, infos: &[LayerInfo], filters: &std::collections::HashMap<u32, FilterSettings>) {
         let b = self.base;
-        let base_uniform = [0.0, 0.0, 0.0, 0.0, f32::from_bits(0), f32::from_bits(1), 0.0, 0.0, b[0], b[1], b[2], 1.0, b[3], b[4], 0.5, 0.0];
+        let base_uniform = [0.0, 0.0, 0.0, 0.0, f32::from_bits(0), f32::from_bits(1), 0.0, 0.0, b[0], b[1], b[2], 1.0, b[3], b[4], 0.5, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
         self.layer_pass(base_uniform, &self.pong, &self.ping, &self.scratch, &self.scratch.mask);
         let mut current_is_ping = true;
         for (info, layer) in infos.iter().zip(self.layers.iter()) {
@@ -1401,6 +1401,8 @@ impl Gpu {
                 f32::from_bits(info.blend.code()), f32::from_bits(0), f32::from_bits(filter), 0.0,
                 f.brightness, f.contrast, f.hue.to_radians(), f.saturation,
                 f.gamma.max(0.05), f.roughness_offset, f.metallic_offset, 0.0,
+                f.levels_in_low.clamp(0.0, 1.0), f.levels_in_high.clamp(0.0, 1.0).max(f.levels_in_low.clamp(0.0, 1.0) + 0.001), f.levels_out_low.clamp(0.0, 1.0), f.levels_out_high.clamp(0.0, 1.0),
+                if f.posterize >= 2.0 { f.posterize.min(64.0).floor() } else { 0.0 }, (f.pixelate.clamp(0.0, 128.0) * self.size as f32 / 1024.0).floor(), if f.invert { 1.0 } else { 0.0 }, 0.0,
             ];
             let (prev, out) = if current_is_ping { (&self.ping, &self.pong) } else { (&self.pong, &self.ping) };
             self.layer_pass(uniform, prev, out, &layer.set, mask_texture);

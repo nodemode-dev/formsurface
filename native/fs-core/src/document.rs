@@ -11,10 +11,32 @@ pub enum BlendMode {
     Subtract,
     Darken,
     Lighten,
+    Disable,
+    Replace,
+    Divide,
+    InverseDivide,
+    Difference,
+    Exclusion,
+    SignedAddition,
+    LinearBurn,
+    ColorBurn,
+    ColorDodge,
+    SoftLight,
+    HardLight,
+    VividLight,
+    LinearLight,
+    PinLight,
+    Tint,
+    Saturation,
+    Color,
+    Value,
+    NormalMapCombine,
+    NormalMapDetail,
+    NormalMapInverseDetail,
 }
 
 impl BlendMode {
-    pub const ALL: [BlendMode; 8] = [
+    pub const ALL: [BlendMode; 30] = [
         BlendMode::Normal,
         BlendMode::Multiply,
         BlendMode::Screen,
@@ -23,6 +45,28 @@ impl BlendMode {
         BlendMode::Subtract,
         BlendMode::Darken,
         BlendMode::Lighten,
+        BlendMode::Disable,
+        BlendMode::Replace,
+        BlendMode::Divide,
+        BlendMode::InverseDivide,
+        BlendMode::Difference,
+        BlendMode::Exclusion,
+        BlendMode::SignedAddition,
+        BlendMode::LinearBurn,
+        BlendMode::ColorBurn,
+        BlendMode::ColorDodge,
+        BlendMode::SoftLight,
+        BlendMode::HardLight,
+        BlendMode::VividLight,
+        BlendMode::LinearLight,
+        BlendMode::PinLight,
+        BlendMode::Tint,
+        BlendMode::Saturation,
+        BlendMode::Color,
+        BlendMode::Value,
+        BlendMode::NormalMapCombine,
+        BlendMode::NormalMapDetail,
+        BlendMode::NormalMapInverseDetail,
     ];
 
     pub fn code(self) -> u32 {
@@ -344,11 +388,21 @@ pub struct FilterSettings {
     pub metallic_offset: f32,
     pub blur: f32,
     pub sharpen: f32,
+    pub levels_in_low: f32,
+    pub levels_in_high: f32,
+    pub levels_out_low: f32,
+    pub levels_out_high: f32,
+    pub invert: bool,
+    pub posterize: f32,
+    pub pixelate: f32,
 }
 
 impl Default for FilterSettings {
     fn default() -> Self {
-        FilterSettings { brightness: 0.0, contrast: 0.0, hue: 0.0, saturation: 1.0, gamma: 1.0, roughness_offset: 0.0, metallic_offset: 0.0, blur: 0.0, sharpen: 0.0 }
+        FilterSettings {
+            brightness: 0.0, contrast: 0.0, hue: 0.0, saturation: 1.0, gamma: 1.0, roughness_offset: 0.0, metallic_offset: 0.0, blur: 0.0, sharpen: 0.0,
+            levels_in_low: 0.0, levels_in_high: 1.0, levels_out_low: 0.0, levels_out_high: 1.0, invert: false, posterize: 0.0, pixelate: 0.0,
+        }
     }
 }
 

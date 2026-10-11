@@ -3,8 +3,28 @@ use crate::{add, dot, normalize, scale, sub, Bvh, Mesh, Vec3};
 pub struct HighBake {
     pub normal: Vec<u8>,
     pub id: Vec<u8>,
+    pub height: Vec<u8>,
+    pub opacity: Vec<u8>,
+    pub ao: Vec<u8>,
+    pub bent: Vec<u8>,
     pub hits: usize,
     pub texels: usize,
+}
+
+fn hemisphere(n: Vec3, k: usize, count: usize, spin: f32) -> Vec3 {
+    let helper = if n[0].abs() < 0.9 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
+    let t = normalize(crate::cross(helper, n));
+    let b = crate::cross(n, t);
+    let u = (k as f32 + 0.5) / count as f32;
+    let r = u.sqrt();
+    let phi = (k as f32 * 2.399_963) + spin;
+    let (x, y) = (r * phi.cos(), r * phi.sin());
+    normalize(add(add(scale(t, x), scale(b, y)), scale(n, (1.0 - u).max(0.0).sqrt())))
+}
+
+fn gray(pixels: &mut [u8], o: usize, v: f32) {
+    let g = (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    pixels[o..o + 4].copy_from_slice(&[g, g, g, 255]);
 }
 
 struct Texel {
@@ -81,14 +101,19 @@ fn id_color(part: u32) -> [u8; 3] {
 }
 
 pub fn bake_high(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[u32], size: usize, front: f32, rear: f32) -> HighBake {
-    bake_high_matched(low, high, high_bvh, high_parts, size, front, rear, None)
+    bake_high_matched(low, high, high_bvh, high_parts, size, front, rear, None, 0)
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn bake_high_matched(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[u32], size: usize, front: f32, rear: f32, keys: Option<(&[u32], &[u32])>) -> HighBake {
+pub fn bake_high_matched(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[u32], size: usize, front: f32, rear: f32, keys: Option<(&[u32], &[u32])>, ao_rays: usize) -> HighBake {
     let texels = rasterize(low, size);
     let mut normal = vec![0u8; size * size * 4];
     let mut id = vec![0u8; size * size * 4];
+    let mut height = vec![0u8; size * size * 4];
+    let mut opacity = vec![0u8; size * size * 4];
+    let mut ao = vec![0u8; size * size * 4];
+    let mut bent = vec![0u8; size * size * 4];
+    let ao_reach = high.radius * 0.5;
     let mut covered = vec![false; size * size];
     let mut hits = 0usize;
     let mut count = 0usize;
@@ -100,7 +125,11 @@ pub fn bake_high_matched(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[
         let origin = add(tx.p, scale(tx.n, front));
         let dir = scale(tx.n, -1.0);
         let mut ts = [0.0, 0.0, 1.0];
+        let mut bent_ts = [0.0, 0.0, 1.0];
         let mut part_color = [128u8, 128, 128];
+        let mut height_value = 0.5;
+        let mut hit_value = 0.0;
+        let mut ao_value = 1.0;
         let found = match keys {
             Some((low_keys, high_keys)) => {
                 let want = low_keys.get(tx.tri as usize).copied().unwrap_or(u32::MAX);
@@ -116,6 +145,27 @@ pub fn bake_high_matched(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[
                 ts = [dot(hn, tx.t), dot(hn, tx.b), dot(hn, tx.n).max(0.0)];
                 let part = high_parts.get(hit.triangle as usize).copied().unwrap_or(0);
                 part_color = id_color(part);
+                hit_value = 1.0;
+                height_value = ((front - hit.t) + rear) / reach;
+                if ao_rays > 0 {
+                    let at = add(add(origin, scale(dir, hit.t)), scale(hn, ao_reach * 0.002));
+                    let spin = (index as f32 * 0.618_034).fract() * std::f32::consts::TAU;
+                    let mut open = 0usize;
+                    let mut sum = [0.0f32; 3];
+                    for k in 0..ao_rays {
+                        let d = hemisphere(hn, k, ao_rays, spin);
+                        let blocked = high_bvh.raycast(high, at, d).is_some_and(|h| h.t < ao_reach);
+                        if !blocked {
+                            open += 1;
+                            sum = add(sum, d);
+                        }
+                    }
+                    ao_value = open as f32 / ao_rays as f32;
+                    let bn = if open > 0 { normalize(sum) } else { hn };
+                    bent_ts = [dot(bn, tx.t), dot(bn, tx.b), dot(bn, tx.n).max(0.0)];
+                } else {
+                    bent_ts = ts;
+                }
             }
         }
         let o = index * 4;
@@ -125,10 +175,21 @@ pub fn bake_high_matched(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[
         normal[o + 3] = 255;
         id[o..o + 3].copy_from_slice(&part_color);
         id[o + 3] = 255;
+        gray(&mut height, o, height_value);
+        gray(&mut opacity, o, hit_value);
+        gray(&mut ao, o, ao_value);
+        for c in 0..3 {
+            bent[o + c] = ((bent_ts[c] * 0.5 + 0.5).clamp(0.0, 1.0) * 255.0).round() as u8;
+        }
+        bent[o + 3] = 255;
     }
     dilate(&mut normal, &mut covered.clone(), size, [128, 128, 255, 255]);
+    dilate(&mut height, &mut covered.clone(), size, [128, 128, 128, 255]);
+    dilate(&mut opacity, &mut covered.clone(), size, [0, 0, 0, 255]);
+    dilate(&mut ao, &mut covered.clone(), size, [255, 255, 255, 255]);
+    dilate(&mut bent, &mut covered.clone(), size, [128, 128, 255, 255]);
     dilate(&mut id, &mut covered, size, [128, 128, 128, 255]);
-    HighBake { normal, id, hits, texels: count }
+    HighBake { normal, id, height, opacity, ao, bent, hits, texels: count }
 }
 
 fn dilate(pixels: &mut [u8], covered: &mut [bool], size: usize, empty: [u8; 4]) {
