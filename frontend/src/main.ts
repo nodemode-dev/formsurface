@@ -4,7 +4,7 @@ import type { BakeJob } from './engine/bake-worker';
 import { VERSION } from './version';
 import { LayerList, type LayerInfo } from './ui/layers';
 import { TextureSetList, type TextureSetInfo } from './ui/sets';
-import { TEMPLATES, halfToFloat, halfToUnit16, pack, sourcesOf, validateMaps, type MapSpec, type Pixels, type Template } from './ui/export-templates';
+import { TEMPLATES, encodePng, halfToFloat, halfToUnit16, pack, sourcesOf, validateMaps, type MapSpec, type Pixels, type Template } from './ui/export-templates';
 import { FORMAT_ALPHA, FORMAT_DEPTHS, checkFormat, encodeImage, gammaToLinear, sampleMax, type Format } from './ui/image-formats';
 import { PADDING_MODES, applyPadding, nearestSource, uvMask, type Padding, type PaddingMode } from './ui/padding';
 import { TemplateEditor, loadTemplates, saveTemplate } from './ui/template-editor';
@@ -252,6 +252,17 @@ function selectTextureSet(index: number): TextureSetInfo {
   return set;
 }
 
+function syncCloneSources(all: LayerInfo[]): void {
+  if (!engine) return;
+  const select = $<HTMLSelectElement>('b-clone-src');
+  const wanted: [string, string][] = [['0', 'All layers (what you see)'], ...all.filter((l) => l.kind === 'paint' || l.kind === 'fill').map((l) => [String(l.id), `Layer: ${l.name}`] as [string, string])];
+  const same = select.options.length === wanted.length && wanted.every(([v, t], i) => select.options[i].value === v && select.options[i].text === t);
+  if (!same) select.replaceChildren(...wanted.map(([v, t]) => new Option(t, v)));
+  const current = String(engine.clone_layer());
+  select.value = wanted.some(([v]) => v === current) ? current : '0';
+  if (select.value !== current) engine.set_clone_layer(0);
+}
+
 function refreshLayers(): void {
   if (!engine) return;
   const all = layers();
@@ -278,6 +289,7 @@ function refreshLayers(): void {
     if (isFilter) target.disabled = true;
     syncParentOptions(all, layer);
   }
+  syncCloneSources(all);
   refreshSets();
 }
 
@@ -400,16 +412,28 @@ function setView2d(on: boolean): boolean {
   const e = requireEngine();
   if (!e.set_view_2d(on)) throw new Error('Finish the stroke first');
   $('view-2d').setAttribute('aria-pressed', String(on));
-  if (on && tool === 'path') setTool('paint');
+  pathPoints.length = 0;
+  clearOverlay(pathOverlay);
   status(on ? '2D view: the active texture set\'s UV layout. Strokes paint straight into the texture; U returns to 3D' : '3D view');
   return on;
 }
 
 function addPathPoint(x: number, y: number): boolean {
-  const p = requireEngine().surface_point(x, y);
+  const e = requireEngine();
+  if (e.view_2d()) {
+    const uv = e.uv_at(x, y);
+    if (uv.length !== 2) return false;
+    pathPoints.push([uv[0], uv[1], 0]);
+    return true;
+  }
+  const p = e.surface_point(x, y);
   if (p.length !== 3) return false;
   pathPoints.push([p[0], p[1], p[2]]);
   return true;
+}
+
+function pathToScreen(e: Engine, p: Vec3): Float32Array {
+  return e.view_2d() ? e.uv_to_screen(p[0], p[1]) : e.screen_point(p[0], p[1], p[2]);
 }
 
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -417,8 +441,7 @@ const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() 
 async function strokePath(closed = checked('p-closed'), smooth = checked('p-smooth'), erase = checked('p-erase')): Promise<number> {
   const e = requireEngine();
   if (pathPoints.length < 2) throw new Error('A path needs at least two points on the surface');
-  if (e.view_2d()) throw new Error('The path tool works in the 3D view');
-  const screen = pathSamples(pathPoints, closed && pathPoints.length > 2, smooth).map((p) => e.screen_point(p[0], p[1], p[2]));
+  const screen = pathSamples(pathPoints, closed && pathPoints.length > 2, smooth).map((p) => pathToScreen(e, p));
   const first = screen.findIndex((s) => s.length === 2);
   if (first < 0) throw new Error('The path is behind the camera');
   const keep = tool;
@@ -528,7 +551,6 @@ canvas.addEventListener('pointerdown', (event) => {
     return;
   }
   if (tool === 'path') {
-    if (engine.view_2d()) { status('The path tool works in the 3D view; press U to return to it', true); return; }
     if (addPathPoint(x, y)) status(`Path: ${pathPoints.length} point${pathPoints.length === 1 ? '' : 's'}; Enter strokes it, Backspace removes the last, Esc clears`);
     else status('Click on the mesh to place a path point', true);
     return;
@@ -657,7 +679,7 @@ function drawPathOverlay(): void {
   const e = engine;
   const ratio = pathOverlay.getBoundingClientRect().width ? pathOverlay.getBoundingClientRect().width / canvas.getBoundingClientRect().width : 1;
   const toOverlay = (p: Vec3): [number, number] | undefined => {
-    const s = e.screen_point(p[0], p[1], p[2]);
+    const s = pathToScreen(e, p);
     return s.length === 2 ? [s[0] * ratio, s[1] * ratio] : undefined;
   };
   const closed = checked('p-closed') && pathPoints.length > 2;
@@ -750,6 +772,51 @@ async function exportMask(id: number, name: string): Promise<string> {
   downloadBlob(blob, `${name}_mask_${id}.png`);
   return 'your downloads';
 }
+
+function mergeDown(id: number): number {
+  const merged = requireEngine().merge_down(id);
+  if (!merged) throw new Error('Nothing was merged');
+  refreshLayers();
+  return merged;
+}
+
+function flattenFolder(id: number): number {
+  const flat = requireEngine().flatten_folder(id);
+  if (!flat) throw new Error('Nothing was flattened');
+  refreshLayers();
+  return flat;
+}
+
+async function exportLayer(id: number, name: string): Promise<string> {
+  const e = requireEngine();
+  const size = e.texture_size();
+  const maps = new Map<string, Blob>();
+  for (const [channel, label] of ['basecolor', 'roughness', 'metallic', 'height'].entries()) {
+    maps.set(`layer_${id}_${label}.png`, await encodePng(await (e.export_layer(id, channel) as Promise<Uint8Array>), size, size, true));
+  }
+  if (await api.alive()) return api.saveMaps(name, maps);
+  for (const [file, blob] of maps) downloadBlob(blob, `${name}_${file}`);
+  return 'your downloads';
+}
+
+$('l-merge').addEventListener('click', () => {
+  if (!engine) return;
+  if (!window.confirm('Merge down replaces the active layer and the one below with one paint layer (fill settings and masks are baked in). This cannot be undone. Merge?')) return;
+  try { mergeDown(engine.active_layer()); status('Merged into one paint layer'); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+});
+$('l-flatten-folder').addEventListener('click', () => {
+  if (!engine) return;
+  if (!window.confirm('Flatten folder turns the folder and its layers into one paint layer that keeps the folder opacity and mask. This cannot be undone. Flatten?')) return;
+  try { flattenFolder(engine.active_layer()); status('Folder flattened into one paint layer'); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+});
+$('l-export').addEventListener('click', () => {
+  if (!engine) return;
+  exportLayer(engine.active_layer(), meshName.replace(/\.[^.]+$/, '')).then((where) => status(`Layer written to ${where}`), (error) => status(error instanceof Error ? error.message : String(error), true));
+});
+$('b-clone-src').addEventListener('change', () => {
+  try { engine?.set_clone_layer(Number(sel('b-clone-src'))); status(Number(sel('b-clone-src')) ? 'Clone copies only the chosen layer' : 'Clone copies everything visible'); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+});
+$('d-2d-channel').addEventListener('change', () => engine?.set_view_2d_channel(Number(sel('d-2d-channel'))));
 
 function flattenStack(name = 'Flattened'): number {
   const id = requireEngine().flatten_stack(name);
@@ -1484,8 +1551,17 @@ const agentLink = new AgentLink({
     setTool('clone');
     return { tool: 'clone', source_set: true };
   },
-  view_2d: ({ on, center_u, center_v, zoom }) => {
+  merge_down: ({ id }) => ({ id: mergeDown(Number(id)), layers: layers() }),
+  flatten_folder: ({ id }) => ({ id: flattenFolder(Number(id)), layers: layers() }),
+  export_layer: async ({ id, name }) => ({ folder: await exportLayer(Number(id), String(name || meshName.replace(/\.[^.]+$/, ''))) }),
+  clone_layer: ({ id }) => { requireEngine().set_clone_layer(Number(id ?? 0)); refreshLayers(); return { clone_from: Number(id ?? 0) || 'all layers' }; },
+  view_2d: ({ on, center_u, center_v, zoom, channel }) => {
     const e = requireEngine();
+    if (channel !== undefined && channel !== null) {
+      const code = ['base_color', 'roughness', 'metallic', 'height'].indexOf(String(channel));
+      if (code < 0) throw new Error('channel is base_color, roughness, metallic or height');
+      setControl('d-2d-channel', code, 'change');
+    }
     if (on !== undefined && on !== null && Boolean(on) !== e.view_2d()) setView2d(Boolean(on));
     if (e.view_2d() && (center_u !== undefined || center_v !== undefined || zoom !== undefined)) {
       e.frame_mesh();
@@ -1501,7 +1577,6 @@ const agentLink = new AgentLink({
   paint_path: async ({ points, closed, smooth, erase }) => {
     const e = requireEngine();
     if (!Array.isArray(points) || points.length < 2) throw new Error('points is a list of at least two [x, y] pairs in 0 to 1');
-    if (e.view_2d()) throw new Error('The path tool works in the 3D view; call formsurface_view_2d with on false first');
     const [w, h] = e.viewport_size();
     pathPoints.length = 0;
     let missed = 0;

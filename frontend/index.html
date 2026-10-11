@@ -106,6 +106,7 @@
       <div class="row"><label for="b-tip">Tip</label><select id="b-tip">
         <option value="round" selected>Round</option><option value="square">Square</option><option value="spray">Spray</option><option value="image" disabled>Image alpha</option>
       </select><button class="icon-btn" id="b-alpha-load" title="Load a brush alpha image (white paints)"><svg><use href="#i-open"/></svg></button></div>
+      <div class="row" style="grid-template-columns:84px 1fr"><label for="b-clone-src">Clone from</label><select id="b-clone-src" title="What the clone tool copies: everything visible, or one layer"><option value="0">All layers (what you see)</option></select></div>
       <div class="row"><label for="b-density">Spray density</label><input id="b-density" type="range" min="0.02" max="1" step="0.01" value="0.35"><output for="b-density">0.35</output></div>
       <div class="row"><label for="b-lazy">Lazy mouse</label><input id="b-lazy" type="range" min="0" max="120" step="1" value="0"><output for="b-lazy">0</output></div>
       <div class="row"><label for="b-jsize">Size jitter</label><input id="b-jsize" type="range" min="0" max="1" step="0.01" value="0"><output for="b-jsize">0.00</output></div>
@@ -182,8 +183,10 @@
           <option value="none">No mask</option><option value="white">White mask (shows all)</option><option value="black">Black mask (hides all)</option><option value="keep" disabled>Mask on</option>
         </select><output></output></div>
         <div class="row"><label for="l-target">Paint into</label><select id="l-target"><option value="layer">Layer</option><option value="mask">Mask</option></select><output></output></div>
-        <div class="row"><label for="l-msrc">Mask from</label><select id="l-msrc"><option value="">Choose a source</option><option value="cavity">Cavity (baked AO)</option><option value="edges">Edges (baked curvature)</option><option value="thin">Thin parts</option><option value="top">From top</option><option value="id">ID color (click the mesh)</option><option value="image">Image file</option></select><output></output></div>
-        <div class="row" style="grid-template-columns:1fr 1fr"><button class="btn" id="l-flatten" style="justify-content:center" title="Replace every layer of this texture set with one paint layer holding what you see">Flatten stack</button><button class="btn" id="l-mask-export" style="justify-content:center" title="Save the active layer's mask as a PNG">Export mask</button></div>
+        <div class="row"><label for="l-msrc">Mask from</label><select id="l-msrc"><option value="">Choose a source</option><option value="cavity">Cavity (baked AO)</option><option value="edges">Edges (baked curvature)</option><option value="thin">Thin parts</option><option value="top">From top</option><option value="light">Light (direction)</option><option value="position">Position gradient</option><option value="noise">Noise (3D)</option><option value="mask_builder">Mask builder</option><option value="dirt">Dirt</option><option value="metal_edge_wear">Metal edge wear</option><option value="id">ID color (click the mesh)</option><option value="image">Image file</option></select><output></output></div>
+        <div class="row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><button class="btn" id="l-flatten" style="justify-content:center;min-width:0" title="Replace every layer of this texture set with one paint layer holding what you see">Flatten stack</button><button class="btn" id="l-flatten-folder" style="justify-content:center;min-width:0" title="Turn the active folder into one paint layer, keeping its opacity and mask">Flatten folder</button></div>
+        <div class="row" style="grid-template-columns:repeat(2,minmax(0,1fr))"><button class="btn" id="l-merge" style="justify-content:center;min-width:0" title="Merge the active paint or fill layer into the layer below it">Merge down</button><button class="btn" id="l-export" style="justify-content:center;min-width:0" title="Save the active layer's color, roughness, metallic and height as PNGs with its coverage in alpha">Export layer</button></div>
+        <div class="row" style="grid-template-columns:minmax(0,1fr)"><button class="btn" id="l-mask-export" style="justify-content:center;min-width:0" title="Save the active layer's mask as a PNG">Export mask</button></div>
         <div class="row"><label for="l-instance">Instance into</label><select id="l-instance" title="Fill and filter layers: put a live copy in another texture set; changes to either update both"><option value="">Choose a texture set</option></select><output></output></div>
         <div class="row"><label for="l-parent">In folder</label><select id="l-parent"><option value="0">None (top level)</option></select><output></output></div>
       </div>
@@ -274,6 +277,7 @@
       <div class="row"><label for="d-env-rot">Rotation</label><input id="d-env-rot" type="range" min="-180" max="180" step="1" value="0"><output for="d-env-rot">0</output></div>
       <div class="row"><label for="d-env-blur">Background blur</label><input id="d-env-blur" type="range" min="0" max="1" step="0.01" value="0"><output for="d-env-blur">0.00</output></div>
       <label class="check"><input type="checkbox" id="d-env-bg" checked>Show environment as background</label>
+      <div class="row" style="grid-template-columns:84px 1fr"><label for="d-2d-channel">2D view shows</label><select id="d-2d-channel"><option value="0">Base color</option><option value="1">Roughness</option><option value="2">Metallic</option><option value="3">Height</option></select></div>
       <input type="file" id="env-file" accept=".hdr" hidden>
     </section>
     <section class="section">
