@@ -396,14 +396,39 @@ def formsurface_clone_source(x: Annotated[float, Field(ge=0, le=1)], y: Annotate
 
 
 @server.tool()
+def formsurface_merge_down(layer_id: int) -> dict:
+    """Merge a paint or fill layer into the paint or fill layer directly below it in the same folder: one paint layer replaces both, with their opacity, masks and the top layer's blend mode baked in. Fill settings become pixels. Not undoable; ask the person first."""
+    return call("merge_down", {"id": layer_id})
+
+
+@server.tool()
+def formsurface_flatten_folder(folder_id: int) -> dict:
+    """Flatten a folder of paint and fill layers into one paint layer that keeps the folder's opacity, visibility and mask. Nested folders and filter layers must be flattened or moved out first. Not undoable; ask the person first."""
+    return call("flatten_folder", {"id": folder_id})
+
+
+@server.tool()
+def formsurface_export_layer(layer_id: int, name: str | None = None) -> dict:
+    """Write one paint or fill layer to the workspace exports folder as four PNGs (base color, roughness, metallic, height), each with the layer's coverage in alpha, without the layers below or the base material."""
+    return call("export_layer", drop_none(id=layer_id, name=name), timeout=120)
+
+
+@server.tool()
+def formsurface_clone_layer(layer_id: int = 0) -> dict:
+    """Choose what the clone tool copies: layer_id of a paint or fill layer copies only that layer (where it has no paint nothing is copied); 0 copies everything visible."""
+    return call("clone_layer", {"id": layer_id})
+
+
+@server.tool()
 def formsurface_view_2d(
+    channel: Literal["base_color", "roughness", "metallic", "height"] | None = None,
     on: bool | None = None,
     center_u: Annotated[float, Field(ge=-1, le=2)] | None = None,
     center_v: Annotated[float, Field(ge=-1, le=2)] | None = None,
     zoom: Annotated[float, Field(ge=0.25, le=32)] | None = None,
 ) -> dict:
-    """Switch the viewport to the 2D view (the active texture set's UV layout, base color) or back to 3D. In the 2D view, formsurface_paint_stroke points paint straight into the texture where they fall on the layout (u right, v down, the 0 to 1 square framed at zoom 1), reaching faces the 3D camera cannot see; brush size is in screen pixels of that view. center_u, center_v and zoom frame part of the layout. Polygon fill, ID picking and the path tool need the 3D view; symmetry and the stencil do not apply in 2D."""
-    return call("view_2d", drop_none(on=on, center_u=center_u, center_v=center_v, zoom=zoom))
+    """Switch the viewport to the 2D view (the active texture set's UV layout) or back to 3D; channel picks what it shows (base_color, roughness, metallic or height). In the 2D view, formsurface_paint_stroke, formsurface_paint_path and formsurface_polygon_fill points land on the layout (u right, v down, the 0 to 1 square framed at zoom 1) and paint straight into the texture, reaching faces the 3D camera cannot see; brush size is in screen pixels of that view. center_u, center_v and zoom frame part of the layout. ID picking needs the 3D view; symmetry and the stencil do not apply in 2D, and strokes stay on the active UDIM tile."""
+    return call("view_2d", drop_none(on=on, center_u=center_u, center_v=center_v, zoom=zoom, channel=channel))
 
 
 @server.tool()
@@ -413,7 +438,7 @@ def formsurface_paint_path(
     smooth: bool = True,
     erase: bool = False,
 ) -> dict:
-    """Painter's path tool: place control points on the surface at normalized viewport points (0,0 top left) and paint one stroke along a smooth curve through them (smooth false joins them with straight segments; closed loops back to the first point), with the current brush and paint material. The points are kept on the surface, so the curve follows the model rather than the screen. erase removes paint along the path instead. One undo step."""
+    """Painter's path tool: place control points on the surface at normalized viewport points (0,0 top left) and paint one stroke along a smooth curve through them (smooth false joins them with straight segments; closed loops back to the first point), with the current brush and paint material. The points are kept on the surface, so the curve follows the model rather than the screen; in the 2D view they are UV positions and the curve is drawn on the layout. erase removes paint along the path instead. One undo step."""
     return call("paint_path", {"points": [list(p) for p in points], "closed": closed, "smooth": smooth, "erase": erase}, timeout=120)
 
 
