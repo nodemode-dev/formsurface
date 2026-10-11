@@ -12,13 +12,24 @@ struct Texel {
     n: Vec3,
     t: Vec3,
     b: Vec3,
+    tri: u32,
+}
+
+pub fn match_key(name: &str) -> String {
+    let lower = name.trim().to_lowercase();
+    for suffix in ["_low", "_high", "_lo", "_hi"] {
+        if let Some(stem) = lower.strip_suffix(suffix) {
+            return stem.to_string();
+        }
+    }
+    lower
 }
 
 fn rasterize(low: &Mesh, size: usize) -> Vec<Option<Texel>> {
     let (tangents, bitangents) = low.tangents();
     let mut out: Vec<Option<Texel>> = (0..size * size).map(|_| None).collect();
     let fs = size as f32;
-    for tri in low.indices.chunks_exact(3) {
+    for (tri_index, tri) in low.indices.chunks_exact(3).enumerate() {
         let i = [tri[0] as usize, tri[1] as usize, tri[2] as usize];
         let uv = i.map(|k| [low.uvs[k][0] * fs, low.uvs[k][1] * fs]);
         let min_x = uv.iter().map(|p| p[0]).fold(f32::MAX, f32::min).floor().max(0.0) as usize;
@@ -44,7 +55,7 @@ fn rasterize(low: &Mesh, size: usize) -> Vec<Option<Texel>> {
                 let t = normalize(sub(t, scale(n, dot(t, n))));
                 let mut b = blend(&bitangents);
                 b = normalize(sub(sub(b, scale(n, dot(b, n))), scale(t, dot(b, t))));
-                out[y * size + x] = Some(Texel { p: blend(&low.positions), n, t, b });
+                out[y * size + x] = Some(Texel { p: blend(&low.positions), n, t, b, tri: tri_index as u32 });
             }
         }
     }
@@ -70,6 +81,11 @@ fn id_color(part: u32) -> [u8; 3] {
 }
 
 pub fn bake_high(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[u32], size: usize, front: f32, rear: f32) -> HighBake {
+    bake_high_matched(low, high, high_bvh, high_parts, size, front, rear, None)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn bake_high_matched(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[u32], size: usize, front: f32, rear: f32, keys: Option<(&[u32], &[u32])>) -> HighBake {
     let texels = rasterize(low, size);
     let mut normal = vec![0u8; size * size * 4];
     let mut id = vec![0u8; size * size * 4];
@@ -85,7 +101,14 @@ pub fn bake_high(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[u32], si
         let dir = scale(tx.n, -1.0);
         let mut ts = [0.0, 0.0, 1.0];
         let mut part_color = [128u8, 128, 128];
-        if let Some(hit) = high_bvh.raycast(high, origin, dir) {
+        let found = match keys {
+            Some((low_keys, high_keys)) => {
+                let want = low_keys.get(tx.tri as usize).copied().unwrap_or(u32::MAX);
+                high_bvh.raycast_filter(high, origin, dir, &|t| high_keys.get(t as usize).copied().unwrap_or(u32::MAX) == want)
+            }
+            None => high_bvh.raycast(high, origin, dir),
+        };
+        if let Some(hit) = found {
             if hit.t <= reach {
                 hits += 1;
                 let hn = normalize(hit.normal);

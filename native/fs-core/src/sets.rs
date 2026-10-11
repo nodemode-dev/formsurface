@@ -22,6 +22,7 @@ pub struct SplitMesh {
     pub uvs: Vec<f32>,
     pub indices: Vec<u32>,
     pub sets: Vec<TextureSet>,
+    pub order: Vec<u32>,
 }
 
 pub fn udim_of(u: f32, v_stored: f32) -> (u32, u32) {
@@ -64,11 +65,12 @@ pub fn split(positions: &[f32], normals: &[f32], uvs: &[f32], indices: &[u32], m
             tiled_materials.insert(*material);
         }
     }
-    let mut out = SplitMesh { positions: Vec::new(), normals: Vec::new(), uvs: Vec::new(), indices: Vec::with_capacity(indices.len()), sets: Vec::new() };
+    let mut out = SplitMesh { positions: Vec::new(), normals: Vec::new(), uvs: Vec::new(), indices: Vec::with_capacity(indices.len()), sets: Vec::new(), order: Vec::with_capacity(triangles) };
     for ((material, udim), tris) in groups {
         let mut remap: HashMap<u32, u32> = HashMap::new();
         let start = out.indices.len() as u32;
         for t in tris {
+            out.order.push(t as u32);
             let (col, row) = tiles[t];
             for &i in &indices[t * 3..t * 3 + 3] {
                 let next = (out.positions.len() / 3) as u32;

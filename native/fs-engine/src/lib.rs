@@ -54,6 +54,8 @@ pub struct Engine {
     uv_tiles: bool,
     relaying: bool,
     clone_source: Option<[f32; 2]>,
+    tri_order: Vec<u32>,
+    match_keys: Option<(Vec<u32>, Vec<u32>)>,
     mask_gens: HashMap<u32, FillSettings>,
     id_maps: HashMap<usize, (u32, Vec<u8>)>,
 }
@@ -97,6 +99,8 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         uv_tiles: false,
         relaying: false,
         clone_source: None,
+        tri_order: Vec::new(),
+        match_keys: None,
         mask_gens: HashMap::new(),
         id_maps: HashMap::new(),
     };
@@ -106,7 +110,7 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
 
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
-pub fn bake_high_detached(low_positions: &[f32], low_normals: &[f32], low_uvs: &[f32], low_indices: &[u32], high_positions: &[f32], high_normals: &[f32], high_indices: &[u32], parts: &[u32], size: u32, front: f32, rear: f32) -> Result<js_sys::Array, JsValue> {
+pub fn bake_high_detached(low_positions: &[f32], low_normals: &[f32], low_uvs: &[f32], low_indices: &[u32], high_positions: &[f32], high_normals: &[f32], high_indices: &[u32], parts: &[u32], size: u32, front: f32, rear: f32, low_keys: &[u32], high_keys: &[u32]) -> Result<js_sys::Array, JsValue> {
     let low = Mesh::from_flat(low_positions, low_normals, low_uvs, low_indices).map_err(|e| JsValue::from_str(&e))?;
     let high = Mesh::geometry_only(high_positions, high_normals, high_indices).map_err(|e| JsValue::from_str(&e))?;
     let bvh = Bvh::build(&high);
@@ -114,7 +118,8 @@ pub fn bake_high_detached(low_positions: &[f32], low_normals: &[f32], low_uvs: &
     let parts = if parts.len() == tris { parts.to_vec() } else { vec![0; tris] };
     let r = low.radius;
     let size = size.clamp(64, 2048) as usize;
-    let result = fs_core::bake::bake_high(&low, &high, &bvh, &parts, size, front.max(0.0) * r, rear.max(0.0) * r);
+    let keys = if low_keys.len() * 3 == low.indices.len() && high_keys.len() == tris { Some((low_keys, high_keys)) } else { None };
+    let result = fs_core::bake::bake_high_matched(&low, &high, &bvh, &parts, size, front.max(0.0) * r, rear.max(0.0) * r, keys);
     let out = js_sys::Array::new();
     out.push(&js_sys::Uint8Array::from(&result.normal[..]));
     out.push(&js_sys::Uint8Array::from(&result.id[..]));
@@ -145,6 +150,8 @@ impl Engine {
         let ranges: Vec<(u32, u32)> = split.sets.iter().map(|s| (s.start, s.count)).collect();
         self.gpu.upload_mesh(&mesh, &ranges);
         self.sets = split.sets.into_iter().map(|info| SetEntry { info, parked: None }).collect();
+        self.tri_order = split.order;
+        self.match_keys = None;
         self.set_index = 0;
         self.id_maps.clear();
         self.target = mesh.center;
@@ -161,6 +168,44 @@ impl Engine {
             self.set_uv_tiles(true);
         }
         Ok(info)
+    }
+
+    pub fn set_match_names(&mut self, low_parts: &[u32], low_names_json: &str, high_names_json: &str) -> Result<String, JsValue> {
+        let low_names: Vec<String> = serde_json::from_str(low_names_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let high_names: Vec<String> = serde_json::from_str(high_names_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let (_, _, high_parts) = self.high.as_ref().ok_or_else(|| JsValue::from_str("Load a high-poly mesh first"))?;
+        if low_parts.len() != self.tri_order.len() {
+            return Err(JsValue::from_str("Low-poly part list does not match the loaded mesh"));
+        }
+        let low_keys: Vec<String> = low_names.iter().map(|n| fs_core::bake::match_key(n)).collect();
+        let high_keys: Vec<String> = high_names.iter().map(|n| fs_core::bake::match_key(n)).collect();
+        let shared: Vec<String> = low_keys.iter().filter(|k| !k.is_empty() && high_keys.contains(k)).cloned().collect();
+        let id_of = |k: &String| shared.iter().position(|s| s == k).map(|p| p as u32).unwrap_or(u32::MAX);
+        let low_ids: Vec<u32> = low_keys.iter().map(id_of).collect();
+        let high_ids: Vec<u32> = high_keys.iter().map(id_of).collect();
+        let low_tri: Vec<u32> = self.tri_order.iter().map(|&t| low_ids.get(low_parts[t as usize] as usize).copied().unwrap_or(u32::MAX)).collect();
+        let high_tri: Vec<u32> = high_parts.iter().map(|&p| high_ids.get(p as usize).copied().unwrap_or(u32::MAX)).collect();
+        let mut unique_low = low_keys.clone();
+        unique_low.sort();
+        unique_low.dedup();
+        let matched = unique_low.iter().filter(|k| shared.contains(k)).count();
+        self.match_keys = Some((low_tri, high_tri));
+        Ok(format!("{matched} of {} low-poly parts matched a high-poly part by name; unmatched parts bake only against unmatched high-poly parts", unique_low.len()))
+    }
+
+    pub fn clear_match_names(&mut self) {
+        self.match_keys = None;
+    }
+
+    pub fn texture_set_match_keys(&self, index: u32) -> js_sys::Array {
+        let out = js_sys::Array::new();
+        if let (Some((low, high)), Some(set)) = (&self.match_keys, self.sets.get(index as usize)) {
+            let first = (set.info.start / 3) as usize;
+            let count = (set.info.count / 3) as usize;
+            out.push(&js_sys::Uint32Array::from(&low[first..first + count]));
+            out.push(&js_sys::Uint32Array::from(&high[..]));
+        }
+        out
     }
 
     pub fn set_clone_source(&mut self, x: f32, y: f32) -> Result<(), JsValue> {
@@ -964,7 +1009,8 @@ impl Engine {
             let low = low.subset(info.start as usize, info.count as usize);
             let size = engine.gpu.size.min(2048) as usize;
             let r = low.radius;
-            let result = fs_core::bake::bake_high(&low, high, bvh, parts, size, front.max(0.0) * r, rear.max(0.0) * r);
+            let keys = engine.match_keys.as_ref().map(|(l, h)| (&l[(info.start / 3) as usize..((info.start + info.count) / 3) as usize], h.as_slice()));
+            let result = fs_core::bake::bake_high_matched(&low, high, bvh, parts, size, front.max(0.0) * r, rear.max(0.0) * r, keys);
             hits += result.hits;
             texels += result.texels;
             engine.gpu.set_high_bake(size as u32, &result.normal, &result.id);

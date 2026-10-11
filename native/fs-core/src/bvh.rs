@@ -78,6 +78,10 @@ impl Bvh {
     }
 
     pub fn raycast(&self, mesh: &Mesh, origin: Vec3, direction: Vec3) -> Option<Hit> {
+        self.raycast_filter(mesh, origin, direction, &|_| true)
+    }
+
+    pub fn raycast_filter(&self, mesh: &Mesh, origin: Vec3, direction: Vec3, accept: &dyn Fn(u32) -> bool) -> Option<Hit> {
         if self.nodes.is_empty() {
             return None;
         }
@@ -92,6 +96,9 @@ impl Bvh {
             }
             if node.count > 0 {
                 for &t in &self.order[node.start as usize..(node.start + node.count) as usize] {
+                    if !accept(t) {
+                        continue;
+                    }
                     if let Some((d, u, v)) = intersect(corners(mesh, t as usize), origin, direction) {
                         if best.map(|b| d < b.0).unwrap_or(true) {
                             best = Some((d, t, u, v));
