@@ -57,6 +57,10 @@ A stamp is 16 floats: center and world radius, normal and a mirrored flag, tange
 
 `fs_core::regions::select` picks triangles inside the active set's range: Triangle, Polygon (edge neighbours whose face normal is within 0.9995 of the seed's), Mesh (shared welded positions, so UV seams do not split it) and UvChunk (shared vertex indices, which three.js splits at UV seams). `Gpu::mask_triangles` draws them with the COVERAGE shader into the stroke mask, then the normal apply runs, so fills honour stroke opacity, eraser, masks and undo. `export(.., wide)` renders EXPORT into Rgba16Float and reads 8 bytes per texel; the editor turns halves into 16-bit values. `bake_high_detached` takes plain arrays so the module Worker in `frontend/src/engine/bake-worker.ts` can run it; `apply_high_bake(index, ..)` stores the maps in any set without switching to it.
 
+## Quick mask and spatial filters (v0.10.0)
+
+`quick` is one more per-set texture (swapped with the set, cleared black on mesh upload). `quick_mode` is editor state: 1 makes `begin_stroke` copy `quick` into `scratch.mask` and route the stroke through APPLY_MASK into `quick` with value 1 (eraser 0), and `end_stroke` returns the snapshot to the pool instead of the undo stack; 2 makes `paint` multiply the stroke mask by `quick` into `group_mask` before applying, so the accumulated stroke mask itself is never changed. The view samples `quick` for the active set (white for parked sets) and tints by `1 - quick` when the camera's params.z is set. Filter blur and sharpen live in COMPOSITE's filter branch; they read `uv_cover` (binding 7) to weight taps, and their radius rides in `opacity.z`, sharpen in `opacity.w`.
+
 ## Next capabilities, in plan order
 
-Quick mask; blur and sharpen filters; isolated folder blending; the whole engine in a Worker with OffscreenCanvas; a shared layer stack across UDIM tiles (Painter's UV tiles workflow); match-by-name and bent normal baking; tile paging for 4K and 8K; color management; EXR and 32-bit export.
+Isolated folder blending; the whole engine in a Worker with OffscreenCanvas; a shared layer stack across UDIM tiles (Painter's UV tiles workflow); match-by-name and bent normal baking; tile paging for 4K and 8K; color management; EXR and 32-bit export.

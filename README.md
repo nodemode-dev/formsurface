@@ -10,11 +10,12 @@ Paint directly on 3D models, layer by layer, the way Substance 3D Painter works.
 - **GPU engine in Rust.** wgpu running on WebGPU in the browser. Painting, compositing and the viewport never leave the GPU; nothing round-trips through the server while you paint.
 - **Channels:** base color, roughness, metallic, height (shown as bump in the viewport, exported as a normal map). Each channel can be switched on or off per stroke.
 - **Polygon fill:** click to fill a triangle, a flat polygon, a whole mesh part or a UV chunk with the paint material, in one undoable step.
+- **Quick mask (T):** paint a temporary mask, shown in red where protected, that limits every stroke and fill until you turn it off; clear, allow all and invert.
 - **Brush:** size in screen or object space, hardness, flow, stroke opacity, spacing, pen pressure on size or flow, backface culling, eraser.
 - **Alignment and tips:** Painter's camera, tangent wrap, tangent planar and UV alignments; round, square and spray tips or any image as a brush alpha; angle, follow path, size, angle, position and flow jitter, lazy mouse.
 - **Stencil and symmetry:** a screen-space stencil from any image (scale, rotation, offset); mirror or radial symmetry on X, Y or Z.
 - **High-poly baking and smart materials:** tangent-space normal and ID maps baked from a high-poly mesh through a cage, in a background worker so painting continues; smart materials (worn painted metal, rusty iron, dusty plastic, brushed gold, plus your own saved stacks) and smart mask presets.
-- **Baking, generators and filters:** GPU baking of ambient occlusion, curvature, thickness, position and world normal from the mesh; fill layers driven by them (cavity dirt, edge wear, thin areas, from top); filter layers for brightness, contrast, hue, saturation, gamma and roughness or metallic offsets.
+- **Baking, generators and filters:** GPU baking of ambient occlusion, curvature, thickness, position and world normal from the mesh; fill layers driven by them (cavity dirt, edge wear, thin areas, from top); filter layers for blur, sharpen, brightness, contrast, hue, saturation, gamma and roughness or metallic offsets.
 - **Fill layers and masks:** fill layers projected by UV, tri-planar, planar, spherical or cylindrical mapping, with solid, checker, stripes, noise or image patterns; a white or black mask on any layer, painted with the full brush.
 - **Layers and folders:** add, delete, reorder, hide, opacity, 8 blend modes, undo and redo (24 strokes); folders that hide, fade and mask everything inside them (passthrough blending), nested up to 16 deep.
 - **Viewport:** PBR shading with tone mapping, exposure, brush cursor drawn on the surface, orbit, pan, zoom, frame. Seam padding (dilation) on the composited maps.
@@ -24,7 +25,7 @@ Paint directly on 3D models, layer by layer, the way Substance 3D Painter works.
 
 ## Agents (MCP)
 
-FormSurface ships an MCP server with 33 `formsurface_*` tools that drive the editor you have open: texture sets, layers, folders, export templates, fill layers, masks, baking (including from a high-poly mesh), generators, filters, smart materials, brush, paint and base material, camera, strokes, fill, undo, screenshot and map export. Claude Code picks it up from `.mcp.json`; other clients run `./formsurface mcp` (stdio). Press **Agent link** in the editor's top bar to let agents in; it is off by default. The `formsurface-painting` skill (`.claude/skills`, mirrored in `.agents/skills`) teaches agents the order of work.
+FormSurface ships an MCP server with 35 `formsurface_*` tools that drive the editor you have open: texture sets, layers, folders, export templates, fill layers, masks, baking (including from a high-poly mesh), generators, filters, smart materials, brush, paint and base material, camera, strokes, fill, undo, screenshot and map export. Claude Code picks it up from `.mcp.json`; other clients run `./formsurface mcp` (stdio). Press **Agent link** in the editor's top bar to let agents in; it is off by default. The `formsurface-painting` skill (`.claude/skills`, mirrored in `.agents/skills`) teaches agents the order of work.
 
 ## Parity
 
@@ -57,6 +58,7 @@ Windows: `formsurface_oc_install.bat`, then `formsurface.bat`.
 | Wheel | Zoom |
 | `[` `]` | Brush size |
 | `B` / `E` / `P` / `M` | Paint / eraser / polygon fill / mirror |
+| `T` | Quick mask: edit, then use |
 | `F` | Frame mesh |
 | Ctrl+Z, Ctrl+Shift+Z | Undo, redo |
 
