@@ -10,7 +10,8 @@ import { PADDING_MODES, applyPadding, nearestSource, uvMask, type Padding, type 
 import { TemplateEditor, loadTemplates, saveTemplate } from './ui/template-editor';
 import { api } from './ui/api';
 import { AgentLink } from './ui/agent-link';
-import { BUILT_IN_MATERIALS, SMART_MASKS, saveMaterial, savedMaterials, type SmartMaterial } from './ui/smart';
+import { BUILT_IN_MATERIALS, SMART_MASKS, generatorPart, saveMask, saveMaterial, savedMasks, savedMaterials, type SmartMaterial } from './ui/smart';
+import { parseHdr, type HdrImage } from './ui/hdr';
 import { clearOverlay, drawPath, pathSamples, type Vec3 } from './ui/path';
 import { fontLabel, loadFont, textImage } from './ui/text';
 
@@ -107,6 +108,27 @@ function syncBase(): void {
 
 function syncView(): void {
   engine?.set_view(num('d-exposure'), num('d-normal'));
+  engine?.set_environment_view(num('d-env-rot'), num('d-env-blur'), checked('d-env-bg'));
+}
+
+const environments = new Map<string, HdrImage>();
+
+function useEnvironment(name: string): void {
+  const e = requireEngine();
+  if (!name) { e.clear_environment(); $<HTMLSelectElement>('d-env').value = ''; return; }
+  const image = environments.get(name);
+  if (!image) throw new Error(`Environment ${name} is not loaded`);
+  e.set_environment(name, image.width, image.height, image.rgb);
+  const list = $<HTMLSelectElement>('d-env');
+  if (![...list.options].some((o) => o.value === name)) list.add(new Option(name, name));
+  list.value = name;
+}
+
+async function loadEnvironment(name: string, buffer: ArrayBuffer): Promise<{ width: number; height: number }> {
+  const image = parseHdr(buffer);
+  environments.set(name, image);
+  useEnvironment(name);
+  return { width: image.width, height: image.height };
 }
 
 const layerList = new LayerList($('layers'), {
@@ -170,15 +192,19 @@ $('uv-tiles').addEventListener('change', () => {
   try { setUvTiles(checked('uv-tiles')); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
 });
 
-const MASK_GENERATORS = ['cavity', 'edges', 'thin', 'top'];
+const MASK_GENERATORS = ['cavity', 'edges', 'thin', 'top', 'light', 'position', 'noise', 'mask_builder', 'dirt', 'metal_edge_wear'];
 let pickingId = false;
 
-function maskFromGenerator(id: number, generator: string, level = 0.5, softness = 0.1, invert = false): void {
+function maskFromSettings(id: number, settings: Record<string, unknown>): void {
   const e = requireEngine();
-  if (!MASK_GENERATORS.includes(generator)) throw new Error(`generator is one of ${MASK_GENERATORS.join(', ')}`);
-  e.mask_generator(id, JSON.stringify({ pattern: 'solid', use_color: true, use_roughness: false, use_metallic: false, use_height: false, opacity: 1, generator, generator_level: level, generator_softness: softness, generator_invert: invert }));
+  if (!MASK_GENERATORS.includes(String(settings.generator))) throw new Error(`generator is one of ${MASK_GENERATORS.join(', ')}`);
+  e.mask_generator(id, JSON.stringify({ pattern: 'solid', use_color: true, use_roughness: false, use_metallic: false, use_height: false, opacity: 1, ...settings }));
   e.set_paint_target(true);
   refreshLayers();
+}
+
+function maskFromGenerator(id: number, generator: string, level = 0.5, softness = 0.1, invert = false): void {
+  maskFromSettings(id, { generator, generator_level: level, generator_softness: softness, generator_invert: invert });
 }
 
 function maskFromId(id: number, color: string, tolerance = 0.06): void {
@@ -275,7 +301,13 @@ const FILL_FIELDS: [string, string][] = [
   ['f-ox', 'offset_x'], ['f-oy', 'offset_y'], ['f-sharp', 'sharpness'], ['f-rough', 'roughness'], ['f-metal', 'metallic'], ['f-height', 'height'],
   ['f-use-color', 'use_color'], ['f-use-rough', 'use_roughness'], ['f-use-metal', 'use_metallic'], ['f-use-height', 'use_height'], ['f-opacity', 'opacity'],
   ['f-gen', 'generator'], ['f-glevel', 'generator_level'], ['f-gsoft', 'generator_softness'], ['f-ginvert', 'generator_invert'],
+  ['f-gnoise', 'generator_noise'], ['f-gscale', 'noise_scale'], ['f-bao', 'builder_ao'], ['f-bcurv', 'builder_curvature'], ['f-bnoise', 'builder_noise'],
 ];
+
+function directionOf(yawDegrees: number, pitchDegrees: number): [number, number, number] {
+  const [y, p] = [(yawDegrees * Math.PI) / 180, (pitchDegrees * Math.PI) / 180];
+  return [Math.sin(y) * Math.cos(p), Math.sin(p), Math.cos(y) * Math.cos(p)];
+}
 
 const FILTER_FIELDS: [string, string][] = [
   ['x-bright', 'brightness'], ['x-contrast', 'contrast'], ['x-hue', 'hue'], ['x-sat', 'saturation'], ['x-gamma', 'gamma'], ['x-rough', 'roughness_offset'], ['x-metal', 'metallic_offset'],
@@ -312,12 +344,18 @@ function loadFillControls(settings: Record<string, unknown>): void {
     if (input.type === 'checkbox') input.checked = Boolean(value); else input.value = String(value);
     setOutput(id);
   }
+  const d = settings.generator_direction as number[] | undefined;
+  if (d && d.length === 3) {
+    $<HTMLInputElement>('f-gyaw').value = String(Math.round((Math.atan2(d[0], d[2]) * 180) / Math.PI));
+    $<HTMLInputElement>('f-gpitch').value = String(Math.round((Math.asin(Math.max(-1, Math.min(1, d[1]))) * 180) / Math.PI));
+    setOutput('f-gyaw'); setOutput('f-gpitch');
+  }
   const c = settings.base_color as number[] | undefined;
   if (c) $<HTMLInputElement>('f-color').value = `#${c.map((v) => Math.round(Math.pow(Math.max(0, v), 1 / 2.2) * 255).toString(16).padStart(2, '0')).join('')}`;
 }
 
 function fillPayload(): Record<string, unknown> {
-  const out: Record<string, unknown> = { base_color: hex('f-color') };
+  const out: Record<string, unknown> = { base_color: hex('f-color'), generator_direction: directionOf(num('f-gyaw'), num('f-gpitch')) };
   for (const [id, key] of FILL_FIELDS) {
     const input = $<HTMLInputElement>(id);
     out[key] = input.type === 'checkbox' ? input.checked : input.tagName === 'SELECT' && key !== 'axis' ? input.value : Number(input.value);
@@ -446,6 +484,7 @@ async function boot(): Promise<void> {
     engine = await create_engine(canvas, Number($<HTMLSelectElement>('tex-size').value));
     $('gpu-info').textContent = `${engine.backend()} · ${engine.texture_size()} px`;
     syncBrush(); syncChannels(); syncBase(); syncView();
+    if (sel('d-env')) useEnvironment(sel('d-env'));
     applyMesh(mesh ?? sampleMesh('sphere'), mesh ? meshName : 'sphere');
     refreshLayers();
     notice.hidden = true;
@@ -572,7 +611,23 @@ for (const id of ['c-rough', 'c-metal', 'c-height']) $(id).addEventListener('inp
 for (const id of ['c-color', 'c-use-color', 'c-use-rough', 'c-use-metal', 'c-use-height']) $(id).addEventListener('input', syncChannels);
 for (const id of ['m-rough', 'm-metal']) $(id).addEventListener('input', () => { setOutput(id); syncBase(); });
 $('m-color').addEventListener('input', syncBase);
-for (const id of ['d-exposure', 'd-normal']) $(id).addEventListener('input', () => { setOutput(id); syncView(); });
+for (const id of ['d-exposure', 'd-normal', 'd-env-rot', 'd-env-blur']) $(id).addEventListener('input', () => { setOutput(id); syncView(); });
+$('d-env-bg').addEventListener('change', syncView);
+$('d-env').addEventListener('change', () => { try { useEnvironment(sel('d-env')); } catch (error) { status(error instanceof Error ? error.message : String(error), true); } });
+const envInput = $<HTMLInputElement>('env-file');
+$('d-env-load').addEventListener('click', () => envInput.click());
+envInput.addEventListener('change', async () => {
+  const file = envInput.files?.[0];
+  envInput.value = '';
+  if (!file) return;
+  if (!engine) { status('The GPU engine is still starting; load the environment again in a moment', true); return; }
+  try {
+    const size = await loadEnvironment(file.name, await file.arrayBuffer());
+    status(`Environment ${file.name} (${size.width} by ${size.height}) lights the model; rotate and blur it in Display`);
+  } catch (error) {
+    status(`Could not load ${file.name}: ${error instanceof Error ? error.message : String(error)}`, true);
+  }
+});
 $('l-opacity').addEventListener('input', () => { setOutput('l-opacity'); updateActiveLayer({ opacity: num('l-opacity') }); });
 $('l-blend').addEventListener('change', () => updateActiveLayer({ blend: $<HTMLSelectElement>('l-blend').value }));
 
@@ -777,6 +832,7 @@ $('l-mask').addEventListener('change', () => {
   refreshLayers();
 });
 $('l-target').addEventListener('change', () => { engine?.set_paint_target(sel('l-target') === 'mask'); });
+for (const id of ['f-gyaw', 'f-gpitch']) $(id).addEventListener('input', () => { setOutput(id); syncFill(); });
 for (const [id] of FILL_FIELDS) $(id).addEventListener(id.startsWith('f-use') || id === 'f-imgcolor' || $(id).tagName === 'SELECT' ? 'change' : 'input', () => { setOutput(id); syncFill(); });
 $('f-color').addEventListener('input', syncFill);
 for (const [id] of FILTER_FIELDS) $(id).addEventListener('input', () => { setOutput(id); syncFilter(); });
@@ -905,15 +961,44 @@ function captureSmartMaterial(name: string): SmartMaterial {
   return { name, layers: captured };
 }
 
+let smartMasks: Record<string, Record<string, unknown>> = { ...SMART_MASKS };
+
+async function refreshMasks(select?: string): Promise<void> {
+  smartMasks = { ...SMART_MASKS, ...(await savedMasks()) };
+  const list = $<HTMLSelectElement>('sm-mask');
+  for (const name of Object.keys(smartMasks)) if (![...list.options].some((o) => o.value === name)) list.add(new Option(SMART_MASKS[name] ? name : `${name} (saved)`, name));
+  if (select) list.value = select;
+}
+
 function applySmartMask(id: number, name: string): Record<string, unknown> {
   const e = requireEngine();
-  const preset = SMART_MASKS[name];
-  if (!preset) throw new Error(`No smart mask named ${name}`);
+  const preset = smartMasks[name];
+  if (!preset) throw new Error(`No smart mask named ${name}. Smart masks: ${Object.keys(smartMasks).join(', ')}`);
   const raw = e.fill_settings(id);
-  if (!raw) throw new Error('Smart masks apply to fill layers');
+  if (!raw) {
+    maskFromSettings(id, preset);
+    return { applied_as: 'layer mask', ...preset };
+  }
   e.set_fill(id, JSON.stringify({ ...JSON.parse(raw), ...preset }));
   refreshLayers();
-  return JSON.parse(e.fill_settings(id)) as Record<string, unknown>;
+  return { applied_as: 'fill generator', ...(JSON.parse(e.fill_settings(id)) as Record<string, unknown>) };
+}
+
+function captureSmartMask(id: number): Record<string, unknown> {
+  const e = requireEngine();
+  const fill = e.fill_settings(id);
+  const sources = [fill, e.mask_generator_settings(id)].filter((s) => s).map((s) => generatorPart(JSON.parse(s) as Record<string, unknown>));
+  const found = sources.find((s) => s.generator && s.generator !== 'none');
+  if (!found) throw new Error('Give the layer a generator (fill layer) or a generator mask (Mask from) first; that setup is what a smart mask saves');
+  return found;
+}
+
+async function saveSmartMask(id: number, name: string): Promise<Record<string, unknown>> {
+  const settings = captureSmartMask(id);
+  if (SMART_MASKS[name]) throw new Error(`${name} is a built-in smart mask; choose another name`);
+  const file = await saveMask(name, settings);
+  await refreshMasks(name);
+  return { file, settings };
 }
 
 $('sm-apply').addEventListener('click', () => {
@@ -929,8 +1014,18 @@ $('sm-save').addEventListener('click', async () => {
   } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
 });
 $('sm-mask-apply').addEventListener('click', () => {
-  try { if (engine) applySmartMask(engine.active_layer(), sel('sm-mask')); status(`Applied smart mask ${sel('sm-mask')}`); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+  try { if (engine) { const r = applySmartMask(engine.active_layer(), sel('sm-mask')); status(`Applied smart mask ${sel('sm-mask')} as ${r.applied_as}`); } } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
 });
+$('sm-mask-save').addEventListener('click', async () => {
+  try {
+    if (!engine) return;
+    const name = $<HTMLInputElement>('sm-mask-name').value.trim();
+    if (!name) throw new Error('Name the smart mask first');
+    await saveSmartMask(engine.active_layer(), name);
+    status(`Saved smart mask ${name}; it applies to any layer from the list`);
+  } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+});
+void refreshMasks();
 
 let highMesh: FlatMesh | undefined;
 let baking = false;
@@ -1303,7 +1398,23 @@ const agentLink = new AgentLink({
     refreshLayers();
     return { id, settings: JSON.parse(e.fill_settings(id)) };
   },
-  smart_list: async () => { await refreshLibrary(); return { materials: library.map((m) => ({ name: m.name, built_in: !!m.builtIn, layers: m.layers.map((l) => l.name) })), masks: Object.keys(SMART_MASKS) }; },
+  smart_list: async () => { await refreshLibrary(); await refreshMasks(); return { materials: library.map((m) => ({ name: m.name, built_in: !!m.builtIn, layers: m.layers.map((l) => l.name) })), masks: Object.keys(smartMasks), saved_masks: Object.keys(smartMasks).filter((n) => !SMART_MASKS[n]) }; },
+  save_smart_mask: async ({ id, name }) => saveSmartMask(Number(id), String(name ?? '')),
+  environment: async ({ file, studio, rotation_degrees, blur, background, exposure }) => {
+    const e = requireEngine();
+    if (studio) useEnvironment('');
+    else if (file) {
+      const name = String(file);
+      if (environments.has(name)) useEnvironment(name);
+      else {
+        const response = await fetch(`/api/environments/${encodeURIComponent(name)}`);
+        if (!response.ok) throw new Error(`${name} is not in the workspace environments folder (Radiance .hdr files)`);
+        await loadEnvironment(name, await response.arrayBuffer());
+      }
+    }
+    setControl('d-env-rot', rotation_degrees); setControl('d-env-blur', blur); setControl('d-env-bg', background, 'change'); setControl('d-exposure', exposure);
+    return JSON.parse(e.environment_json()) as Record<string, unknown>;
+  },
   smart_apply: async ({ name }) => { await refreshLibrary(); return { layer_ids: applySmartMaterial(String(name)), baked: requireEngine().is_baked(), layers: layers() }; },
   smart_mask: ({ id, name }) => ({ settings: applySmartMask(Number(id), String(name)) }),
   smart_save: async ({ name }) => { const file = await saveMaterial(captureSmartMaterial(String(name))); await refreshLibrary(); return { file }; },

@@ -59,7 +59,36 @@ export const SMART_MASKS: Record<string, Record<string, unknown>> = {
   'Dust from top': { generator: 'top', generator_level: 0.7, generator_softness: 0.15, generator_invert: false },
   'Thin parts': { generator: 'thin', generator_level: 0.6, generator_softness: 0.1, generator_invert: false },
   'Protect edges': { generator: 'edges', generator_level: 0.6, generator_softness: 0.06, generator_invert: true },
+  'Grunge dirt': { generator: 'dirt', generator_level: 0.4, generator_softness: 0.12, generator_invert: false, noise_scale: 6 },
+  'Metal edge wear': { generator: 'metal_edge_wear', generator_level: 0.45, generator_softness: 0.08, generator_invert: false, noise_scale: 10 },
+  'Sun bleached': { generator: 'light', generator_level: 0.6, generator_softness: 0.2, generator_invert: false, generator_direction: [0.3, 0.9, 0.3], generator_noise: 0.2 },
 };
+
+export const GENERATOR_KEYS = ['generator', 'generator_level', 'generator_softness', 'generator_invert', 'generator_noise', 'noise_scale', 'generator_direction', 'builder_ao', 'builder_curvature', 'builder_noise'];
+
+export function generatorPart(settings: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of GENERATOR_KEYS) if (settings[key] !== undefined) out[key] = settings[key];
+  return out;
+}
+
+export async function savedMasks(): Promise<Record<string, Record<string, unknown>>> {
+  try {
+    const response = await fetch('/api/smart-masks');
+    if (!response.ok) return {};
+    const list = ((await response.json()).masks ?? []) as { name: string; settings: Record<string, unknown> }[];
+    return Object.fromEntries(list.map((m) => [m.name, generatorPart(m.settings)]));
+  } catch {
+    return {};
+  }
+}
+
+export async function saveMask(name: string, settings: Record<string, unknown>): Promise<string> {
+  if (!/^[A-Za-z0-9 _.-]{1,80}$/.test(name) || name.startsWith('.')) throw new Error('Smart mask names use letters, digits, spaces, dot, dash and underscore');
+  const response = await fetch(`/api/smart-masks/${encodeURIComponent(name)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ settings: generatorPart(settings) }) });
+  if (!response.ok) throw new Error(`Saving the smart mask failed (is ./formsurface running?): ${await response.text()}`);
+  return (await response.json()).file as string;
+}
 
 export async function savedMaterials(): Promise<SmartMaterial[]> {
   try {

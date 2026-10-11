@@ -192,7 +192,8 @@
       <h2>Smart materials</h2>
       <div class="row" style="grid-template-columns:1fr 64px"><select id="sm-list" aria-label="Smart material"></select><button class="btn" id="sm-apply" style="justify-content:center">Apply</button></div>
       <div class="row" style="grid-template-columns:1fr 64px"><input id="sm-name" type="text" placeholder="Save fill and filter layers as" style="min-width:0;height:28px;padding:0 8px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius)"><button class="btn" id="sm-save" style="justify-content:center">Save</button></div>
-      <div class="row" style="grid-template-columns:1fr 64px"><select id="sm-mask" aria-label="Smart mask"></select><button class="btn" id="sm-mask-apply" style="justify-content:center" title="Apply to the active fill layer">Mask</button></div>
+      <div class="row" style="grid-template-columns:1fr 64px"><select id="sm-mask" aria-label="Smart mask"></select><button class="btn" id="sm-mask-apply" style="justify-content:center" title="Apply to the active layer: a fill layer takes it as its generator, any other layer as its mask">Mask</button></div>
+      <div class="row" style="grid-template-columns:1fr 64px"><input id="sm-mask-name" type="text" placeholder="Save the layer's generator as" style="min-width:0;height:28px;padding:0 8px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius)"><button class="btn" id="sm-mask-save" style="justify-content:center" title="Save the active layer's generator or generator mask as a smart mask">Save</button></div>
     </section>
     <section class="section" id="fill-section">
       <h2>Fill layer
@@ -218,10 +219,18 @@
       <div class="row"><label for="f-opacity">Fill amount</label><input id="f-opacity" type="range" min="0" max="1" step="0.01" value="1"><output for="f-opacity">1.00</output></div>
       <div class="row"><label for="f-gen">Generator</label><select id="f-gen">
         <option value="none">None</option><option value="cavity">Cavity dirt (AO)</option><option value="edges">Edge wear (curvature)</option><option value="thin">Thin areas (thickness)</option><option value="top">From top (position)</option>
+        <option value="light">Light (from a direction)</option><option value="position">Position gradient (along a direction)</option><option value="noise">Noise (3D)</option><option value="mask_builder">Mask builder (AO, curvature, noise)</option><option value="dirt">Dirt (AO with grunge)</option><option value="metal_edge_wear">Metal edge wear (curvature with grunge)</option>
       </select><output></output></div>
       <div class="row"><label for="f-glevel">Level</label><input id="f-glevel" type="range" min="0" max="1" step="0.01" value="0.5"><output for="f-glevel">0.50</output></div>
       <div class="row"><label for="f-gsoft">Softness</label><input id="f-gsoft" type="range" min="0.01" max="0.5" step="0.01" value="0.1"><output for="f-gsoft">0.10</output></div>
       <label class="check"><input type="checkbox" id="f-ginvert">Invert generator</label>
+      <div class="row"><label for="f-gnoise">Noise breakup</label><input id="f-gnoise" type="range" min="0" max="1" step="0.01" value="0"><output for="f-gnoise">0.00</output></div>
+      <div class="row"><label for="f-gscale">Noise scale</label><input id="f-gscale" type="range" min="0.5" max="32" step="0.5" value="4"><output for="f-gscale">4.00</output></div>
+      <div class="row"><label for="f-gyaw">Direction yaw</label><input id="f-gyaw" type="range" min="-180" max="180" step="1" value="59"><output for="f-gyaw">59</output></div>
+      <div class="row"><label for="f-gpitch">Direction pitch</label><input id="f-gpitch" type="range" min="-90" max="90" step="1" value="53"><output for="f-gpitch">53</output></div>
+      <div class="row"><label for="f-bao">Builder AO</label><input id="f-bao" type="range" min="0" max="1" step="0.01" value="1"><output for="f-bao">1.00</output></div>
+      <div class="row"><label for="f-bcurv">Builder curvature</label><input id="f-bcurv" type="range" min="0" max="1" step="0.01" value="0"><output for="f-bcurv">0.00</output></div>
+      <div class="row"><label for="f-bnoise">Builder noise</label><input id="f-bnoise" type="range" min="0" max="1" step="0.01" value="0"><output for="f-bnoise">0.00</output></div>
     </section>
     <section class="section" id="filter-section" aria-disabled="true">
       <h2>Filter layer</h2>
@@ -261,6 +270,11 @@
       <h2>Display</h2>
       <div class="row"><label for="d-exposure">Exposure</label><input id="d-exposure" type="range" min="0.2" max="3" step="0.05" value="1"><output for="d-exposure">1.00</output></div>
       <div class="row"><label for="d-normal">Height bump</label><input id="d-normal" type="range" min="0" max="4" step="0.05" value="1"><output for="d-normal">1.00</output></div>
+      <div class="row"><label for="d-env">Environment</label><select id="d-env"><option value="">Studio sky (built in)</option></select><button class="icon-btn" id="d-env-load" title="Load an HDR environment (Radiance .hdr, equirectangular)"><svg><use href="#i-open"/></svg></button></div>
+      <div class="row"><label for="d-env-rot">Rotation</label><input id="d-env-rot" type="range" min="-180" max="180" step="1" value="0"><output for="d-env-rot">0</output></div>
+      <div class="row"><label for="d-env-blur">Background blur</label><input id="d-env-blur" type="range" min="0" max="1" step="0.01" value="0"><output for="d-env-blur">0.00</output></div>
+      <label class="check"><input type="checkbox" id="d-env-bg" checked>Show environment as background</label>
+      <input type="file" id="env-file" accept=".hdr" hidden>
     </section>
     <section class="section">
       <h2>Export</h2>
