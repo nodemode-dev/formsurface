@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 VERSION = "0.5.0"
 ROOT = Path(__file__).resolve().parents[2]
@@ -130,6 +130,14 @@ async def save_project(name: str, document: str = Form(...), maps: list[UploadFi
         raise HTTPException(400, f"Project document is not JSON: {error}") from error
     (path / "project.json").write_text(json.dumps({"formsurface": VERSION, **parsed}, indent=2))
     return {"folder": str(path), "files": await write_maps(path, maps)}
+
+
+@app.get("/api/meshes/{name}")
+def read_mesh(name: str):
+    path = DATA / "meshes" / name
+    if not SAFE.match(name) or name.startswith(".") or path.suffix.lower() not in {".glb", ".gltf", ".obj", ".fbx"} or not path.is_file():
+        raise HTTPException(404, "Put the mesh in the workspace meshes folder (glb, gltf, obj or fbx)")
+    return FileResponse(path)
 
 
 @app.get("/api/projects")
