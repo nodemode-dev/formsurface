@@ -330,7 +330,7 @@ def formsurface_update_layer(
     name: str | None = None,
     visible: bool | None = None,
     opacity: Unit | None = None,
-    blend: Literal["normal", "multiply", "screen", "overlay", "add", "subtract", "darken", "lighten", "disable", "replace", "divide", "inverse_divide", "difference", "exclusion", "signed_addition", "linear_burn", "color_burn", "color_dodge", "soft_light", "hard_light", "vivid_light", "linear_light", "pin_light", "tint", "saturation", "color", "value", "normal_map_combine", "normal_map_detail", "normal_map_inverse_detail"] | None = None,
+    blend: Literal["normal", "multiply", "screen", "overlay", "add", "subtract", "darken", "lighten", "disable", "replace", "divide", "inverse_divide", "difference", "exclusion", "signed_addition", "linear_burn", "color_burn", "color_dodge", "soft_light", "hard_light", "vivid_light", "linear_light", "pin_light", "tint", "saturation", "color", "value", "normal_map_combine", "normal_map_detail", "normal_map_inverse_detail", "inverse_subtract"] | None = None,
     make_active: bool = False,
 ) -> dict:
     """Rename, show or hide, set opacity or blend mode of a layer, or make it the active layer."""
