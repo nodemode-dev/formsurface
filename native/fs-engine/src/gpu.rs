@@ -224,7 +224,11 @@ fn camera_bytes(view_proj: [f32; 16], eye: Vec3, cursor: Option<(Vec3, Vec3, f32
 impl Gpu {
     pub async fn new(canvas: web_sys::HtmlCanvasElement, width: u32, height: u32, size: u32) -> Result<Gpu, String> {
         let size = size.clamp(256, 4096).next_power_of_two();
-        let instance = wgpu::util::new_instance_with_webgpu_detection(wgpu::InstanceDescriptor::new_without_display_handle()).await;
+        let navigator = js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str("navigator")).unwrap_or(JsValue::UNDEFINED);
+        let has_webgpu = !navigator.is_undefined() && js_sys::Reflect::get(&navigator, &JsValue::from_str("gpu")).map(|g| !g.is_undefined() && !g.is_null()).unwrap_or(false);
+        let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
+        descriptor.backends = if has_webgpu { wgpu::Backends::BROWSER_WEBGPU } else { wgpu::Backends::GL };
+        let instance = wgpu::Instance::new(descriptor);
         let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas)).map_err(|e| format!("Could not create a drawing surface: {e}"))?;
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, compatible_surface: Some(&surface), force_fallback_adapter: false, apply_limit_buckets: false })

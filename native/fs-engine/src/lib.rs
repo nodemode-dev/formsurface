@@ -318,6 +318,11 @@ impl Engine {
     }
 
     pub fn snapshot(&mut self) -> js_sys::Promise {
+        self.flush();
+        if self.dirty {
+            self.gpu.composite(&self.layers);
+            self.dirty = false;
+        }
         let (forward, right, up, eye) = self.basis();
         let aspect = self.width as f32 / self.height as f32;
         let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
