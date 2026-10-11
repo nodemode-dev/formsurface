@@ -1,0 +1,10 @@
+[package]
+name = "fs-core"
+description = "FormSurface core: mesh, BVH picking, brush and layer document model. No GPU."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
