@@ -4,6 +4,7 @@ from typing import Annotated, Literal
 
 import httpx
 from mcp.server.mcpserver import Image, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import BaseModel, Field
 
 SERVICE = os.environ.get("FORMSURFACE_SERVICE", "http://127.0.0.1:8766").rstrip("/")
@@ -25,13 +26,13 @@ def call(command: str, args: dict | None = None, timeout: float = 60) -> dict:
     try:
         response = httpx.post(f"{SERVICE}/api/agent", json={"command": command, "args": args or {}, "timeout": timeout}, timeout=timeout + 5, trust_env=False)
     except httpx.ConnectError as error:
-        raise RuntimeError("The FormSurface service is not running. Start it with ./formsurface") from error
+        raise ToolError("The FormSurface service is not running. Start it with ./formsurface") from error
     if response.status_code >= 400:
         try:
             detail = response.json().get("detail", response.text)
         except ValueError:
             detail = response.text
-        raise RuntimeError(f"FormSurface: {detail}")
+        raise ToolError(f"FormSurface: {detail}")
     return response.json()["result"]
 
 
@@ -307,6 +308,16 @@ def formsurface_fill_layer() -> dict:
 
 
 @server.tool()
+def formsurface_polygon_fill(
+    x: Annotated[float, Field(ge=0, le=1)],
+    y: Annotated[float, Field(ge=0, le=1)],
+    mode: Literal["triangle", "polygon", "mesh", "uv_chunk"] = "mesh",
+) -> dict:
+    """Fill the part of the active texture set under a viewport point (0,0 top left, 1,1 bottom right) with the paint material at stroke opacity, like Painter's polygon fill: triangle, polygon (the flat face around it), mesh (the connected part) or uv_chunk (the UV island). Works through layer masks the same way strokes do and is undoable. Returns the filled triangle count."""
+    return call("polygon_fill", {"x": x, "y": y, "mode": mode})
+
+
+@server.tool()
 def formsurface_paint_stroke(
     points: Annotated[list[tuple[float, float]], Field(min_length=1, max_length=2000)],
     pressure: Unit = 1.0,
@@ -357,10 +368,11 @@ def formsurface_export_maps(
     name: str | None = None,
     template: Literal["pbr", "gltf", "unreal", "unity_hdrp", "unity_urp"] | None = None,
     custom_maps: Annotated[list[MapSpec] | None, Field(max_length=16)] = None,
+    bit_depth: Literal[8, 16] | None = None,
 ) -> dict:
-    """Export maps for every texture set into the FormSurface workspace and return the folder. template pbr writes base color, roughness, metallic, height and normal (OpenGL) plus baked maps; gltf, unreal, unity_hdrp and unity_urp pack channels for those engines (unreal flips the normal to DirectX). custom_maps defines your own files: each has a suffix and either rgb (basecolor, normal_gl, normal_dx) or r, g, b, a sources; smoothness is 1 minus roughness and ao is white until baked. With several sets, files are named name_material_suffix, with .udim appended for tiled materials. Without template, the editor's Export template choice is used."""
+    """Export maps for every texture set into the FormSurface workspace and return the folder. template pbr writes base color, roughness, metallic, height and normal (OpenGL) plus baked maps; gltf, unreal, unity_hdrp and unity_urp pack channels for those engines (unreal flips the normal to DirectX). custom_maps defines your own files: each has a suffix and either rgb (basecolor, normal_gl, normal_dx) or r, g, b, a sources; smoothness is 1 minus roughness and ao is white until baked. With several sets, files are named name_material_suffix, with .udim appended for tiled materials. Without template, the editor's Export template choice is used. bit_depth 16 writes 16-bit PNGs (smooth height and normal gradients); without it the editor's choice is used."""
     maps = [m.model_dump(exclude_none=True) for m in custom_maps] if custom_maps else None
-    return call("export", drop_none(name=name, template=template, maps=maps), timeout=240)
+    return call("export", drop_none(name=name, template=template, maps=maps, bit_depth=bit_depth), timeout=300)
 
 
 @server.tool()
