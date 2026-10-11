@@ -4,7 +4,7 @@ import type { BakeJob, BakeResult } from './engine/bake-worker';
 import { VERSION } from './version';
 import { LayerList, type LayerInfo } from './ui/layers';
 import { TextureSetList, type TextureSetInfo } from './ui/sets';
-import { TEMPLATES, emptyPixels, encodePng, halfToFloat, halfToUnit16, pack, sourcesOf, validateMaps, type MapSpec, type Pixels, type Template } from './ui/export-templates';
+import { COLOR_SOURCES, TEMPLATES, emptyPixels, encodePng, halfToFloat, halfToUnit16, pack, sourcesOf, validateMaps, type MapSpec, type Pixels, type Template } from './ui/export-templates';
 import { FORMAT_ALPHA, FORMAT_DEPTHS, checkFormat, encodeImage, gammaToLinear, sampleMax, type Format } from './ui/image-formats';
 import { PADDING_MODES, applyPadding, nearestSource, uvMask, type Padding, type PaddingMode } from './ui/padding';
 import { TemplateEditor, loadTemplates, saveTemplate } from './ui/template-editor';
@@ -106,9 +106,12 @@ function syncBase(): void {
   engine?.set_base(c[0], c[1], c[2], num('m-rough'), num('m-metal'));
 }
 
+const POST_FIELDS = ['bloom', 'bloom_threshold', 'glare', 'lens_flare', 'dof_aperture', 'dof_focus', 'aberration', 'sharpen', 'vignette', 'vignette_softness', 'grain', 'gain', 'contrast', 'saturation', 'temperature', 'tint'];
+
 function syncView(): void {
   engine?.set_view(num('d-exposure'), num('d-normal'));
   engine?.set_environment_view(num('d-env-rot'), num('d-env-blur'), checked('d-env-bg'));
+  engine?.set_post(JSON.stringify(Object.fromEntries(POST_FIELDS.map((k) => [k, num(`p-${k}`)]))));
 }
 
 const environments = new Map<string, HdrImage>();
@@ -491,6 +494,7 @@ function applyMesh(next: FlatMesh, name: string): void {
   if (!engine) return;
   meshGeneration++;
   highMaps.clear();
+  $('k-cage-state').textContent = 'Distance cage';
   mesh = next;
   meshName = name;
   const info = engine.set_mesh(next.positions, next.normals, next.uvs, next.indices, next.materials, JSON.stringify(next.materialNames));
@@ -638,6 +642,16 @@ for (const id of ['m-rough', 'm-metal']) $(id).addEventListener('input', () => {
 $('m-color').addEventListener('input', syncBase);
 for (const id of ['d-exposure', 'd-normal', 'd-env-rot', 'd-env-blur']) $(id).addEventListener('input', () => { setOutput(id); syncView(); });
 $('d-env-bg').addEventListener('change', syncView);
+for (const k of POST_FIELDS) $(`p-${k}`).addEventListener('input', () => { setOutput(`p-${k}`); syncView(); });
+function resetPost(): void {
+  for (const k of POST_FIELDS) {
+    const input = $<HTMLInputElement>(`p-${k}`);
+    input.value = input.defaultValue;
+    setOutput(`p-${k}`);
+  }
+  syncView();
+}
+$('p-reset').addEventListener('click', resetPost);
 $('d-env').addEventListener('change', () => { try { useEnvironment(sel('d-env')); } catch (error) { status(error instanceof Error ? error.message : String(error), true); } });
 const envInput = $<HTMLInputElement>('env-file');
 $('d-env-load').addEventListener('click', () => envInput.click());
@@ -1164,7 +1178,7 @@ async function bakeHigh(): Promise<string> {
       $('k-high-state').textContent = `Baking ${set.name} in the background (${sets.indexOf(set) + 1} of ${sets.length}); you can keep working`;
       const high = { positions: highMesh.positions.slice(), normals: highMesh.normals.slice(), indices: highMesh.indices.slice(), parts: highMesh.parts.slice() };
       const keys = e.texture_set_match_keys(set.index) as Uint32Array[];
-      const result = await bakeInWorker({ low: [positions, normals, uvs, indices], high, size, front: num('k-front'), rear: num('k-rear'), lowKeys: keys[0] ?? new Uint32Array(), highKeys: keys[1] ?? new Uint32Array(), aoRays: num('k-ao-rays') });
+      const result = await bakeInWorker({ low: [positions, normals, uvs, indices], high, size, front: num('k-front'), rear: num('k-rear'), lowKeys: keys[0] ?? new Uint32Array(), highKeys: keys[1] ?? new Uint32Array(), aoRays: num('k-ao-rays'), cage: e.texture_set_cage(set.index) });
       if (generation !== meshGeneration || engine !== e) throw new Error('The mesh changed during the bake; bake again');
       e.apply_high_bake(set.index, result.size, result.normal, result.id);
       highMaps.set(set.index, result);
@@ -1176,7 +1190,7 @@ async function bakeHigh(): Promise<string> {
     button.disabled = false;
     refreshLayers();
   }
-  const text = `${hits} of ${texels} texels hit the high-poly mesh across ${sets.length} texture set${sets.length === 1 ? '' : 's'} in ${((performance.now() - started) / 1000).toFixed(1)} s, baked in a worker${matchNote}`;
+  const text = `${hits} of ${texels} texels hit the high-poly mesh across ${sets.length} texture set${sets.length === 1 ? '' : 's'} in ${((performance.now() - started) / 1000).toFixed(1)} s, baked in a worker${e.has_cage() ? ' through the custom cage' : ''}${matchNote}`;
   $('k-high-state').textContent = `Baked normal, ID, height, opacity${num('k-ao-rays') ? ', AO and bent normal' : ''}: ${text}`;
   return text;
 }
@@ -1189,6 +1203,24 @@ highInput.addEventListener('change', async () => {
   if (!file || !engine) return;
   try { setHigh(await loadHighPoly(file.name, await file.arrayBuffer()), file.name); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
 });
+function setCage(next: FlatMesh, name: string): string {
+  const info = requireEngine().set_cage(next.positions, next.indices);
+  $('k-cage-state').textContent = `Cage ${name}: ${info}`;
+  return info;
+}
+function clearCage(): void {
+  engine?.clear_cage();
+  $('k-cage-state').textContent = 'Distance cage';
+}
+const cageInput = $<HTMLInputElement>('cage-file');
+$('k-cage-load').addEventListener('click', () => cageInput.click());
+cageInput.addEventListener('change', async () => {
+  const file = cageInput.files?.[0];
+  cageInput.value = '';
+  if (!file || !engine) return;
+  try { status(setCage(await loadMeshFile(file), file.name)); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+});
+$('k-cage-clear').addEventListener('click', clearCage);
 $('k-high-sample').addEventListener('click', () => {
   if (!engine) return;
   applyMesh(sampleMesh('sphere'), 'sphere');
@@ -1319,7 +1351,7 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
           if (c >= 5 && !e.is_baked()) continue;
           channels.set(c, await channelPixels(e, c, max));
         }
-        for (const map of template.maps) await write(`${prefix}${map.suffix}${suffix}`, pack(map, channels, size, max), !!map.a, map.rgb === 'basecolor', src);
+        for (const map of template.maps) await write(`${prefix}${map.suffix}${suffix}`, pack(map, channels, size, max), !!map.a, !!map.rgb && COLOR_SOURCES.includes(map.rgb), src);
         continue;
       }
       const wanted = [0, 1, 2, 3, 4, ...(e.is_baked() ? [5, 6, 7, 8, 9] : []), ...(e.is_high_baked() ? [10, 11] : [])];
@@ -1537,9 +1569,20 @@ const agentLink = new AgentLink({
       if (!response.ok) throw new Error(`High-poly ${file} is not in the workspace meshes folder`);
       setHigh(await loadHighPoly(String(file), await response.arrayBuffer()), String(file));
     }
+    let cage = '';
+    if (args.cage_file) {
+      const response = await fetch(`/api/meshes/${encodeURIComponent(String(args.cage_file))}`);
+      if (!response.ok) throw new Error(`Cage ${args.cage_file} is not in the workspace meshes folder`);
+      cage = setCage(await loadMeshFile(new File([await response.arrayBuffer()], String(args.cage_file))), String(args.cage_file));
+    } else if (args.distance_cage) clearCage();
     if (front !== undefined) setControl('k-front', front);
     if (rear !== undefined) setControl('k-rear', rear);
-    return { result: await bakeHigh(), maps: ['id', 'normal_baked'] };
+    return { result: await bakeHigh(), cage: cage || (requireEngine().has_cage() ? 'custom cage kept' : 'distance cage'), maps: ['id', 'normal_baked', 'height_high', 'opacity', 'ambient_occlusion_high', 'bent_normal'] };
+  },
+  set_post_effects: (args) => {
+    if (args.reset) resetPost();
+    for (const k of POST_FIELDS) setControl(`p-${k}`, args[k]);
+    return JSON.parse(requireEngine().post_json()) as Record<string, unknown>;
   },
   bake: ({ directions }) => {
     const e = requireEngine();

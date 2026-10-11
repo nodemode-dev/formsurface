@@ -1,8 +1,14 @@
 export type Source = 'basecolor' | 'normal_gl' | 'normal_dx' | 'roughness' | 'smoothness' | 'metallic' | 'height' | 'ao' | 'curvature' | 'thickness' | 'ao_high' | 'height_high' | 'opacity' | 'one' | 'zero';
 
+export type RgbSource = 'basecolor' | 'normal_gl' | 'normal_dx' | 'diffuse' | 'specular';
+
+export const RGB_SOURCES: RgbSource[] = ['basecolor', 'normal_gl', 'normal_dx', 'diffuse', 'specular'];
+
+export const COLOR_SOURCES: RgbSource[] = ['basecolor', 'diffuse', 'specular'];
+
 export interface MapSpec {
   suffix: string;
-  rgb?: 'basecolor' | 'normal_gl' | 'normal_dx';
+  rgb?: RgbSource;
   r?: Source;
   g?: Source;
   b?: Source;
@@ -46,6 +52,78 @@ export const TEMPLATES: Template[] = [
       { suffix: 'Normal', rgb: 'normal_gl' },
     ],
   },
+  {
+    name: 'unity_standard_specular', label: 'Unity Standard (specular setup)', maps: [
+      { suffix: 'Albedo', rgb: 'diffuse' },
+      { suffix: 'SpecularSmoothness', rgb: 'specular', a: 'smoothness' },
+      { suffix: 'Occlusion', r: 'ao', g: 'ao', b: 'ao' },
+      { suffix: 'Normal', rgb: 'normal_gl' },
+    ],
+  },
+  {
+    name: 'godot', label: 'Godot 4 (ORM, OpenGL normal)', maps: [
+      { suffix: 'albedo', rgb: 'basecolor' },
+      { suffix: 'orm', r: 'ao', g: 'roughness', b: 'metallic' },
+      { suffix: 'normal', rgb: 'normal_gl' },
+      { suffix: 'height', r: 'height' },
+    ],
+  },
+  {
+    name: 'blender', label: 'Blender (Principled BSDF)', maps: [
+      { suffix: 'BaseColor', rgb: 'basecolor' },
+      { suffix: 'Metallic', r: 'metallic' },
+      { suffix: 'Roughness', r: 'roughness' },
+      { suffix: 'Normal', rgb: 'normal_gl' },
+      { suffix: 'Height', r: 'height' },
+    ],
+  },
+  {
+    name: 'arnold', label: 'Arnold (aiStandardSurface)', maps: [
+      { suffix: 'BaseColor', rgb: 'basecolor' },
+      { suffix: 'Metalness', r: 'metallic' },
+      { suffix: 'SpecularRoughness', r: 'roughness' },
+      { suffix: 'Normal', rgb: 'normal_gl' },
+      { suffix: 'Height', r: 'height' },
+    ],
+  },
+  {
+    name: 'redshift', label: 'Redshift (Standard Material)', maps: [
+      { suffix: 'BaseColor', rgb: 'basecolor' },
+      { suffix: 'Metalness', r: 'metallic' },
+      { suffix: 'Roughness', r: 'roughness' },
+      { suffix: 'Normal', rgb: 'normal_gl' },
+      { suffix: 'Height', r: 'height' },
+    ],
+  },
+  {
+    name: 'usd', label: 'USD Preview Surface', maps: [
+      { suffix: 'diffuseColor', rgb: 'basecolor' },
+      { suffix: 'metallic', r: 'metallic' },
+      { suffix: 'roughness', r: 'roughness' },
+      { suffix: 'occlusion', r: 'ao' },
+      { suffix: 'normal', rgb: 'normal_gl' },
+      { suffix: 'displacement', r: 'height' },
+    ],
+  },
+  {
+    name: 'sketchfab', label: 'Sketchfab (metalness)', maps: [
+      { suffix: 'BaseColor', rgb: 'basecolor' },
+      { suffix: 'Metalness', r: 'metallic' },
+      { suffix: 'Roughness', r: 'roughness' },
+      { suffix: 'Normal', rgb: 'normal_gl' },
+      { suffix: 'AO', r: 'ao' },
+      { suffix: 'Height', r: 'height' },
+    ],
+  },
+  {
+    name: 'spec_gloss', label: 'PBR specular glossiness', maps: [
+      { suffix: 'Diffuse', rgb: 'diffuse' },
+      { suffix: 'Specular', rgb: 'specular' },
+      { suffix: 'Glossiness', r: 'smoothness' },
+      { suffix: 'Normal', rgb: 'normal_gl' },
+      { suffix: 'Height', r: 'height' },
+    ],
+  },
 ];
 
 export const SOURCE_CHANNEL: Record<string, number> = { basecolor: 0, roughness: 1, smoothness: 1, metallic: 2, height: 3, normal_gl: 4, normal_dx: 4, ao: 5, curvature: 6, thickness: 7, ao_high: 100, height_high: 101, opacity: 102 };
@@ -53,7 +131,10 @@ export const SOURCE_CHANNEL: Record<string, number> = { basecolor: 0, roughness:
 export function sourcesOf(maps: MapSpec[]): number[] {
   const needed = new Set<number>();
   for (const map of maps) {
-    for (const s of [map.rgb, map.r, map.g, map.b, map.a]) if (s && s in SOURCE_CHANNEL) needed.add(SOURCE_CHANNEL[s]);
+    for (const s of [map.rgb, map.r, map.g, map.b, map.a]) {
+      if (s === 'diffuse' || s === 'specular') { needed.add(0); needed.add(2); }
+      else if (s && s in SOURCE_CHANNEL) needed.add(SOURCE_CHANNEL[s]);
+    }
   }
   return [...needed];
 }
@@ -65,7 +146,7 @@ export function validateMaps(value: unknown): MapSpec[] {
     const map = raw as MapSpec;
     if (typeof map.suffix !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(map.suffix)) throw new Error('Each map needs a suffix of letters, digits, dash or underscore');
     for (const key of ['r', 'g', 'b', 'a'] as const) if (map[key] !== undefined && !sources.has(map[key]!)) throw new Error(`Unknown source ${map[key]} in ${map.suffix}`);
-    if (map.rgb !== undefined && !['basecolor', 'normal_gl', 'normal_dx'].includes(map.rgb)) throw new Error(`rgb must be basecolor, normal_gl or normal_dx in ${map.suffix}`);
+    if (map.rgb !== undefined && !RGB_SOURCES.includes(map.rgb)) throw new Error(`rgb must be ${RGB_SOURCES.join(', ')} in ${map.suffix}`);
     if (!map.rgb && !map.r) throw new Error(`Map ${map.suffix} needs rgb or r`);
     return map;
   });
@@ -115,8 +196,19 @@ export function pack(map: MapSpec, channels: Map<number, Pixels>, size: number, 
     if (!data) return source === 'ao' || source === 'ao_high' ? max : fallback;
     return source === 'smoothness' ? max - data[i] : data[i];
   };
+  const whole = max !== 1;
   for (let i = 0; i < size * size * 4; i += 4) {
-    if (map.rgb) {
+    if (map.rgb === 'diffuse' || map.rgb === 'specular') {
+      const color = channels.get(0)!;
+      const metal = channels.get(2);
+      const m = metal ? metal[i] / max : 0;
+      for (let c = 0; c < 3; c++) {
+        const lin = Math.pow(color[i + c] / max, 2.2);
+        const v = map.rgb === 'diffuse' ? lin * (1 - m) : 0.04 * (1 - m) + lin * m;
+        const encoded = Math.pow(v, 1 / 2.2) * max;
+        out[i + c] = whole ? Math.round(encoded) : encoded;
+      }
+    } else if (map.rgb) {
       const data = channels.get(SOURCE_CHANNEL[map.rgb])!;
       out[i] = data[i];
       out[i + 1] = map.rgb === 'normal_dx' ? max - data[i + 1] : data[i + 1];

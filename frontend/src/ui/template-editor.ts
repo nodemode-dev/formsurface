@@ -1,6 +1,4 @@
-import type { MapSpec, Source, Template } from './export-templates';
-
-const RGB_SOURCES = ['basecolor', 'normal_gl', 'normal_dx'] as const;
+import { RGB_SOURCES, type MapSpec, type Source, type Template } from './export-templates';
 const GRAY_SOURCES: Source[] = ['roughness', 'smoothness', 'metallic', 'height', 'ao', 'curvature', 'thickness', 'ao_high', 'height_high', 'opacity', 'one', 'zero'];
 
 export async function loadTemplates(): Promise<Template[]> {

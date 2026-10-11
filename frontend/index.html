@@ -273,6 +273,12 @@
       <div class="row"><label for="k-rear">Cage rear</label><input id="k-rear" type="range" min="0" max="0.2" step="0.001" value="0.05"><output for="k-rear">0.05</output></div>
       <div class="row"><label for="k-ao-rays">High AO rays</label><input id="k-ao-rays" type="range" min="0" max="64" step="1" value="16" title="Rays per texel for ambient occlusion and bent normal from the high-poly mesh; 0 skips them"><output for="k-ao-rays">16</output></div>
       <label class="check" title="Pair low and high parts by mesh name, ignoring _low and _high, so rays never land on a neighbouring part"><input type="checkbox" id="k-match">Match by mesh name (_low / _high)</label>
+      <div class="row" style="grid-template-columns:1fr 1fr;gap:8px">
+        <button class="btn" id="k-cage-load" style="justify-content:center" title="A copy of the low-poly mesh with its vertices pushed out; rays then run from the cage to the low-poly surface"><svg><use href="#i-open"/></svg>Cage mesh</button>
+        <button class="btn" id="k-cage-clear" style="justify-content:center" title="Go back to the distance cage (Cage front and rear)">Distance cage</button>
+      </div>
+      <p class="check" id="k-cage-state" style="margin:4px 0 0">Distance cage</p>
+      <input type="file" id="cage-file" accept=".glb,.gltf,.obj,.fbx" hidden>
       <button class="btn" id="k-bake-high" style="width:100%;justify-content:center;margin-top:6px"><svg><use href="#i-bake"/></svg>Bake maps from high-poly</button>
       <p class="check" id="k-high-state" style="min-height:28px;margin:6px 0 0">No high-poly mesh</p>
       <input type="file" id="high-file" accept=".glb,.gltf,.obj,.fbx" hidden>
@@ -293,6 +299,26 @@
       <label class="check"><input type="checkbox" id="d-env-bg" checked>Show environment as background</label>
       <div class="row" style="grid-template-columns:84px 1fr"><label for="d-2d-channel">2D view shows</label><select id="d-2d-channel"><option value="0">Base color</option><option value="1">Roughness</option><option value="2">Metallic</option><option value="3">Height</option></select></div>
       <input type="file" id="env-file" accept=".hdr" hidden>
+    </section>
+    <section class="section">
+      <h2>Post effects</h2>
+      <div class="row"><label for="p-bloom">Bloom</label><input id="p-bloom" type="range" min="0" max="2" step="0.01" value="0"><output for="p-bloom">0.00</output></div>
+      <div class="row"><label for="p-bloom_threshold">Bloom threshold</label><input id="p-bloom_threshold" type="range" min="0" max="0.99" step="0.01" value="0.8"><output for="p-bloom_threshold">0.80</output></div>
+      <div class="row"><label for="p-glare">Glare</label><input id="p-glare" type="range" min="0" max="2" step="0.01" value="0"><output for="p-glare">0.00</output></div>
+      <div class="row"><label for="p-lens_flare">Lens flare</label><input id="p-lens_flare" type="range" min="0" max="2" step="0.01" value="0"><output for="p-lens_flare">0.00</output></div>
+      <div class="row"><label for="p-dof_aperture">Depth of field</label><input id="p-dof_aperture" type="range" min="0" max="24" step="0.5" value="0" title="Largest blur radius in pixels; 0 is off"><output for="p-dof_aperture">0.00</output></div>
+      <div class="row"><label for="p-dof_focus">Focus</label><input id="p-dof_focus" type="range" min="-1" max="1" step="0.01" value="0" title="Focus distance: -1 the front of the model, 0 its centre, 1 its back"><output for="p-dof_focus">0.00</output></div>
+      <div class="row"><label for="p-aberration">Aberration</label><input id="p-aberration" type="range" min="0" max="1" step="0.01" value="0"><output for="p-aberration">0.00</output></div>
+      <div class="row"><label for="p-sharpen">Sharpen</label><input id="p-sharpen" type="range" min="0" max="2" step="0.01" value="0"><output for="p-sharpen">0.00</output></div>
+      <div class="row"><label for="p-vignette">Vignette</label><input id="p-vignette" type="range" min="0" max="1" step="0.01" value="0"><output for="p-vignette">0.00</output></div>
+      <div class="row"><label for="p-vignette_softness">Vignette softness</label><input id="p-vignette_softness" type="range" min="0" max="1" step="0.01" value="0.5"><output for="p-vignette_softness">0.50</output></div>
+      <div class="row"><label for="p-grain">Film grain</label><input id="p-grain" type="range" min="0" max="1" step="0.01" value="0"><output for="p-grain">0.00</output></div>
+      <div class="row"><label for="p-gain">Brightness</label><input id="p-gain" type="range" min="0" max="2" step="0.01" value="1"><output for="p-gain">1.00</output></div>
+      <div class="row"><label for="p-contrast">Contrast</label><input id="p-contrast" type="range" min="-1" max="1" step="0.01" value="0"><output for="p-contrast">0.00</output></div>
+      <div class="row"><label for="p-saturation">Saturation</label><input id="p-saturation" type="range" min="0" max="2" step="0.01" value="1"><output for="p-saturation">1.00</output></div>
+      <div class="row"><label for="p-temperature">Temperature</label><input id="p-temperature" type="range" min="-1" max="1" step="0.01" value="0"><output for="p-temperature">0.00</output></div>
+      <div class="row"><label for="p-tint">Tint</label><input id="p-tint" type="range" min="-1" max="1" step="0.01" value="0"><output for="p-tint">0.00</output></div>
+      <button class="btn" id="p-reset" style="width:100%;justify-content:center;margin-top:6px">Reset post effects</button>
     </section>
     <section class="section">
       <h2>Export</h2>
