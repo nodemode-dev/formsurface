@@ -3,6 +3,7 @@ import { loadHighPoly, loadMeshFile, sampleHighPoly, sampleMesh, type FlatMesh }
 import { VERSION } from './version';
 import { LayerList, type LayerInfo } from './ui/layers';
 import { TextureSetList, type TextureSetInfo } from './ui/sets';
+import { TEMPLATES, encodePng, pack, sourcesOf, validateMaps, type MapSpec } from './ui/export-templates';
 import { api } from './ui/api';
 import { AgentLink } from './ui/agent-link';
 import { BUILT_IN_MATERIALS, SMART_MASKS, saveMaterial, savedMaterials, type SmartMaterial } from './ui/smart';
@@ -138,6 +139,8 @@ function refreshLayers(): void {
   const layer = all.find((l) => l.id === active);
   if (layer) {
     $<HTMLSelectElement>('l-blend').value = layer.blend;
+    $<HTMLSelectElement>('l-blend').disabled = layer.kind === 'folder';
+    $('l-blend').title = layer.kind === 'folder' ? 'Folders pass through: each layer inside keeps its own blend mode' : '';
     $<HTMLInputElement>('l-opacity').value = String(layer.opacity);
     setOutput('l-opacity');
     const maskSelect = $<HTMLSelectElement>('l-mask');
@@ -152,8 +155,24 @@ function refreshLayers(): void {
     $('filter-section').setAttribute('aria-disabled', String(!isFilter));
     if (isFilter) loadFilterControls(JSON.parse(engine.filter_settings(layer.id)) as Record<string, number>);
     if (isFilter) target.disabled = true;
+    syncParentOptions(all, layer);
   }
   refreshSets();
+}
+
+function syncParentOptions(all: LayerInfo[], layer: LayerInfo): void {
+  const select = $<HTMLSelectElement>('l-parent');
+  const blocked = new Set<number>([layer.id]);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const l of all) if (l.parent && blocked.has(l.parent) && !blocked.has(l.id)) { blocked.add(l.id); grew = true; }
+  }
+  const wanted = [['0', 'None (top level)'], ...all.filter((l) => l.kind === 'folder' && !blocked.has(l.id)).map((f) => [String(f.id), f.name])];
+  const current = [...select.options].map((o) => `${o.value}:${o.textContent}`).join('|');
+  if (current !== wanted.map(([v, t]) => `${v}:${t}`).join('|')) {
+    select.replaceChildren(...wanted.map(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; return o; }));
+  }
+  select.value = String(layer.parent ?? 0);
 }
 
 const FILL_FIELDS: [string, string][] = [
@@ -303,7 +322,7 @@ canvas.addEventListener('pointerdown', (event) => {
   const [x, y] = local(event);
   painting = engine.stroke_begin(x, y, pressure(event));
   const activeKind = layers().find((l) => l.id === engine!.active_layer())?.kind;
-  if (!painting && (activeKind === 'fill' || activeKind === 'filter')) status(`A ${activeKind} layer is painted through its mask: choose a mask in the layer properties first.`, true);
+  if (!painting && (activeKind === 'fill' || activeKind === 'filter' || activeKind === 'folder')) status(`A ${activeKind} is painted through its mask: choose a mask in the layer properties first.`, true);
 });
 canvas.addEventListener('pointermove', (event) => {
   if (!engine) return;
@@ -432,6 +451,16 @@ $('l-target').addEventListener('change', () => { engine?.set_paint_target(sel('l
 for (const [id] of FILL_FIELDS) $(id).addEventListener(id.startsWith('f-use') || id === 'f-imgcolor' || $(id).tagName === 'SELECT' ? 'change' : 'input', () => { setOutput(id); syncFill(); });
 $('f-color').addEventListener('input', syncFill);
 for (const [id] of FILTER_FIELDS) $(id).addEventListener('input', () => { setOutput(id); syncFilter(); });
+$('layer-add-folder').addEventListener('click', () => {
+  if (!engine) return;
+  engine.add_folder(`Folder ${layers().filter((l) => l.kind === 'folder').length + 1}`);
+  refreshLayers();
+});
+$('l-parent').addEventListener('change', () => {
+  if (!engine) return;
+  if (!engine.set_parent(engine.active_layer(), Number(sel('l-parent')))) status('A folder cannot go inside itself or its own subfolders.', true);
+  refreshLayers();
+});
 $('layer-add-filter').addEventListener('click', () => {
   if (!engine) return;
   engine.add_filter_layer(`Filter ${layers().length + 1}`);
@@ -456,12 +485,27 @@ async function refreshLibrary(): Promise<void> {
   fillOption($<HTMLSelectElement>('sm-list'), library.map((m) => m.name));
 }
 fillOption($<HTMLSelectElement>('sm-mask'), Object.keys(SMART_MASKS));
+for (const template of TEMPLATES) {
+  const option = document.createElement('option');
+  option.value = template.name;
+  option.textContent = template.label;
+  $<HTMLSelectElement>('x-template').appendChild(option);
+}
+function describeTemplate(): void {
+  const template = TEMPLATES.find((t) => t.name === sel('x-template'));
+  $('x-maps').textContent = !template ? '' : template.maps.length
+    ? `Writes ${template.maps.map((m) => m.suffix).join(', ')} per texture set; AO is white until baked.`
+    : 'Writes basecolor, roughness, metallic, height and normal per texture set, plus every baked map.';
+}
+$('x-template').addEventListener('change', describeTemplate);
+describeTemplate();
 void refreshLibrary();
 
 function applySmartMaterial(name: string): number[] {
   const e = requireEngine();
   const material = library.find((m) => m.name === name);
   if (!material) throw new Error(`No smart material named ${name}`);
+  e.add_folder(material.name);
   const ids: number[] = [];
   for (const layer of material.layers) {
     const id = layer.kind === 'filter' ? e.add_filter_layer(layer.name) : e.add_fill_layer(layer.name);
@@ -502,7 +546,7 @@ function applySmartMask(id: number, name: string): Record<string, unknown> {
 }
 
 $('sm-apply').addEventListener('click', () => {
-  try { const ids = applySmartMaterial(sel('sm-list')); status(`Applied ${sel('sm-list')}: ${ids.length} layers${engine?.is_baked() ? '' : '. Bake mesh maps for its generators to take effect'}`); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+  try { const ids = applySmartMaterial(sel('sm-list')); status(`Applied ${sel('sm-list')}: ${ids.length} layers in a folder of that name${engine?.is_baked() ? '' : '. Bake mesh maps for its generators to take effect'}`); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
 });
 $('sm-save').addEventListener('click', async () => {
   try {
@@ -607,19 +651,30 @@ async function pngOf(bytes: Uint8Array, size: number): Promise<Blob> {
   return surface.convertToBlob({ type: 'image/png' });
 }
 
-async function renderMaps(): Promise<Map<string, Blob>> {
+async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[]): Promise<Map<string, Blob>> {
   const maps = new Map<string, Blob>();
   if (!engine) return maps;
   const e = engine;
+  const template = custom ? { name: 'custom', label: 'Custom', maps: custom } : TEMPLATES.find((t) => t.name === templateName);
+  if (!template) throw new Error(`Unknown export template ${templateName}. Templates: ${TEMPLATES.map((t) => t.name).join(', ')}`);
   const size = e.texture_size();
   const sets = textureSets();
   const original = e.active_texture_set();
   try {
     for (const set of sets) {
       if (!e.select_texture_set(set.index)) throw new Error('Finish the stroke before exporting');
-      const wanted = [0, 1, 2, 3, 4, ...(e.is_baked() ? [5, 6, 7, 8, 9] : []), ...(e.is_high_baked() ? [10, 11] : [])];
       const prefix = sets.length > 1 ? `${set.material.replace(/[^A-Za-z0-9_-]/g, '_')}_` : '';
       const suffix = set.tiled ? `.${set.udim}` : '';
+      if (template.maps.length) {
+        const channels = new Map<number, Uint8Array>();
+        for (const c of sourcesOf(template.maps)) {
+          if (c >= 5 && !e.is_baked()) continue;
+          channels.set(c, await e.export_channel(c) as Uint8Array);
+        }
+        for (const map of template.maps) maps.set(`${prefix}${map.suffix}${suffix}`, await encodePng(pack(map, channels, size), size, size, !!map.a));
+        continue;
+      }
+      const wanted = [0, 1, 2, 3, 4, ...(e.is_baked() ? [5, 6, 7, 8, 9] : []), ...(e.is_high_baked() ? [10, 11] : [])];
       for (const i of wanted) {
         const bytes = await e.export_channel(i) as Uint8Array;
         maps.set(`${prefix}${CHANNELS[i]}${suffix}`, await pngOf(bytes, size));
@@ -843,6 +898,20 @@ const agentLink = new AgentLink({
     const set = selectTextureSet(match.index);
     return { active_texture_set: set, layers: layers(), active_layer: requireEngine().active_layer() };
   },
+  add_folder: ({ name, layer_ids }) => {
+    const e = requireEngine();
+    const id = e.add_folder(String(name || `Folder ${layers().filter((l) => l.kind === 'folder').length + 1}`));
+    const moved = ((layer_ids ?? []) as number[]).filter((child) => e.set_parent(Number(child), id));
+    e.select_layer(id);
+    refreshLayers();
+    return { id, moved, layers: layers() };
+  },
+  set_parent: ({ id, folder_id }) => {
+    const e = requireEngine();
+    if (!e.set_parent(Number(id), Number(folder_id ?? 0))) throw new Error('That folder does not exist, or it is the layer itself or one of its subfolders');
+    refreshLayers();
+    return { layers: layers() };
+  },
   move_layer: ({ id, offset }) => { requireEngine().move_layer(Number(id), Number(offset)); refreshLayers(); return { layers: layers() }; },
   remove_layer: ({ id }) => {
     if (!requireEngine().remove_layer(Number(id))) throw new Error('A texture set keeps at least one layer');
@@ -869,11 +938,12 @@ const agentLink = new AgentLink({
   undo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().undo()) n++; return { undone: n }; },
   redo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().redo()) n++; return { redone: n }; },
   screenshot: async () => ({ png_base64: await blobBase64(await viewportPng()) }),
-  export: async ({ name }) => {
-    const maps = await renderMaps();
+  export: async ({ name, template, maps: custom }) => {
+    const maps = await renderMaps(template ? String(template) : sel('x-template'), custom ? validateMaps(custom) : undefined);
     const folder = await api.saveMaps(String(name || meshName.replace(/\.[^.]+$/, '')), maps);
-    return { folder, maps: [...maps.keys()] };
+    return { folder, template: custom ? 'custom' : template ?? sel('x-template'), maps: [...maps.keys()] };
   },
+  export_templates: () => ({ templates: TEMPLATES.map((t) => ({ name: t.name, label: t.label, maps: t.maps })) }),
 }, (state) => {
   $('agent-link').setAttribute('aria-pressed', String(state !== 'off'));
   $('agent-label').textContent = state === 'linked' ? 'Agent link on' : state === 'waiting' ? 'Agent link wait' : 'Agent link off';

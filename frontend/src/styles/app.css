@@ -53,6 +53,8 @@ svg { width: var(--icon); height: var(--icon); flex: none; }
 .layer .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layer-props { margin-top: var(--space-2); }
 .layer .kind { font: 10px var(--mono); color: var(--text-muted); margin-left: var(--space-1); }
+.layer { padding-left: calc(var(--space-1) + var(--depth, 0) * 14px); }
+.layer.folder .name { font-weight: 600; }
 .sets { display: flex; flex-direction: column; gap: 2px; min-height: 34px; }
 .set-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--space-1); height: 30px; padding: 0 var(--space-2); border-radius: var(--radius); background: var(--surface-2); border: 1px solid transparent; cursor: pointer; }
 .set-row.active { border-color: var(--accent); background: var(--accent-soft); }

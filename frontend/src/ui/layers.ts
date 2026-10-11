@@ -4,8 +4,19 @@ export interface LayerInfo {
   visible: boolean;
   opacity: number;
   blend: string;
-  kind?: 'paint' | 'fill' | 'filter';
+  kind?: 'paint' | 'fill' | 'filter' | 'folder';
   mask?: boolean;
+  parent?: number;
+}
+
+export function depthOf(layers: LayerInfo[], layer: LayerInfo): number {
+  let depth = 0;
+  let parent = layer.parent ?? 0;
+  while (parent && depth < 16) {
+    depth++;
+    parent = layers.find((l) => l.id === parent)?.parent ?? 0;
+  }
+  return depth;
 }
 
 interface Handlers {
@@ -58,6 +69,9 @@ export class LayerList {
       if (row.name.firstChild?.textContent !== layer.name) row.name.firstChild!.textContent = layer.name;
       const kind = `${layer.kind ?? 'paint'}${layer.mask ? ' + mask' : ''}`;
       if (row.kind.textContent !== kind) row.kind.textContent = kind;
+      const depth = String(depthOf(layers, layer));
+      if (row.root.style.getPropertyValue('--depth') !== depth) row.root.style.setProperty('--depth', depth);
+      row.root.classList.toggle('folder', layer.kind === 'folder');
       const eye = layer.visible ? '#i-eye' : '#i-eye-off';
       if (row.eye.getAttribute('href') !== eye) row.eye.setAttribute('href', eye);
       row.root.classList.toggle('active', layer.id === active);

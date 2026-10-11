@@ -136,6 +136,7 @@
           <button class="icon-btn" id="layer-add" title="Add paint layer"><svg><use href="#i-plus"/></svg></button>
           <button class="icon-btn" id="layer-add-fill" title="Add fill layer"><svg><use href="#i-fill"/></svg></button>
           <button class="icon-btn" id="layer-add-filter" title="Add filter layer (adjusts everything below)"><svg><use href="#i-filter"/></svg></button>
+          <button class="icon-btn" id="layer-add-folder" title="Add folder (new layers go inside while it is selected)"><svg><use href="#i-open"/></svg></button>
           <button class="icon-btn" id="layer-delete" title="Delete layer"><svg><use href="#i-trash"/></svg></button>
         </span>
       </h2>
@@ -150,6 +151,7 @@
           <option value="none">No mask</option><option value="white">White mask (shows all)</option><option value="black">Black mask (hides all)</option><option value="keep" disabled>Mask on</option>
         </select><output></output></div>
         <div class="row"><label for="l-target">Paint into</label><select id="l-target"><option value="layer">Layer</option><option value="mask">Mask</option></select><output></output></div>
+        <div class="row"><label for="l-parent">In folder</label><select id="l-parent"><option value="0">None (top level)</option></select><output></output></div>
       </div>
     </section>
     <section class="section">
@@ -200,7 +202,7 @@
     <section class="section">
       <h2>Baking</h2>
       <div class="row"><label for="k-dirs">Samples</label><select id="k-dirs"><option value="32">32 directions</option><option value="64" selected>64 directions</option><option value="128">128 directions</option></select><output></output></div>
-      <button class="btn" id="k-bake" style="width:100%;justify-content:center"><svg><use href="#i-bake"/></svg>Bake AO, curvature, thickness, position, normal</button>
+      <button class="btn" id="k-bake" style="width:100%;justify-content:center" title="Bake ambient occlusion, curvature, thickness, position and world normal for every texture set"><svg><use href="#i-bake"/></svg>Bake mesh maps</button>
       <p class="check" id="k-state" style="min-height:28px;margin:6px 0 0">Not baked</p>
       <div class="row" style="grid-template-columns:1fr 1fr;gap:8px">
         <button class="btn" id="k-high-load" style="justify-content:center"><svg><use href="#i-open"/></svg>High-poly</button>
@@ -222,6 +224,11 @@
       <h2>Display</h2>
       <div class="row"><label for="d-exposure">Exposure</label><input id="d-exposure" type="range" min="0.2" max="3" step="0.05" value="1"><output for="d-exposure">1.00</output></div>
       <div class="row"><label for="d-normal">Height bump</label><input id="d-normal" type="range" min="0" max="4" step="0.05" value="1"><output for="d-normal">1.00</output></div>
+    </section>
+    <section class="section">
+      <h2>Export</h2>
+      <div class="row" style="grid-template-columns:84px 1fr"><label for="x-template">Template</label><select id="x-template"></select></div>
+      <p class="check" id="x-maps" style="min-height:42px;margin:6px 0 0"></p>
     </section>
   </aside>
 
