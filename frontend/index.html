@@ -134,6 +134,7 @@
     <section class="section">
       <h2>Texture sets</h2>
       <div class="sets" id="texture-sets"></div>
+      <label class="check" style="margin-top:6px" title="Painter's UV tiles workflow: the UDIM tiles of a material share one layer stack and a stroke paints across them"><input type="checkbox" id="uv-tiles"> UV tiles: one layer stack per material</label>
     </section>
     <section class="section">
       <h2>Layers
@@ -156,6 +157,7 @@
           <option value="none">No mask</option><option value="white">White mask (shows all)</option><option value="black">Black mask (hides all)</option><option value="keep" disabled>Mask on</option>
         </select><output></output></div>
         <div class="row"><label for="l-target">Paint into</label><select id="l-target"><option value="layer">Layer</option><option value="mask">Mask</option></select><output></output></div>
+        <div class="row"><label for="l-msrc">Mask from</label><select id="l-msrc"><option value="">Choose a source</option><option value="cavity">Cavity (baked AO)</option><option value="edges">Edges (baked curvature)</option><option value="thin">Thin parts</option><option value="top">From top</option><option value="id">ID color (click the mesh)</option><option value="image">Image file</option></select><output></output></div>
         <div class="row"><label for="l-parent">In folder</label><select id="l-parent"><option value="0">None (top level)</option></select><output></output></div>
       </div>
     </section>

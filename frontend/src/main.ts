@@ -113,8 +113,61 @@ function textureSets(): TextureSetInfo[] {
 }
 
 function refreshSets(): void {
-  if (engine) setList.render(textureSets(), engine.active_texture_set());
+  if (!engine) return;
+  setList.render(textureSets(), engine.active_texture_set());
+  $<HTMLInputElement>('uv-tiles').checked = engine.uv_tiles();
 }
+
+function setUvTiles(on: boolean): void {
+  const e = requireEngine();
+  if (!e.set_uv_tiles(on)) throw new Error('Finish the stroke first');
+  refreshLayers();
+  status(on ? 'UV tiles on: the UDIM tiles of each material share the active tile\'s layer stack and strokes paint across them; other tiles\' previous paint was replaced' : 'UV tiles off: every tile keeps its own layer stack from now on');
+}
+
+$('uv-tiles').addEventListener('change', () => {
+  try { setUvTiles(checked('uv-tiles')); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+});
+
+const MASK_GENERATORS = ['cavity', 'edges', 'thin', 'top'];
+let pickingId = false;
+
+function maskFromGenerator(id: number, generator: string, level = 0.5, softness = 0.1, invert = false): void {
+  const e = requireEngine();
+  if (!MASK_GENERATORS.includes(generator)) throw new Error(`generator is one of ${MASK_GENERATORS.join(', ')}`);
+  e.mask_generator(id, JSON.stringify({ pattern: 'solid', use_color: true, use_roughness: false, use_metallic: false, use_height: false, opacity: 1, generator, generator_level: level, generator_softness: softness, generator_invert: invert }));
+  e.set_paint_target(true);
+  refreshLayers();
+}
+
+function maskFromId(id: number, color: string, tolerance = 0.06): void {
+  const e = requireEngine();
+  if (!/^#[0-9a-fA-F]{6}$/.test(color)) throw new Error('color is a #rrggbb ID color');
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16) / 255);
+  e.mask_from_id(id, r, g, b, tolerance);
+  e.set_paint_target(true);
+  refreshLayers();
+}
+
+$('l-msrc').addEventListener('change', () => {
+  if (!engine) return;
+  const source = sel('l-msrc');
+  $<HTMLSelectElement>('l-msrc').value = '';
+  try {
+    if (MASK_GENERATORS.includes(source)) {
+      maskFromGenerator(engine.active_layer(), source);
+      status(`Mask generated from ${source}${engine.is_baked() ? '' : '; bake mesh maps for it to follow the shape'}. It updates after every bake; strokes on it last until then.`);
+    } else if (source === 'id') {
+      pickingId = true;
+      status('Click the part whose ID color should become the mask');
+    } else if (source === 'image') {
+      imageTarget = 'mask';
+      imageInput.click();
+    }
+  } catch (error) {
+    status(error instanceof Error ? error.message : String(error), true);
+  }
+});
 
 function selectTextureSet(index: number): TextureSetInfo {
   const e = requireEngine();
@@ -326,6 +379,17 @@ canvas.addEventListener('pointerdown', (event) => {
   if (event.button === 2 || (event.altKey && event.button === 0)) { nav = 'orbit'; return; }
   if (event.button !== 0) return;
   const [x, y] = local(event);
+  if (pickingId) {
+    pickingId = false;
+    try {
+      const color = engine.id_color_at(x, y);
+      maskFromId(engine.active_layer(), color);
+      status(`Mask set to ID color ${color}`);
+    } catch (error) {
+      status(error instanceof Error ? error.message : String(error), true);
+    }
+    return;
+  }
   if (tool === 'polyfill') {
     try {
       const count = engine.polygon_fill(x, y, Number(sel('pf-mode')));
@@ -425,7 +489,7 @@ $('tool-mirror').addEventListener('click', () => {
 for (const id of ['b-angle', 'b-density', 'b-lazy', 'b-jsize', 'b-jangle', 'b-jpos', 'b-jflow', 'b-radial', 's-scale', 's-angle', 's-x', 's-y']) $(id).addEventListener('input', () => { setOutput(id); syncBrush(); });
 for (const id of ['b-align', 'b-space', 'b-tip', 'b-sym', 'b-axis', 'b-follow', 's-on']) $(id).addEventListener('change', syncBrush);
 const imageInput = $<HTMLInputElement>('image-file');
-let imageTarget: 'alpha' | 'stencil' | 'fill' = 'alpha';
+let imageTarget: 'alpha' | 'stencil' | 'fill' | 'mask' = 'alpha';
 $('b-alpha-load').addEventListener('click', () => { imageTarget = 'alpha'; imageInput.click(); });
 $('s-load').addEventListener('click', () => { imageTarget = 'stencil'; imageInput.click(); });
 imageInput.addEventListener('change', async () => {
@@ -434,6 +498,13 @@ imageInput.addEventListener('change', async () => {
   if (!file || !engine) return;
   try {
     const { w, h, data } = await imageRgba(file, imageTarget !== 'fill');
+    if (imageTarget === 'mask') {
+      engine.mask_from_image(engine.active_layer(), w, h, data);
+      engine.set_paint_target(true);
+      refreshLayers();
+      status(`Mask loaded from ${file.name}: white shows the layer, mapped over the UV layout`);
+      return;
+    }
     if (imageTarget === 'fill') {
       const id = engine.active_layer();
       engine.set_fill_image(id, w, h, data);
@@ -852,6 +923,7 @@ function snapshotState(): Record<string, unknown> {
     texture_sets: textureSets(),
     active_texture_set: e.active_texture_set(),
     quick_mask: ['off', 'edit', 'on'][e.quick_mask_mode()],
+    uv_tiles: e.uv_tiles(),
     layers: layers(),
     active_layer: e.active_layer(),
     tool,
@@ -976,6 +1048,28 @@ const agentLink = new AgentLink({
     if (paint_target === 'mask' || paint_target === 'layer') e.set_paint_target(paint_target === 'mask');
     refreshLayers();
     return { layers: layers(), paints_mask: e.paint_target_is_mask() };
+  },
+  uv_tiles: ({ on }) => {
+    if (on !== undefined && on !== null) setUvTiles(Boolean(on));
+    return { uv_tiles: requireEngine().uv_tiles(), texture_sets: textureSets() };
+  },
+  mask_source: ({ id, source, color, x, y, tolerance, level, softness, invert }) => {
+    const e = requireEngine();
+    const layerId = Number(id);
+    if (MASK_GENERATORS.includes(String(source))) {
+      maskFromGenerator(layerId, String(source), Number(level ?? 0.5), Number(softness ?? 0.1), Boolean(invert));
+      return { layers: layers(), baked: e.is_baked() };
+    }
+    if (source === 'id_color') {
+      let pick = color ? String(color) : '';
+      if (!pick) {
+        const [w, h] = e.viewport_size();
+        pick = e.id_color_at(Number(x) * w, Number(y) * h);
+      }
+      maskFromId(layerId, pick, Number(tolerance ?? 0.06));
+      return { color: pick, layers: layers() };
+    }
+    throw new Error(`source is one of ${[...MASK_GENERATORS, 'id_color'].join(', ')}`);
   },
   quick_mask: ({ mode, action }) => {
     const e = requireEngine();

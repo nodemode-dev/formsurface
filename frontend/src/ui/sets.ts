@@ -6,6 +6,7 @@ export interface TextureSetInfo {
   tiled: boolean;
   triangles: number;
   layers: number;
+  linked?: boolean;
 }
 
 interface Row {
@@ -29,7 +30,7 @@ export class TextureSetList {
     for (const set of sets) {
       const row = this.rows.get(set.index) ?? this.create(set.index);
       if (row.name.textContent !== set.name) row.name.textContent = set.name;
-      const detail = `${set.triangles} tris · ${set.layers} layer${set.layers === 1 ? '' : 's'}`;
+      const detail = `${set.triangles} tris · ${set.layers} layer${set.layers === 1 ? '' : 's'}${set.linked ? ' · linked' : ''}`;
       if (row.detail.textContent !== detail) row.detail.textContent = detail;
       row.root.classList.toggle('active', set.index === active);
     }
