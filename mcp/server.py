@@ -56,6 +56,12 @@ def formsurface_load_sample(kind: Literal["sphere", "torus", "capsule", "knot", 
 
 
 @server.tool()
+def formsurface_load_mesh(file: str) -> dict:
+    """Replace the mesh with a glb, gltf, obj or fbx from the workspace meshes folder (the mesh update step of a batch). The first texture set keeps its layers in UV space; bakes are reset."""
+    return call("load_mesh", {"file": file}, timeout=180)
+
+
+@server.tool()
 def formsurface_list_texture_sets() -> dict:
     """List texture sets: one per material, split per UDIM tile when a material's UVs leave 0 to 1. Each has its own layer stack, base material, bakes and exported maps."""
     return call("texture_sets")
@@ -210,9 +216,12 @@ def formsurface_bake_high_poly(
     use_sample: bool = False,
     cage_front: Annotated[float, Field(ge=0, le=0.5)] = 0.05,
     cage_rear: Annotated[float, Field(ge=0, le=0.5)] = 0.05,
+    match_by_name: bool | None = None,
+    sample: Literal["sphere", "pair"] | None = None,
 ) -> dict:
-    """Bake a tangent-space normal map and an ID map (one color per high-poly part) from a high-poly mesh onto the painted mesh. mesh_file is a glb, gltf, obj or fbx the person put in the workspace meshes folder; use_sample loads a low sphere with a bumpy two-part high-poly sphere for a demonstration. Cage distances are fractions of the mesh radius in front of and behind the low surface; raise them if parts of the high-poly are missed."""
-    return call("bake_high", drop_none(file=mesh_file, sample=use_sample or None, front=cage_front, rear=cage_rear), timeout=300)
+    """Bake a tangent-space normal map and an ID map (one color per high-poly part) from a high-poly mesh onto the painted mesh. mesh_file is a glb, gltf, obj or fbx the person put in the workspace meshes folder; use_sample (or sample sphere) loads a low sphere with a bumpy two-part high-poly sphere, and sample pair loads two touching low spheres named left_low and right_low with high-poly left_high and right_high. Cage distances are fractions of the mesh radius in front of and behind the low surface; raise them if parts of the high-poly are missed. match_by_name pairs low and high parts whose mesh names match once _low and _high (or _lo and _hi) are removed, so close parts never bake onto each other; unmatched parts bake only against unmatched high-poly parts."""
+    chosen = sample or ("sphere" if use_sample else None)
+    return call("bake_high", drop_none(file=mesh_file, sample=chosen, front=cage_front, rear=cage_rear, match_by_name=match_by_name), timeout=300)
 
 
 @server.tool()

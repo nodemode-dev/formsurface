@@ -13,6 +13,9 @@ usage: ./formsurface [command]
   backend         boot the backend only
   frontend        boot the frontend only
   mcp             FormSurface over MCP's stdio transport (starts the service if needed)
+  batch FILE      run a JSON batch script of formsurface_* tool calls against the linked editor
+                  (--wait SECONDS for the Agent link, --out DIR for screenshots, --pause SECONDS
+                  between steps, --keep-going)
   help            this text
 EOF2
 }
@@ -24,6 +27,7 @@ case "$cmd" in
   backend) cd backend && exec ./boot_backend ;;
   frontend) cd frontend && exec ./boot_frontend ;;
   mcp) exec mcp/launch ;;
+  batch) shift; [ -x backend/venv/bin/python ] || { echo "Run ./formsurface install first" >&2; exit 1; }; exec backend/venv/bin/python -I mcp/batch.py "$@" ;;
   help|-h|--help) usage ;;
   *) usage; exit 2 ;;
 esac
