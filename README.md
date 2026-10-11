@@ -11,6 +11,9 @@ Paint directly on 3D models, layer by layer, the way Substance 3D Painter works.
 - **Channels:** base color, roughness, metallic, height (shown as bump in the viewport, exported as a normal map). Each channel can be switched on or off per stroke.
 - **Polygon fill:** click to fill a triangle, a flat polygon, a whole mesh part or a UV chunk with the paint material, in one undoable step.
 - **Clone (C):** Ctrl+click a source, then paint to copy what is visible there at a fixed offset.
+- **Path (L):** click points on the surface, then Enter paints a smooth or straight, open or closed curve through them with the current brush, or erases along it. The points stay on the model when the camera moves.
+- **2D view (U):** show the active texture set's UV layout and paint straight into the texture, reaching faces the camera cannot see.
+- **Text:** render text in a built-in or loaded font (TTF, OTF, WOFF) as a brush tip, a stencil or a fill layer image.
 - **Flatten and mask export:** collapse a texture set into one paint layer; save any layer mask as PNG.
 - **Quick mask (T):** paint a temporary mask, shown in red where protected, that limits every stroke and fill until you turn it off; clear, allow all and invert.
 - **Brush:** size in screen or object space, hardness, flow, stroke opacity, spacing, pen pressure on size or flow, backface culling, eraser.
@@ -27,13 +30,13 @@ Paint directly on 3D models, layer by layer, the way Substance 3D Painter works.
 
 ## Agents (MCP)
 
-FormSurface ships an MCP server with 43 `formsurface_*` tools that drive the editor you have open: mesh loading, texture sets, layer instances, layers, folders, export templates, fill layers, masks, baking (including from a high-poly mesh), generators, filters, smart materials, brush, paint and base material, camera, strokes, fill, undo, screenshot and map export. Claude Code picks it up from `.mcp.json`; other clients run `./formsurface mcp` (stdio). Press **Agent link** in the editor's top bar to let agents in; it is off by default. The `formsurface-painting` skill (`.claude/skills`, mirrored in `.agents/skills`) teaches agents the order of work.
+FormSurface ships an MCP server with 46 `formsurface_*` tools that drive the editor you have open: mesh loading, texture sets, the 2D view, paths, text resources, layer instances, layers, folders, export templates, fill layers, masks, baking (including from a high-poly mesh), generators, filters, smart materials, brush, paint and base material, camera, strokes, fill, undo, screenshot and map export. Claude Code picks it up from `.mcp.json`; other clients run `./formsurface mcp` (stdio). Press **Agent link** in the editor's top bar to let agents in; it is off by default. The `formsurface-painting` skill (`.claude/skills`, mirrored in `.agents/skills`) teaches agents the order of work.
 
 `./formsurface batch script.json` runs the same tools from a JSON script (a list of `[tool, arguments]` pairs) against the linked editor, for repeatable jobs such as load mesh, bake, apply a smart material and export. `--pause` spaces the steps, `--keep-going` continues past a failed step, `--out` saves screenshots; the exit code is 1 when a step failed. It drives the open editor; it is not headless.
 
 ## Parity
 
-Measured against Substance 3D Painter 12.1.5 on 50 documented capabilities, v0.13.0 scores 26.5 of 50 (53 percent): the painting core, brush engine, polygon fill, clone, quick mask, fill layers, masks, folders, baking from the mesh and from a high-poly mesh with match by name, generators, filter layers, smart materials, texture sets per material, UDIM tiles with one shared stack, engine export presets and OBJ mesh export are real; layer instancing (fill and filter layers) and the batch runner are partial; per-tile resolution, stacked mask effects, color management, EXR and 32-bit export, headless automation and a full asset library are not built yet. The full page is in the planning sidecar.
+Measured against Substance 3D Painter 12.1.5 on 50 documented capabilities, v0.14.0 scores 28.5 of 50 (57 percent): the painting core, brush engine, polygon fill, clone, quick mask, text resources, fill layers, masks, folders, baking from the mesh and from a high-poly mesh with match by name, generators, filter layers, smart materials, texture sets per material, UDIM tiles with one shared stack, engine export presets and OBJ mesh export are real; the path tool (paint and erase, no ribbon or filled modes), 2D view painting (base color shown, brush strokes only), layer instancing (fill and filter layers) and the batch runner are partial; per-tile resolution, stacked mask effects, color management, EXR and 32-bit export, headless automation and a full asset library are not built yet. The full page is in the planning sidecar.
 
 ## Quick start
 
@@ -62,7 +65,9 @@ Windows: `formsurface_oc_install.bat`, then `formsurface.bat`.
 | Middle drag or Alt + right drag | Pan |
 | Wheel | Zoom |
 | `[` `]` | Brush size |
-| `B` / `E` / `P` / `C` / `M` | Paint / eraser / polygon fill / clone / mirror |
+| `B` / `E` / `P` / `C` / `L` / `M` | Paint / eraser / polygon fill / clone / path / mirror |
+| `U` | Toggle the 2D UV view |
+| Enter / Backspace / Esc (path) | Stroke the path / remove the last point / clear |
 | Ctrl + click (clone) | Set the clone source |
 | `T` | Quick mask: edit, then use |
 | `F` | Frame mesh |

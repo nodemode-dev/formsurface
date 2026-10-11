@@ -17,6 +17,9 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_set_fill` | layer_id, projection, pattern, base_color, roughness, metallic, height, scale, rotation_degrees, offset_u, offset_v, planar_axis, sharpness, amount | settings |
 | `formsurface_bake_maps` | directions 8 to 256 | baked flag and map names |
 | `formsurface_bake_high_poly` | mesh_file (in workspace/meshes), use_sample, sample (sphere, pair), cage_front, cage_rear (fractions of mesh radius), match_by_name | hit count, map names, matched part count |
+| `formsurface_view_2d` | on, center_u, center_v, zoom (frame part of the layout) | view (2d or 3d); in 2D, paint_stroke points paint the UV layout directly |
+| `formsurface_paint_path` | points (2 to 64 [x, y] in 0 to 1, kept on the surface), closed, smooth, erase | control points, missed points, samples; one undo step; 3D view only |
+| `formsurface_text_resource` | text, target (alpha, stencil, fill), font (sans-serif, serif, monospace or a loaded font), bold | image size, brush |
 | `formsurface_load_mesh` | file (glb, gltf, obj, fbx in workspace/meshes) | status; bakes reset, first set keeps its layers |
 | `formsurface_instance_layer` | layer_id (fill or filter on the active set), texture_set (name or index) | new layer id in the target set; edits to any copy update all copies |
 | `formsurface_list_smart_materials` | none | materials with layer names, smart mask names |

@@ -73,6 +73,10 @@ With `uv_tiles` on, tiled sets of one material are siblings. A public engine cal
 
 `set_match_names` takes the low-poly part index per triangle and both name lists; `match_key` strips _low/_high/_lo/_hi (case-insensitive) and the keys go to `bake_high_matched`, where `Bvh::raycast_filter` only accepts high-poly triangles whose key matches the texel's low part (unmatched low parts hit only unmatched high parts). Sets map back to whole-mesh triangles through `SplitMesh.order`, so keys must be re-sliced per set (`texture_set_match_keys`). Instancing keeps `instance_groups`: lists of (set index, layer id). `propagate(id, work)` runs `work` on every other member after switching sets, and is skipped while `instancing` or `relaying` so it never recurses. Only public stack calls (`set_fill`, `set_filter`, `mask_generator`, `update_layer`) propagate; a new layer property that should follow instances needs its own propagate line. `set_mesh` clears the groups because set indices change.
 
+## 2D view and paths (v0.14.0)
+
+`flat: Option<[cx, cy, px_per_uv]>` turns the viewport into the active set's UV layout: `flat_matrix` maps (u, v, 0, 1) to clip space, the VIEW shader switches on `params.w` (written in `encode_view` from `gpu.flat`) and places vertices at their UV, shading base color only, and `encode_view` skips parked sets. Strokes in 2D push UV stamps (`push_uv_stamp`): `normal.w` 2 marks them, the PAINT shader then skips visibility, facing and the stencil and measures the tip in UV units (`uv.z`); they do not relay to sibling tiles. Image alphas and planar image fills sample with V flipped because their local Y points up. `surface_point` and `screen_point` let the editor keep path control points in world space; the editor paces path samples over frames because a burst of stamps can stall a software GPU.
+
 ## Next capabilities, in plan order
 
 Per-tile resolution; isolated folder blending; the whole engine in a Worker with OffscreenCanvas (also what a headless batch needs); bent normal baking; tile paging for 4K and 8K; color management; EXR and 32-bit export; stacked mask effects.
