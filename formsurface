@@ -12,6 +12,7 @@ usage: ./formsurface [command]
   engine          rebuild the Rust engine into frontend/src/engine/pkg
   backend         boot the backend only
   frontend        boot the frontend only
+  mcp             FormSurface over MCP's stdio transport (starts the service if needed)
   help            this text
 EOF2
 }
@@ -22,6 +23,7 @@ case "$cmd" in
   engine) exec setup/build_engine ;;
   backend) cd backend && exec ./boot_backend ;;
   frontend) cd frontend && exec ./boot_frontend ;;
+  mcp) exec mcp/launch ;;
   help|-h|--help) usage ;;
   *) usage; exit 2 ;;
 esac

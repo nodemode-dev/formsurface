@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "formsurface": {
+      "type": "stdio",
+      "command": "${CLAUDE_PROJECT_DIR:-.}/formsurface",
+      "args": ["mcp"]
+    }
+  }
+}

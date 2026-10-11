@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")/.."
+python="backend/venv/bin/python"
+[ -x "$python" ] || { echo "Run ./formsurface install first" >&2; exit 1; }
+if ! curl -fs --max-time 1 http://127.0.0.1:8766/api/health >/dev/null 2>&1; then
+  (cd backend && nohup venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8766 >/dev/null 2>&1 &)
+  for _ in $(seq 1 40); do
+    curl -fs --max-time 1 http://127.0.0.1:8766/api/health >/dev/null 2>&1 && break
+    sleep 0.25
+  done
+fi
+exec "$python" -I mcp/server.py
