@@ -33,6 +33,10 @@ Paint in the editor on the sphere and torus knot samples, then export maps and c
 
 A stamp is 16 floats: center and world radius, normal and a mirrored flag, tangent and angle, UV position, UV radius and flow scale. Symmetric copies set the mirrored flag, which skips the visibility test and uses tangent-plane coordinates in camera and UV alignments (their screen or UV position would be the original's). Tips are evaluated in the stamp's local 2D frame after rotation; the stencil multiplies coverage in screen space. Jitter, lazy mouse and follow path live in `lib.rs` (`push_stamp`, `stroke_to`); the shader stays deterministic per stamp.
 
+## Fill layers and masks (v0.4.0)
+
+`upload_mesh` rasterizes world position (Rgba32Float) and normal into UV space once; `fill_layer_content` evaluates a fill layer per texel from those maps with the FILL shader and overwrites the layer's color, values and coverage, so fill layers are regenerated whenever their settings or the mesh change and are never painted directly. Each layer set carries a fourth texture, the mask (white by default), copied into undo snapshots; strokes on a mask go through `apply_mask`, and the composite scales opacity by it when `LayerInfo.mask` is on.
+
 ## Next capabilities, in plan order
 
-Fill layers with UV, tri-planar, planar, spherical and cylindrical projections; layer masks; generators driven by curvature and AO; engine in a Worker; tile paging for 4K and 8K; texture sets per material.
+Filters (levels, blur, sharpen) and folders; mesh map baking (normal, AO, curvature, position, thickness, ID) feeding generators and smart masks; engine in a Worker; tile paging for 4K and 8K; texture sets per material.

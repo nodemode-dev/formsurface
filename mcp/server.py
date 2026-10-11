@@ -126,6 +126,75 @@ def formsurface_add_layer(name: str = "Agent layer") -> dict:
     return call("add_layer", {"name": name})
 
 
+Projection = Literal["uv", "triplanar", "planar", "spherical", "cylindrical"]
+PatternKind = Literal["solid", "checker", "stripes", "noise"]
+
+
+def fill_settings(**values) -> dict:
+    axis = values.pop("planar_axis", None)
+    if axis is not None:
+        values["axis"] = {"x": 0, "y": 1, "z": 2}[axis]
+    return drop_none(**values)
+
+
+@server.tool()
+def formsurface_add_fill_layer(
+    name: str = "Fill",
+    projection: Projection = "uv",
+    pattern: PatternKind = "solid",
+    base_color: Annotated[str | None, Field(pattern=r"^#[0-9a-fA-F]{6}$")] = None,
+    roughness: Unit | None = None,
+    metallic: Unit | None = None,
+    height: Unit | None = None,
+    scale: Annotated[float | None, Field(gt=0, le=64)] = None,
+    rotation_degrees: Annotated[float | None, Field(ge=-180, le=180)] = None,
+    planar_axis: Literal["x", "y", "z"] | None = None,
+    sharpness: Annotated[float | None, Field(ge=1, le=32)] = None,
+    fill_color: bool | None = None,
+    fill_roughness: bool | None = None,
+    fill_metallic: bool | None = None,
+    fill_height: bool | None = None,
+) -> dict:
+    """Add a fill layer above the active layer: channel values projected over the whole mesh, optionally through a pattern (the pattern decides where the fill shows). triplanar suits meshes without clean UVs; planar projects along one axis. Add a black mask with formsurface_layer_mask and paint white into it to reveal the fill only where painted."""
+    settings = fill_settings(projection=projection, pattern=pattern, base_color=base_color, roughness=roughness, metallic=metallic, height=height, scale=scale,
+                             rotation=rotation_degrees, planar_axis=planar_axis, sharpness=sharpness, use_color=fill_color, use_roughness=fill_roughness,
+                             use_metallic=fill_metallic, use_height=fill_height)
+    return call("add_fill_layer", {"name": name, "settings": settings})
+
+
+@server.tool()
+def formsurface_set_fill(
+    layer_id: int,
+    projection: Projection | None = None,
+    pattern: PatternKind | None = None,
+    base_color: Annotated[str | None, Field(pattern=r"^#[0-9a-fA-F]{6}$")] = None,
+    roughness: Unit | None = None,
+    metallic: Unit | None = None,
+    height: Unit | None = None,
+    scale: Annotated[float | None, Field(gt=0, le=64)] = None,
+    rotation_degrees: Annotated[float | None, Field(ge=-180, le=180)] = None,
+    offset_u: Annotated[float | None, Field(ge=-1, le=1)] = None,
+    offset_v: Annotated[float | None, Field(ge=-1, le=1)] = None,
+    planar_axis: Literal["x", "y", "z"] | None = None,
+    sharpness: Annotated[float | None, Field(ge=1, le=32)] = None,
+    amount: Unit | None = None,
+) -> dict:
+    """Change a fill layer's projection, pattern or values. Only the values you pass change."""
+    settings = fill_settings(projection=projection, pattern=pattern, base_color=base_color, roughness=roughness, metallic=metallic, height=height, scale=scale,
+                             rotation=rotation_degrees, offset_x=offset_u, offset_y=offset_v, planar_axis=planar_axis, sharpness=sharpness, opacity=amount)
+    return call("set_fill", {"id": layer_id, "settings": settings})
+
+
+@server.tool()
+def formsurface_layer_mask(
+    layer_id: int,
+    action: Literal["add_white", "add_black", "remove", "keep"] = "keep",
+    paint_target: Literal["layer", "mask"] | None = None,
+) -> dict:
+    """Give a layer a white mask (shows everything) or a black mask (hides everything), remove it, and choose whether strokes paint the layer or its mask. On a mask, the paint material's base color brightness is the mask value: white reveals, black hides. Fill layers are always painted through their mask."""
+    return call("mask", drop_none(id=layer_id, action=action, paint_target=paint_target))
+
+
 @server.tool()
 def formsurface_update_layer(
     layer_id: int,

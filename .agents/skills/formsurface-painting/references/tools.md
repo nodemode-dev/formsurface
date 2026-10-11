@@ -1,4 +1,4 @@
-# FormSurface MCP tools (server 0.3.0)
+# FormSurface MCP tools (server 0.4.0)
 
 When this table and the server disagree, the server wins and this file is stale.
 
@@ -11,6 +11,9 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_set_paint_material` | base_color hex, roughness, metallic, height, paint_color, paint_roughness, paint_metallic, paint_height | paint material |
 | `formsurface_set_base_material` | base_color hex, roughness, metallic | empty |
 | `formsurface_add_layer` | name | new id and layers |
+| `formsurface_add_fill_layer` | name, projection (uv, triplanar, planar, spherical, cylindrical), pattern (solid, checker, stripes, noise), base_color, roughness, metallic, height, scale, rotation_degrees, planar_axis, sharpness, fill_color, fill_roughness, fill_metallic, fill_height | id and settings |
+| `formsurface_set_fill` | layer_id, projection, pattern, base_color, roughness, metallic, height, scale, rotation_degrees, offset_u, offset_v, planar_axis, sharpness, amount | settings |
+| `formsurface_layer_mask` | layer_id, action (add_white, add_black, remove, keep), paint_target (layer, mask) | layers and whether strokes paint the mask |
 | `formsurface_update_layer` | layer_id, name, visible, opacity, blend (normal, multiply, screen, overlay, add, subtract, darken, lighten), make_active | layers and active layer |
 | `formsurface_move_layer` | layer_id, offset (positive is up) | layers |
 | `formsurface_remove_layer` | layer_id | layers |
