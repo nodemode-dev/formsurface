@@ -49,6 +49,171 @@ fn fs(i: FOut) -> BOut {
 }
 "#;
 
+pub const POST_COMMON: &str = r#"
+struct Post {
+    a: vec4<f32>,
+    b: vec4<f32>,
+    c: vec4<f32>,
+    d: vec4<f32>,
+    e: vec4<f32>,
+    f: vec4<f32>,
+};
+fn luma(c: vec3<f32>) -> f32 {
+    return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
+}
+"#;
+
+pub const BLOOM: &str = r#"
+@group(0) @binding(0) var<uniform> post: Post;
+@group(0) @binding(1) var scene: texture_2d<f32>;
+@group(0) @binding(2) var samp: sampler;
+
+@fragment
+fn fs(i: FOut) -> @location(0) vec4<f32> {
+    let px = 1.0 / vec2<f32>(textureDimensions(scene));
+    let threshold = post.a.y;
+    var sum = vec3<f32>(0.0);
+    var w = 0.0;
+    for (var y = -2; y <= 2; y = y + 1) {
+        for (var x = -2; x <= 2; x = x + 1) {
+            let k = (3.0 - abs(f32(x))) * (3.0 - abs(f32(y)));
+            let c = textureSampleLevel(scene, samp, i.uv + vec2<f32>(f32(x), f32(y)) * px * 2.0, 0.0).rgb;
+            let l = luma(c);
+            let bright = max(l - threshold, 0.0) / max(1.0 - threshold, 1e-3);
+            sum = sum + c * bright * k;
+            w = w + k;
+        }
+    }
+    return vec4<f32>(sum / w, 1.0);
+}
+"#;
+
+pub const POST: &str = r#"
+@group(0) @binding(0) var<uniform> post: Post;
+@group(0) @binding(1) var scene: texture_2d<f32>;
+@group(0) @binding(2) var bloom: texture_2d<f32>;
+@group(0) @binding(3) var depth: texture_depth_2d;
+@group(0) @binding(4) var samp: sampler;
+
+fn linear_depth(uv: vec2<f32>) -> f32 {
+    let dims = vec2<i32>(textureDimensions(depth));
+    let q = clamp(vec2<i32>(uv * vec2<f32>(dims)), vec2<i32>(0), dims - vec2<i32>(1));
+    let z = textureLoad(depth, q, 0);
+    let near = post.e.x;
+    let far = post.e.y;
+    let a = far / (near - far);
+    let b = near * far / (near - far);
+    return b / (z + a);
+}
+
+fn base(uv: vec2<f32>) -> vec3<f32> {
+    let aperture = post.c.y;
+    if (aperture < 0.5) {
+        return textureSampleLevel(scene, samp, uv, 0.0).rgb;
+    }
+    let px = 1.0 / vec2<f32>(textureDimensions(scene));
+    let focus = post.c.z;
+    let coc = clamp(abs(linear_depth(uv) - focus) / max(focus, 1e-3) * aperture * 1.5, 0.0, aperture);
+    var sum = textureSampleLevel(scene, samp, uv, 0.0).rgb;
+    if (coc < 0.75) {
+        return sum;
+    }
+    var w = 1.0;
+    for (var k = 1; k <= 16; k = k + 1) {
+        let r = sqrt(f32(k) / 16.0) * coc;
+        let t = f32(k) * 2.39996;
+        sum = sum + textureSampleLevel(scene, samp, uv + vec2<f32>(cos(t), sin(t)) * r * px, 0.0).rgb;
+        w = w + 1.0;
+    }
+    return sum / w;
+}
+
+fn bloom_at(uv: vec2<f32>) -> vec3<f32> {
+    if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) { return vec3<f32>(0.0); }
+    return textureSampleLevel(bloom, samp, uv, 0.0).rgb;
+}
+
+fn hash(p: vec2<f32>) -> f32 {
+    return fract(sin(dot(p, vec2<f32>(12.9898, 78.233))) * 43758.5453);
+}
+
+@fragment
+fn fs(i: FOut) -> @location(0) vec4<f32> {
+    let uv = i.uv;
+    let px = 1.0 / vec2<f32>(textureDimensions(scene));
+    let aberration = post.c.x;
+    var col: vec3<f32>;
+    if (aberration > 0.0) {
+        let off = (uv - 0.5) * aberration * 0.02;
+        col = vec3<f32>(base(uv + off).r, base(uv).g, base(uv - off).b);
+    } else {
+        col = base(uv);
+    }
+    let sharpen = post.b.w;
+    if (sharpen > 0.0) {
+        let n = textureSampleLevel(scene, samp, uv + vec2<f32>(px.x, 0.0), 0.0).rgb + textureSampleLevel(scene, samp, uv - vec2<f32>(px.x, 0.0), 0.0).rgb
+            + textureSampleLevel(scene, samp, uv + vec2<f32>(0.0, px.y), 0.0).rgb + textureSampleLevel(scene, samp, uv - vec2<f32>(0.0, px.y), 0.0).rgb;
+        col = max(col + (col - n * 0.25) * sharpen, vec3<f32>(0.0));
+    }
+    let bpx = 1.0 / vec2<f32>(textureDimensions(bloom));
+    if (post.a.x > 0.0) {
+        var b = vec3<f32>(0.0);
+        var w = 0.0;
+        for (var y = -3; y <= 3; y = y + 1) {
+            for (var x = -3; x <= 3; x = x + 1) {
+                let k = exp(-f32(x * x + y * y) / 6.0);
+                b = b + bloom_at(uv + vec2<f32>(f32(x), f32(y)) * bpx * 1.5) * k;
+                w = w + k;
+            }
+        }
+        col = col + b / w * post.a.x;
+    }
+    if (post.a.z > 0.0) {
+        var g = vec3<f32>(0.0);
+        let dirs = array<vec2<f32>, 4>(vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0), vec2<f32>(1.0, -1.0), vec2<f32>(-1.0, -1.0));
+        for (var d = 0; d < 4; d = d + 1) {
+            for (var k = 1; k <= 10; k = k + 1) {
+                g = g + bloom_at(uv + dirs[d] * f32(k) * bpx * 2.0) * pow(0.82, f32(k));
+            }
+        }
+        col = col + g * post.a.z * 0.25;
+    }
+    if (post.a.w > 0.0) {
+        let to_center = vec2<f32>(0.5) - uv;
+        var f = vec3<f32>(0.0);
+        let scales = array<f32, 4>(1.0, 0.55, 1.45, 0.3);
+        let tints = array<vec3<f32>, 4>(vec3<f32>(1.0, 0.7, 0.4), vec3<f32>(0.4, 0.8, 1.0), vec3<f32>(0.8, 0.5, 1.0), vec3<f32>(0.6, 1.0, 0.6));
+        for (var k = 0; k < 4; k = k + 1) {
+            let g = uv + to_center * 2.0 * scales[k];
+            let fade = 1.0 - smoothstep(0.0, 0.75, length(g - 0.5));
+            let s = bloom_at(g);
+            f = f + s * s * tints[k] * fade;
+        }
+        let halo_uv = uv + normalize(to_center + vec2<f32>(1e-5)) * 0.3;
+        let hs = bloom_at(halo_uv);
+        f = f + hs * hs * (1.0 - smoothstep(0.0, 0.7, length(halo_uv - 0.5))) * 0.5;
+        col = col + f * post.a.w * 0.35;
+    }
+    col = col * post.d.w;
+    col = (col - 0.5) * (1.0 + post.c.w) + 0.5;
+    col = mix(vec3<f32>(luma(col)), col, post.d.x);
+    col = col * vec3<f32>(1.0 + post.d.y * 0.1, 1.0 - post.d.z * 0.1, 1.0 - post.d.y * 0.1);
+    let vignette = post.b.x;
+    if (vignette > 0.0) {
+        let aspect = post.f.x / max(post.f.y, 1.0);
+        let r = length((uv - 0.5) * vec2<f32>(aspect, 1.0));
+        let inner = mix(0.75, 0.15, post.b.y);
+        col = col * mix(1.0, 1.0 - smoothstep(inner, 0.95, r), vignette);
+    }
+    let grain = post.b.z;
+    if (grain > 0.0) {
+        let n = hash(i.clip.xy + vec2<f32>(post.e.z * 17.0, post.e.z * 31.0)) - 0.5;
+        col = col + n * grain * 0.25;
+    }
+    return vec4<f32>(clamp(col, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
+}
+"#;
+
 pub const VIEW: &str = r#"
 struct Camera {
     view_proj: mat4x4<f32>,

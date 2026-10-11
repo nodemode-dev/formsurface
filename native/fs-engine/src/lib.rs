@@ -20,6 +20,10 @@ struct SetEntry {
     parked: Option<Parked>,
 }
 
+const POST_KEYS: [&str; 16] = ["bloom", "bloom_threshold", "glare", "lens_flare", "vignette", "vignette_softness", "grain", "sharpen", "aberration", "dof_aperture", "dof_focus", "contrast", "saturation", "temperature", "tint", "gain"];
+const POST_DEFAULTS: [f32; 16] = [0.0, 0.8, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+const POST_RANGES: [(f32, f32); 16] = [(0.0, 2.0), (0.0, 0.99), (0.0, 2.0), (0.0, 2.0), (0.0, 1.0), (0.0, 1.0), (0.0, 1.0), (0.0, 2.0), (0.0, 1.0), (0.0, 24.0), (-1.0, 1.0), (-1.0, 1.0), (0.0, 2.0), (-1.0, 1.0), (-1.0, 1.0), (0.0, 2.0)];
+
 #[wasm_bindgen]
 pub struct Engine {
     gpu: Gpu,
@@ -50,6 +54,9 @@ pub struct Engine {
     cursor: Option<Hit>,
     dirty: bool,
     exposure: f32,
+    post: [f32; 16],
+    post_seed: f32,
+    cage: Option<Vec<f32>>,
     normal_strength: f32,
     uv_tiles: bool,
     relaying: bool,
@@ -103,6 +110,9 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         cursor: None,
         dirty: true,
         exposure: 1.0,
+        post: POST_DEFAULTS,
+        post_seed: 0.0,
+        cage: None,
         normal_strength: 1.0,
         uv_tiles: false,
         relaying: false,
@@ -126,7 +136,7 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
 
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
-pub fn bake_high_detached(low_positions: &[f32], low_normals: &[f32], low_uvs: &[f32], low_indices: &[u32], high_positions: &[f32], high_normals: &[f32], high_indices: &[u32], parts: &[u32], size: u32, front: f32, rear: f32, low_keys: &[u32], high_keys: &[u32], ao_rays: u32) -> Result<js_sys::Array, JsValue> {
+pub fn bake_high_detached(low_positions: &[f32], low_normals: &[f32], low_uvs: &[f32], low_indices: &[u32], high_positions: &[f32], high_normals: &[f32], high_indices: &[u32], parts: &[u32], size: u32, front: f32, rear: f32, low_keys: &[u32], high_keys: &[u32], ao_rays: u32, cage: &[f32]) -> Result<js_sys::Array, JsValue> {
     let low = Mesh::from_flat(low_positions, low_normals, low_uvs, low_indices).map_err(|e| JsValue::from_str(&e))?;
     let high = Mesh::geometry_only(high_positions, high_normals, high_indices).map_err(|e| JsValue::from_str(&e))?;
     let bvh = Bvh::build(&high);
@@ -135,7 +145,8 @@ pub fn bake_high_detached(low_positions: &[f32], low_normals: &[f32], low_uvs: &
     let r = low.radius;
     let size = size.clamp(64, 2048) as usize;
     let keys = if low_keys.len() * 3 == low.indices.len() && high_keys.len() == tris { Some((low_keys, high_keys)) } else { None };
-    let result = fs_core::bake::bake_high_matched(&low, &high, &bvh, &parts, size, front.max(0.0) * r, rear.max(0.0) * r, keys, ao_rays.min(64) as usize);
+    let cage = if !cage.is_empty() && cage.len() == low.indices.len() * 3 { Some(cage) } else { None };
+    let result = fs_core::bake::bake_high_matched(&low, &high, &bvh, &parts, size, front.max(0.0) * r, rear.max(0.0) * r, keys, ao_rays.min(64) as usize, cage);
     let out = js_sys::Array::new();
     out.push(&js_sys::Uint8Array::from(&result.normal[..]));
     out.push(&js_sys::Uint8Array::from(&result.id[..]));
@@ -171,6 +182,7 @@ impl Engine {
         self.sets = split.sets.into_iter().map(|info| SetEntry { info, parked: None }).collect();
         self.tri_order = split.order;
         self.match_keys = None;
+        self.cage = None;
         self.instance_groups.clear();
         self.set_index = 0;
         self.id_maps.clear();
@@ -770,6 +782,27 @@ impl Engine {
         .to_string()
     }
 
+    pub fn set_post(&mut self, json: &str) -> Result<String, JsValue> {
+        let value: serde_json::Value = serde_json::from_str(json).map_err(|e| JsValue::from_str(&format!("Post effect settings are not JSON: {e}")))?;
+        let object = value.as_object().ok_or_else(|| JsValue::from_str("Post effect settings must be an object"))?;
+        for (key, raw) in object {
+            let k = POST_KEYS.iter().position(|n| n == key).ok_or_else(|| JsValue::from_str(&format!("Unknown post effect setting {key}")))?;
+            let v = raw.as_f64().ok_or_else(|| JsValue::from_str(&format!("{key} must be a number")))? as f32;
+            self.post[k] = v.clamp(POST_RANGES[k].0, POST_RANGES[k].1);
+        }
+        Ok(self.post_json())
+    }
+
+    pub fn reset_post(&mut self) -> String {
+        self.post = POST_DEFAULTS;
+        self.post_json()
+    }
+
+    pub fn post_json(&self) -> String {
+        let map: serde_json::Map<String, serde_json::Value> = POST_KEYS.iter().zip(self.post.iter()).map(|(k, v)| (k.to_string(), serde_json::json!(((*v as f64) * 1000.0).round() / 1000.0))).collect();
+        serde_json::Value::Object(map).to_string()
+    }
+
     fn push_env_params(&mut self) {
         let (forward, right, up, _) = self.basis();
         let t = (self.fov * 0.5).tan();
@@ -781,6 +814,19 @@ impl Engine {
             up[0], up[1], up[2], t,
             forward[0], forward[1], forward[2], self.exposure,
         ];
+        let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
+        let active = self.post.iter().zip(POST_DEFAULTS.iter()).enumerate().any(|(k, (v, d))| k != 1 && k != 5 && k != 10 && (v - d).abs() > 1e-4);
+        self.post_seed = (self.post_seed + 1.0) % 997.0;
+        let mut p = [0.0f32; 24];
+        p[..16].copy_from_slice(&self.post);
+        p[10] = self.distance + self.post[10] * r;
+        p[16] = (self.distance - r * 2.0).max(r * 0.01);
+        p[17] = self.distance + r * 3.0;
+        p[18] = self.post_seed;
+        p[19] = if active { 1.0 } else { 0.0 };
+        p[20] = self.width as f32;
+        p[21] = self.height as f32;
+        self.gpu.post_params = p;
     }
 
     pub fn set_view_2d(&mut self, on: bool) -> bool {
@@ -1328,6 +1374,53 @@ impl Engine {
         self.high = None;
     }
 
+    pub fn set_cage(&mut self, positions: &[f32], indices: &[u32]) -> Result<String, JsValue> {
+        if self.mesh.is_none() {
+            return Err(JsValue::from_str("Load the low-poly mesh first"));
+        }
+        let triangles = self.tri_order.len();
+        if indices.len() != triangles * 3 {
+            return Err(JsValue::from_str(&format!("The cage has {} triangles and the low-poly mesh {triangles}; a custom cage must be the low-poly mesh with its vertices moved", indices.len() / 3)));
+        }
+        let vertex = |k: u32| -> Result<[f32; 3], JsValue> {
+            let o = k as usize * 3;
+            positions.get(o..o + 3).map(|p| [p[0], p[1], p[2]]).ok_or_else(|| JsValue::from_str("Cage index out of range"))
+        };
+        let mut corners = vec![0.0f32; triangles * 9];
+        for (k, original) in self.tri_order.iter().enumerate() {
+            for c in 0..3 {
+                let p = vertex(indices[*original as usize * 3 + c])?;
+                corners[k * 9 + c * 3..k * 9 + c * 3 + 3].copy_from_slice(&p);
+            }
+        }
+        let mut offset = 0.0f32;
+        let (low, _) = self.mesh.as_ref().ok_or_else(|| JsValue::from_str("Load the low-poly mesh first"))?;
+        for (k, tri) in low.indices.chunks_exact(3).enumerate() {
+            for c in 0..3 {
+                let a = low.positions[tri[c] as usize];
+                let d = [corners[k * 9 + c * 3] - a[0], corners[k * 9 + c * 3 + 1] - a[1], corners[k * 9 + c * 3 + 2] - a[2]];
+                offset = offset.max(dot(d, d).sqrt());
+            }
+        }
+        self.cage = Some(corners);
+        Ok(format!("Custom cage set: {triangles} triangles, at most {:.3} of the mesh radius from the low-poly surface", offset / low.radius.max(1e-6)))
+    }
+
+    pub fn clear_cage(&mut self) {
+        self.cage = None;
+    }
+
+    pub fn has_cage(&self) -> bool {
+        self.cage.is_some()
+    }
+
+    pub fn texture_set_cage(&self, index: u32) -> js_sys::Float32Array {
+        match (&self.cage, self.sets.get(index as usize)) {
+            (Some(c), Some(set)) => js_sys::Float32Array::from(&c[(set.info.start * 3) as usize..((set.info.start + set.info.count) * 3) as usize]),
+            _ => js_sys::Float32Array::new_with_length(0),
+        }
+    }
+
     pub fn bake_high(&mut self, front: f32, rear: f32) -> Result<String, JsValue> {
         if self.mesh.is_none() {
             return Err(JsValue::from_str("Load the low-poly mesh first"));
@@ -1343,7 +1436,8 @@ impl Engine {
             let size = engine.gpu.size.min(2048) as usize;
             let r = low.radius;
             let keys = engine.match_keys.as_ref().map(|(l, h)| (&l[(info.start / 3) as usize..((info.start + info.count) / 3) as usize], h.as_slice()));
-            let result = fs_core::bake::bake_high_matched(&low, high, bvh, parts, size, front.max(0.0) * r, rear.max(0.0) * r, keys, 0);
+            let cage = engine.cage.as_ref().map(|c| &c[(info.start * 3) as usize..((info.start + info.count) * 3) as usize]);
+            let result = fs_core::bake::bake_high_matched(&low, high, bvh, parts, size, front.max(0.0) * r, rear.max(0.0) * r, keys, 0, cage);
             hits += result.hits;
             texels += result.texels;
             engine.gpu.set_high_bake(size as u32, &result.normal, &result.id);

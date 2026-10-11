@@ -33,6 +33,7 @@ struct Texel {
     t: Vec3,
     b: Vec3,
     tri: u32,
+    w: [f32; 3],
 }
 
 pub fn match_key(name: &str) -> String {
@@ -75,7 +76,7 @@ fn rasterize(low: &Mesh, size: usize) -> Vec<Option<Texel>> {
                 let t = normalize(sub(t, scale(n, dot(t, n))));
                 let mut b = blend(&bitangents);
                 b = normalize(sub(sub(b, scale(n, dot(b, n))), scale(t, dot(b, t))));
-                out[y * size + x] = Some(Texel { p: blend(&low.positions), n, t, b, tri: tri_index as u32 });
+                out[y * size + x] = Some(Texel { p: blend(&low.positions), n, t, b, tri: tri_index as u32, w: [w0, w1, w2] });
             }
         }
     }
@@ -101,11 +102,28 @@ fn id_color(part: u32) -> [u8; 3] {
 }
 
 pub fn bake_high(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[u32], size: usize, front: f32, rear: f32) -> HighBake {
-    bake_high_matched(low, high, high_bvh, high_parts, size, front, rear, None, 0)
+    bake_high_matched(low, high, high_bvh, high_parts, size, front, rear, None, 0, None)
+}
+
+fn cage_ray(cage: Option<&[f32]>, tx: &Texel, front: f32) -> (Vec3, Vec3, f32) {
+    let fallback = (add(tx.p, scale(tx.n, front)), scale(tx.n, -1.0), front);
+    let Some(c) = cage else { return fallback };
+    let o = tx.tri as usize * 9;
+    if c.len() < o + 9 {
+        return fallback;
+    }
+    let corner = |k: usize| [c[o + k * 3], c[o + k * 3 + 1], c[o + k * 3 + 2]];
+    let cp = add(add(scale(corner(0), tx.w[0]), scale(corner(1), tx.w[1])), scale(corner(2), tx.w[2]));
+    let v = sub(tx.p, cp);
+    let d = dot(v, v).sqrt();
+    if d < 1e-6 {
+        return fallback;
+    }
+    (cp, scale(v, 1.0 / d), d)
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn bake_high_matched(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[u32], size: usize, front: f32, rear: f32, keys: Option<(&[u32], &[u32])>, ao_rays: usize) -> HighBake {
+pub fn bake_high_matched(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[u32], size: usize, front: f32, rear: f32, keys: Option<(&[u32], &[u32])>, ao_rays: usize, cage: Option<&[f32]>) -> HighBake {
     let texels = rasterize(low, size);
     let mut normal = vec![0u8; size * size * 4];
     let mut id = vec![0u8; size * size * 4];
@@ -117,13 +135,12 @@ pub fn bake_high_matched(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[
     let mut covered = vec![false; size * size];
     let mut hits = 0usize;
     let mut count = 0usize;
-    let reach = (front + rear).max(1e-6);
     for (index, texel) in texels.iter().enumerate() {
         let Some(tx) = texel else { continue };
         count += 1;
         covered[index] = true;
-        let origin = add(tx.p, scale(tx.n, front));
-        let dir = scale(tx.n, -1.0);
+        let (origin, dir, front) = cage_ray(cage, tx, front);
+        let reach = (front + rear).max(1e-6);
         let mut ts = [0.0, 0.0, 1.0];
         let mut bent_ts = [0.0, 0.0, 1.0];
         let mut part_color = [128u8, 128, 128];

@@ -104,6 +104,12 @@ pub struct Gpu {
     env_uniform: wgpu::Buffer,
     env_textures: [wgpu::Texture; 3],
     pub env_params: [f32; 16],
+    post_pipe: wgpu::RenderPipeline,
+    bloom_pipe: wgpu::RenderPipeline,
+    post_uniform: wgpu::Buffer,
+    pub post_params: [f32; 24],
+    scene: wgpu::Texture,
+    bloom: wgpu::Texture,
     paint_pipe: wgpu::RenderPipeline,
     apply_pipe: wgpu::RenderPipeline,
     composite_pipe: wgpu::RenderPipeline,
@@ -315,6 +321,32 @@ fn depth_texture(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Textur
     })
 }
 
+fn scene_texture(device: &wgpu::Device, format: wgpu::TextureFormat, width: u32, height: u32) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("post scene"),
+        size: wgpu::Extent3d { width: width.max(1), height: height.max(1), depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    })
+}
+
+fn bloom_texture(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("post bloom"),
+        size: wgpu::Extent3d { width: (width / 4).max(1), height: (height / 4).max(1), depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: LAYER_FORMAT,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    })
+}
+
 fn mesh_layout() -> wgpu::VertexBufferLayout<'static> {
     const ATTRS: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2];
     wgpu::VertexBufferLayout { array_stride: 32, step_mode: wgpu::VertexStepMode::Vertex, attributes: &ATTRS }
@@ -475,6 +507,12 @@ impl Gpu {
             env_uniform: uniform("environment", 64),
             env_textures: [half_texture(&device, &queue, 1, 1, &[0.0; 3]), half_texture(&device, &queue, 1, 1, &[0.0; 3]), half_texture(&device, &queue, 1, 1, &[0.0; 3])],
             env_params: [0.0; 16],
+            post_pipe: pipeline(&device, "post", &format!("{}{}", shaders::POST_COMMON, shaders::POST), false, &[format], None, false),
+            bloom_pipe: pipeline(&device, "bloom", &format!("{}{}", shaders::POST_COMMON, shaders::BLOOM), false, &[LAYER_FORMAT], None, false),
+            post_uniform: uniform("post", 96),
+            post_params: [0.0; 24],
+            scene: scene_texture(&device, format, width, height),
+            bloom: bloom_texture(&device, width, height),
             paint_pipe: pipeline(&device, "paint", shaders::PAINT, true, &[LAYER_FORMAT], Some(union), false),
             apply_pipe: pipeline(&device, "apply", shaders::APPLY, false, &[LAYER_FORMAT; 3], None, false),
             composite_pipe: pipeline(&device, "composite", &format!("{}{}", shaders::BLEND, shaders::COMPOSITE), false, &[LAYER_FORMAT; 2], None, false),
@@ -572,6 +610,8 @@ impl Gpu {
         self.config.height = height;
         self.surface.configure(&self.device, &self.config);
         self.depth = depth_texture(&self.device, width, height);
+        self.scene = scene_texture(&self.device, self.config.format, width, height);
+        self.bloom = bloom_texture(&self.device, width, height);
     }
 
     pub fn upload_mesh(&mut self, mesh: &Mesh, ranges: &[(u32, u32)]) {
@@ -1500,7 +1540,8 @@ impl Gpu {
         for state in self.parked.iter().flatten().filter(|_| !self.flat) {
             draws.push((set_group(&state.final_set, &state.baked_normal, &self.white), state.range));
         }
-        let view = view_of(target);
+        let post = self.post_params[19] > 0.5 && !self.flat;
+        let view = if post { view_of(&self.scene) } else { view_of(target) };
         let depth = view_of(&self.depth);
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1527,6 +1568,39 @@ impl Gpu {
                 pass.draw(0..3, 0..1);
             }
         }
+        if !post {
+            return;
+        }
+        self.queue.write_buffer(&self.post_uniform, 0, bytemuck::cast_slice(&self.post_params));
+        let scene = view_of(&self.scene);
+        let bloom = view_of(&self.bloom);
+        let glow = self.post_params[0] > 0.0 || self.post_params[2] > 0.0 || self.post_params[3] > 0.0;
+        {
+            let group = bind(&self.device, &self.bloom_pipe, &[
+                self.post_uniform.as_entire_binding(),
+                wgpu::BindingResource::TextureView(&scene),
+                wgpu::BindingResource::Sampler(&self.clamp_sampler),
+            ]);
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&bloom, wgpu::LoadOp::Clear(wgpu::Color::BLACK))], ..Default::default() });
+            if glow {
+                pass.set_pipeline(&self.bloom_pipe);
+                pass.set_bind_group(0, &group, &[]);
+                pass.draw(0..3, 0..1);
+            }
+        }
+        let depth_only = self.depth.create_view(&wgpu::TextureViewDescriptor { aspect: wgpu::TextureAspect::DepthOnly, ..Default::default() });
+        let group = bind(&self.device, &self.post_pipe, &[
+            self.post_uniform.as_entire_binding(),
+            wgpu::BindingResource::TextureView(&scene),
+            wgpu::BindingResource::TextureView(&bloom),
+            wgpu::BindingResource::TextureView(&depth_only),
+            wgpu::BindingResource::Sampler(&self.clamp_sampler),
+        ]);
+        let out = view_of(target);
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&out, wgpu::LoadOp::Clear(wgpu::Color::BLACK))], ..Default::default() });
+        pass.set_pipeline(&self.post_pipe);
+        pass.set_bind_group(0, &group, &[]);
+        pass.draw(0..3, 0..1);
     }
 
     pub fn export(&mut self, channel: u32, normal_strength: f32, center: Vec3, radius: f32, wide: bool) -> js_sys::Promise {
