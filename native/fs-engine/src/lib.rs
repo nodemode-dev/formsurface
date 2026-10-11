@@ -56,6 +56,8 @@ pub struct Engine {
     clone_source: Option<[f32; 2]>,
     tri_order: Vec<u32>,
     match_keys: Option<(Vec<u32>, Vec<u32>)>,
+    instance_groups: Vec<Vec<(usize, u32)>>,
+    instancing: bool,
     mask_gens: HashMap<u32, FillSettings>,
     id_maps: HashMap<usize, (u32, Vec<u8>)>,
 }
@@ -101,6 +103,8 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         clone_source: None,
         tri_order: Vec::new(),
         match_keys: None,
+        instance_groups: Vec::new(),
+        instancing: false,
         mask_gens: HashMap::new(),
         id_maps: HashMap::new(),
     };
@@ -152,6 +156,7 @@ impl Engine {
         self.sets = split.sets.into_iter().map(|info| SetEntry { info, parked: None }).collect();
         self.tri_order = split.order;
         self.match_keys = None;
+        self.instance_groups.clear();
         self.set_index = 0;
         self.id_maps.clear();
         self.target = mesh.center;
@@ -235,7 +240,7 @@ impl Engine {
         let id = self.next_id;
         self.next_id += 1;
         let at = self.layers.len();
-        self.layers.push(LayerInfo { id, name, visible: true, opacity: 1.0, blend: BlendMode::Normal, kind: LayerKind::Paint, mask: false, parent: 0 });
+        self.layers.push(LayerInfo { id, name, visible: true, opacity: 1.0, blend: BlendMode::Normal, kind: LayerKind::Paint, mask: false, parent: 0, instance: false });
         self.gpu.insert_layer(at, id);
         self.gpu.flatten_into(at);
         while self.layers.len() > 1 {
@@ -372,6 +377,9 @@ impl Engine {
         self.layers[index].mask = true;
         self.mask_gens.insert(id, settings);
         self.render_mask_gen(id);
+        self.propagate(id, |e, other| {
+            let _ = e.mask_generator(other, json);
+        });
         Ok(())
     }
 
@@ -444,6 +452,26 @@ impl Engine {
         self.relaying = false;
         self.dirty = true;
         Some(first)
+    }
+
+    fn propagate(&mut self, id: u32, mut work: impl FnMut(&mut Engine, u32)) {
+        if self.instancing || self.relaying {
+            return;
+        }
+        let here = (self.set_index, id);
+        let Some(group) = self.instance_groups.iter().find(|g| g.contains(&here)).cloned() else { return };
+        self.instancing = true;
+        let original = self.set_index;
+        for (set, other) in group.into_iter().filter(|m| *m != here) {
+            self.switch_set(set);
+            if self.layers.iter().any(|l| l.id == other) {
+                work(self, other);
+                self.gpu.composite(&self.layers, &self.filters);
+            }
+        }
+        self.switch_set(original);
+        self.instancing = false;
+        self.dirty = true;
     }
 
     fn each_sibling(&mut self, mut work: impl FnMut(&mut Engine)) {
@@ -740,7 +768,7 @@ impl Engine {
             let active = &self.layers[index];
             if active.kind == LayerKind::Folder { (index, active.id) } else { (index + 1, active.parent) }
         };
-        self.layers.insert(at, LayerInfo { id, name, visible: true, opacity: 1.0, blend: BlendMode::Normal, kind: LayerKind::Paint, mask: false, parent });
+        self.layers.insert(at, LayerInfo { id, name, visible: true, opacity: 1.0, blend: BlendMode::Normal, kind: LayerKind::Paint, mask: false, parent, instance: false });
         self.gpu.insert_layer(at, id);
         self.active = id;
         self.normalize();
@@ -827,6 +855,17 @@ impl Engine {
         let index = self.layers.iter().position(|l| l.id == info.id).ok_or_else(|| JsValue::from_str("No layer with that id"))?;
         info.kind = self.layers[index].kind;
         info.parent = self.layers[index].parent;
+        info.instance = self.layers[index].instance;
+        let shared = (info.name.clone(), info.visible, info.opacity, info.blend);
+        self.propagate(info.id, |e, other| {
+            if let Some(layer) = e.layers.iter().find(|l| l.id == other) {
+                let mut next = layer.clone();
+                (next.name, next.visible, next.opacity, next.blend) = shared.clone();
+                if let Ok(text) = serde_json::to_string(&next) {
+                    let _ = e.update_layer(&text);
+                }
+            }
+        });
         self.layers[index] = info;
         self.dirty = true;
         Ok(())
@@ -858,6 +897,9 @@ impl Engine {
         let settings: FillSettings = serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
         self.fills.insert(id, settings);
         self.render_fill(id);
+        self.propagate(id, |e, other| {
+            let _ = e.set_fill(other, json);
+        });
         Ok(())
     }
 
@@ -1104,7 +1146,56 @@ impl Engine {
         let settings: FilterSettings = serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
         self.filters.insert(id, settings);
         self.dirty = true;
+        self.propagate(id, |e, other| {
+            let _ = e.set_filter(other, json);
+        });
         Ok(())
+    }
+
+    pub fn instance_layer(&mut self, id: u32, target: u32) -> Result<u32, JsValue> {
+        let target = target as usize;
+        if self.stroking || target >= self.sets.len() || target == self.set_index {
+            return Err(JsValue::from_str("Choose another texture set to instance into"));
+        }
+        let index = self.layers.iter().position(|l| l.id == id).ok_or_else(|| JsValue::from_str("No layer with that id"))?;
+        let info = self.layers[index].clone();
+        let (fill, filter, generator) = (self.fills.get(&id).copied(), self.filters.get(&id).copied(), self.mask_gens.get(&id).copied());
+        if fill.is_none() && filter.is_none() {
+            return Err(JsValue::from_str("Only fill and filter layers can be instanced: paint lives in each texture set's own UV space"));
+        }
+        let origin = self.set_index;
+        let group = match self.instance_groups.iter().position(|g| g.contains(&(origin, id))) {
+            Some(g) => g,
+            None => {
+                self.instance_groups.push(vec![(origin, id)]);
+                self.instance_groups.len() - 1
+            }
+        };
+        self.layers[index].instance = true;
+        self.instancing = true;
+        self.switch_set(target);
+        let new_id = if fill.is_some() { self.add_fill_layer(info.name.clone()) } else { self.add_filter_layer(info.name.clone()) };
+        let text = |v: serde_json::Result<String>| v.unwrap_or_default();
+        if let Some(f) = fill {
+            let _ = self.set_fill(new_id, &text(serde_json::to_string(&f)));
+        }
+        if let Some(f) = filter {
+            let _ = self.set_filter(new_id, &text(serde_json::to_string(&f)));
+        }
+        if let Some(g) = generator {
+            let _ = self.mask_generator(new_id, &text(serde_json::to_string(&g)));
+        }
+        let copy = LayerInfo { id: new_id, parent: 0, instance: true, ..info.clone() };
+        let _ = self.update_layer(&text(serde_json::to_string(&copy)));
+        if let Some(layer) = self.layers.iter_mut().find(|l| l.id == new_id) {
+            layer.instance = true;
+        }
+        self.gpu.composite(&self.layers, &self.filters);
+        self.switch_set(origin);
+        self.instancing = false;
+        self.instance_groups[group].push((target, new_id));
+        self.dirty = true;
+        Ok(new_id)
     }
 
     pub fn snapshot(&mut self) -> js_sys::Promise {

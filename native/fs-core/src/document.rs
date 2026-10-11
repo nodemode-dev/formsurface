@@ -213,6 +213,8 @@ pub struct LayerInfo {
     pub mask: bool,
     #[serde(default)]
     pub parent: u32,
+    #[serde(default)]
+    pub instance: bool,
 }
 
 pub fn tree_order(layers: &[LayerInfo]) -> Vec<LayerInfo> {
