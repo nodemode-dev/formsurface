@@ -327,6 +327,28 @@ def formsurface_set_filter(
 
 
 @server.tool()
+def formsurface_uv_tiles(on: bool | None = None) -> dict:
+    """Painter's UV tiles workflow. When on, the UDIM tiles of a material share one layer stack: adding, changing or removing layers, fills, filters and masks on one tile applies to all of them, and a stroke paints across tile borders in one go. Turning it on copies the active tile's stack to the material's other tiles and clears their previous paint. Without on, reports the current state."""
+    return call("uv_tiles", drop_none(on=on))
+
+
+@server.tool()
+def formsurface_mask_source(
+    layer_id: int,
+    source: Literal["cavity", "edges", "thin", "top", "id_color"],
+    color: Annotated[str | None, Field(pattern=r"^#[0-9a-fA-F]{6}$")] = None,
+    x: Annotated[float | None, Field(ge=0, le=1)] = None,
+    y: Annotated[float | None, Field(ge=0, le=1)] = None,
+    tolerance: Annotated[float | None, Field(ge=0, le=1)] = None,
+    level: Unit | None = None,
+    softness: Unit | None = None,
+    invert: bool | None = None,
+) -> dict:
+    """Give a layer a mask from a source instead of painting it. cavity, edges, thin and top generate it from the baked mesh maps (level, softness, invert) and regenerate after every bake. id_color selects one color of the baked ID map: pass color, or a viewport point x, y on the part (0,0 top left) to pick it there. Strokes into the mask still work afterwards."""
+    return call("mask_source", drop_none(id=layer_id, source=source, color=color, x=x, y=y, tolerance=tolerance, level=level, softness=softness, invert=invert))
+
+
+@server.tool()
 def formsurface_quick_mask(mode: Literal["off", "edit", "on"] | None = None, action: Literal["clear", "allow_all", "invert"] | None = None) -> dict:
     """Painter's quick mask for the active texture set, a temporary mask that is not a layer. edit: strokes and fills mark where paint may land (the eraser protects), shown in red where protected; on: every stroke, fill and polygon fill only lands where it was marked; off: no limit. clear protects everything, allow_all allows everything, invert swaps them. Not undoable."""
     return call("quick_mask", drop_none(mode=mode, action=action))
