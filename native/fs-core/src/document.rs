@@ -195,6 +195,7 @@ pub enum LayerKind {
     #[default]
     Paint,
     Fill,
+    Filter,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -251,6 +252,38 @@ pub struct FillSettings {
     pub use_height: bool,
     pub image_color: bool,
     pub opacity: f32,
+    pub generator: Generator,
+    pub generator_level: f32,
+    pub generator_softness: f32,
+    pub generator_invert: bool,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Generator {
+    None,
+    Cavity,
+    Edges,
+    Thin,
+    Top,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct FilterSettings {
+    pub brightness: f32,
+    pub contrast: f32,
+    pub hue: f32,
+    pub saturation: f32,
+    pub gamma: f32,
+    pub roughness_offset: f32,
+    pub metallic_offset: f32,
+}
+
+impl Default for FilterSettings {
+    fn default() -> Self {
+        FilterSettings { brightness: 0.0, contrast: 0.0, hue: 0.0, saturation: 1.0, gamma: 1.0, roughness_offset: 0.0, metallic_offset: 0.0 }
+    }
 }
 
 impl Default for FillSettings {
@@ -274,12 +307,23 @@ impl Default for FillSettings {
             use_height: false,
             image_color: false,
             opacity: 1.0,
+            generator: Generator::None,
+            generator_level: 0.5,
+            generator_softness: 0.1,
+            generator_invert: false,
         }
     }
 }
 
 impl FillSettings {
-    pub fn uniform(&self, center: [f32; 3], radius: f32) -> [f32; 24] {
+    pub fn uniform(&self, center: [f32; 3], radius: f32) -> [f32; 28] {
+        let generator = match self.generator {
+            Generator::None => 0.0,
+            Generator::Cavity => 1.0,
+            Generator::Edges => 2.0,
+            Generator::Thin => 3.0,
+            Generator::Top => 4.0,
+        };
         let flag = |b: bool| if b { 1.0 } else { 0.0 };
         let projection = match self.projection {
             Projection::Uv => 0.0,
@@ -303,6 +347,7 @@ impl FillSettings {
             projection, pattern, self.scale.max(0.01), self.rotation.to_radians(),
             self.offset_x, self.offset_y, self.sharpness.clamp(1.0, 32.0), self.axis.min(2) as f32,
             center[0], center[1], center[2], radius,
+            generator, self.generator_level.clamp(0.0, 1.0), self.generator_softness.clamp(0.001, 0.5), flag(self.generator_invert),
         ]
     }
 }

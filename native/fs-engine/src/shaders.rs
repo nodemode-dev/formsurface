@@ -356,6 +356,20 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     let lk = textureLoad(l_cov, p, 0);
     var op = layer.opacity.x;
     if (layer.opacity.y > 0.5) { op = op * clamp(textureLoad(l_mask, p, 0).r, 0.0, 1.0); }
+    if (layer.mode.z == 1u) {
+        var c = pow(max(pc.rgb, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.2));
+        c = (c - 0.5) * (1.0 + layer.base_color.y) + 0.5 + layer.base_color.x;
+        let l = dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
+        c = mix(vec3<f32>(l), c, layer.base_color.w);
+        let k = vec3<f32>(0.57735);
+        let a = layer.base_color.z;
+        c = c * cos(a) + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - cos(a));
+        c = pow(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(2.2 * layer.base_values.x));
+        o.color = vec4<f32>(mix(pc.rgb, c, op), 1.0);
+        let v = clamp(pm.rgb + vec3<f32>(layer.base_values.y, layer.base_values.z, 0.0), vec3<f32>(0.0), vec3<f32>(1.0));
+        o.mat = vec4<f32>(mix(pm.rgb, v, op), 1.0);
+        return o;
+    }
     var col = pc.rgb;
     if (lc.a > 1e-5) {
         let straight = lc.rgb / lc.a;
@@ -424,8 +438,10 @@ struct Fill {
     proj: vec4<f32>,
     proj2: vec4<f32>,
     mesh: vec4<f32>,
+    generator: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> fill: Fill;
+@group(0) @binding(5) var bake_tex: texture_2d<f32>;
 @group(0) @binding(1) var pos_map: texture_2d<f32>;
 @group(0) @binding(2) var normal_map: texture_2d<f32>;
 @group(0) @binding(3) var pattern_tex: texture_2d<f32>;
@@ -505,6 +521,19 @@ fn fs(@builtin(position) frag: vec4<f32>) -> Out {
     }
     var lum = dot(s.rgb, vec3<f32>(0.2126, 0.7152, 0.0722)) * s.a;
     if (fill.color.w > 0.5) { lum = s.a; }
+    let gk = fill.generator.x;
+    if (gk > 0.5) {
+        let baked = textureLoad(bake_tex, px, 0);
+        var v = 0.0;
+        if (gk < 1.5) { v = 1.0 - baked.r; }
+        else if (gk < 2.5) { v = clamp((baked.g - 0.5) * 2.0, 0.0, 1.0); }
+        else if (gk < 3.5) { v = 1.0 - baked.b; }
+        else { v = clamp(local.y * 0.5 + 0.5, 0.0, 1.0); }
+        let soft = max(fill.generator.z, 0.001);
+        var g = smoothstep(fill.generator.y - soft, fill.generator.y + soft, v);
+        if (fill.generator.w > 0.5) { g = 1.0 - g; }
+        lum = lum * g;
+    }
     let a = clamp(lum, 0.0, 1.0) * fill.values.w;
     var base = fill.color.rgb;
     if (fill.color.w > 0.5) { base = s.rgb; }
@@ -564,18 +593,112 @@ fn fs() -> @location(0) vec4<f32> {
 }
 "#;
 
+pub const BAKE_DEPTH: &str = r#"
+struct Light { view_proj: mat4x4<f32>, dir: vec4<f32>, params: vec4<f32>, };
+@group(0) @binding(0) var<uniform> light: Light;
+@vertex
+fn vs(@location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) uv: vec2<f32>) -> @builtin(position) vec4<f32> {
+    return light.view_proj * vec4<f32>(p, 1.0);
+}
+"#;
+
+pub const BAKE_ACCUM: &str = r#"
+struct Light { view_proj: mat4x4<f32>, dir: vec4<f32>, params: vec4<f32>, };
+@group(0) @binding(0) var<uniform> light: Light;
+@group(0) @binding(1) var pos_map: texture_2d<f32>;
+@group(0) @binding(2) var normal_map: texture_2d<f32>;
+@group(0) @binding(3) var depth_map: texture_depth_2d;
+
+@fragment
+fn fs(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+    let px = vec2<i32>(frag.xy);
+    let wp = textureLoad(pos_map, px, 0);
+    if (wp.w < 0.5) { return vec4<f32>(0.0); }
+    let n = normalize(textureLoad(normal_map, px, 0).xyz);
+    let d = light.dir.xyz;
+    let c = light.view_proj * vec4<f32>(wp.xyz, 1.0);
+    let ndc = c.xyz / c.w;
+    let size = vec2<f32>(textureDimensions(depth_map));
+    let tp = vec2<i32>(i32((ndc.x * 0.5 + 0.5) * size.x), i32((0.5 - ndc.y * 0.5) * size.y));
+    let stored = textureLoad(depth_map, clamp(tp, vec2<i32>(0), vec2<i32>(size) - 1), 0);
+    let facing = dot(n, d);
+    var o = vec4<f32>(0.0);
+    if (facing > 0.0) {
+        let visible = select(0.0, 1.0, ndc.z <= stored + light.params.x);
+        o.x = visible * facing;
+        o.y = facing;
+    } else {
+        let depth_range = light.params.y;
+        let thickness = max(ndc.z - stored, 0.0) * depth_range;
+        o.z = thickness * -facing;
+        o.w = -facing;
+    }
+    return o;
+}
+"#;
+
+pub const BAKE_FINAL: &str = r#"
+struct Light { view_proj: mat4x4<f32>, dir: vec4<f32>, params: vec4<f32>, };
+@group(0) @binding(0) var<uniform> light: Light;
+@group(0) @binding(1) var accum: texture_2d<f32>;
+@group(0) @binding(2) var pos_map: texture_2d<f32>;
+@group(0) @binding(3) var normal_map: texture_2d<f32>;
+
+fn sample_ok(p: vec2<i32>, size: vec2<i32>) -> bool {
+    if (any(p < vec2<i32>(0)) || any(p >= size)) { return false; }
+    return textureLoad(pos_map, p, 0).w > 0.5;
+}
+
+@fragment
+fn fs(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+    let px = vec2<i32>(frag.xy);
+    let size = vec2<i32>(textureDimensions(pos_map));
+    let a = textureLoad(accum, px, 0);
+    let wp = textureLoad(pos_map, px, 0);
+    if (wp.w < 0.5) { return vec4<f32>(1.0, 0.5, 0.0, 0.0); }
+    let ao = select(1.0, a.x / a.y, a.y > 1e-5);
+    let thickness = clamp(select(0.0, a.z / a.w, a.w > 1e-5) / max(light.params.z, 1e-6), 0.0, 1.0);
+    let n = normalize(textureLoad(normal_map, px, 0).xyz);
+    var curv = 0.0;
+    var count = 0.0;
+    let offsets = array<vec2<i32>, 4>(vec2<i32>(2, 0), vec2<i32>(-2, 0), vec2<i32>(0, 2), vec2<i32>(0, -2));
+    for (var k = 0; k < 4; k = k + 1) {
+        let q = px + offsets[k];
+        if (!sample_ok(q, size)) { continue; }
+        let dp = textureLoad(pos_map, q, 0).xyz - wp.xyz;
+        let dn = normalize(textureLoad(normal_map, q, 0).xyz) - n;
+        let l2 = dot(dp, dp);
+        if (l2 < 1e-12) { continue; }
+        curv = curv + dot(dn, dp) / l2;
+        count = count + 1.0;
+    }
+    if (count > 0.0) { curv = curv / count; }
+    let c = clamp(0.5 + curv * light.params.w, 0.0, 1.0);
+    return vec4<f32>(ao, c, thickness, 1.0);
+}
+"#;
+
 pub const EXPORT: &str = r#"
 struct Sel { channel: vec4<u32>, params: vec4<f32>, };
 @group(0) @binding(0) var<uniform> sel: Sel;
 @group(0) @binding(1) var color_tex: texture_2d<f32>;
 @group(0) @binding(2) var mat_tex: texture_2d<f32>;
+@group(0) @binding(3) var bake_tex: texture_2d<f32>;
+@group(0) @binding(4) var pos_map: texture_2d<f32>;
+@group(0) @binding(5) var normal_map: texture_2d<f32>;
 
 @fragment
 fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     let p = vec2<i32>(pos.xy);
     let size = vec2<i32>(textureDimensions(mat_tex));
     let m = textureLoad(mat_tex, p, 0);
+    let b = textureLoad(bake_tex, p, 0);
     switch sel.channel.x {
+        case 5u: { return vec4<f32>(vec3<f32>(b.r), 1.0); }
+        case 6u: { return vec4<f32>(vec3<f32>(b.g), 1.0); }
+        case 7u: { return vec4<f32>(vec3<f32>(b.b), 1.0); }
+        case 8u: { return vec4<f32>(clamp((textureLoad(pos_map, p, 0).xyz - sel.params.yzw) / max(bitcast<f32>(sel.channel.y) * 2.0, 1e-6) + 0.5, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0); }
+        case 9u: { return vec4<f32>(normalize(textureLoad(normal_map, p, 0).xyz + vec3<f32>(1e-6)) * 0.5 + 0.5, 1.0); }
         case 0u: { return vec4<f32>(pow(clamp(textureLoad(color_tex, p, 0).rgb, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / 2.2)), 1.0); }
         case 1u: { return vec4<f32>(vec3<f32>(m.r), 1.0); }
         case 2u: { return vec4<f32>(vec3<f32>(m.g), 1.0); }

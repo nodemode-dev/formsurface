@@ -1,7 +1,7 @@
 mod gpu;
 mod shaders;
 
-use fs_core::{add, cross, dot, normalize, scale, sub, BlendMode, BrushSettings, Bvh, ChannelValues, FillSettings, Hit, LayerInfo, LayerKind, Mesh, SizeSpace, Symmetry, Vec3};
+use fs_core::{add, cross, dot, normalize, scale, sub, BlendMode, BrushSettings, Bvh, ChannelValues, FillSettings, FilterSettings, Hit, LayerInfo, LayerKind, Mesh, SizeSpace, Symmetry, Vec3};
 use gpu::Gpu;
 use wasm_bindgen::prelude::*;
 
@@ -26,6 +26,7 @@ pub struct Engine {
     seed: u64,
     lazy: Option<(f32, f32)>,
     fills: std::collections::HashMap<u32, FillSettings>,
+    filters: std::collections::HashMap<u32, FilterSettings>,
     mask_target: bool,
     stroking: bool,
     cursor: Option<Hit>,
@@ -60,6 +61,7 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         seed: 0x9e37_79b9_7f4a_7c15,
         lazy: None,
         fills: std::collections::HashMap::new(),
+        filters: std::collections::HashMap::new(),
         mask_target: false,
         stroking: false,
         cursor: None,
@@ -160,7 +162,7 @@ impl Engine {
             return false;
         }
         let index = self.layer_index(self.active);
-        if self.layers[index].kind == LayerKind::Fill && !self.layers[index].mask {
+        if self.layers[index].kind != LayerKind::Paint && !self.layers[index].mask {
             return false;
         }
         self.gpu.begin_stroke(index);
@@ -299,6 +301,7 @@ impl Engine {
         let index = self.layer_index(id);
         self.layers.remove(index);
         self.fills.remove(&id);
+        self.filters.remove(&id);
         self.gpu.remove_layer(index, id);
         if self.active == id {
             self.active = self.layers[index.min(self.layers.len() - 1)].id;
@@ -392,7 +395,7 @@ impl Engine {
     pub fn frame(&mut self) {
         self.flush();
         if self.dirty {
-            self.gpu.composite(&self.layers);
+            self.gpu.composite(&self.layers, &self.filters);
             self.dirty = false;
         }
         let (forward, right, up, eye) = self.basis();
@@ -406,16 +409,54 @@ impl Engine {
     pub fn export_channel(&mut self, channel: u32) -> js_sys::Promise {
         self.flush();
         if self.dirty {
-            self.gpu.composite(&self.layers);
+            self.gpu.composite(&self.layers, &self.filters);
             self.dirty = false;
         }
-        self.gpu.export(channel, self.normal_strength)
+        let (center, radius) = self.mesh.as_ref().map(|m| (m.0.center, m.0.radius)).unwrap_or(([0.0; 3], 1.0));
+        self.gpu.export(channel, self.normal_strength, center, radius)
+    }
+
+    pub fn bake_maps(&mut self, directions: u32) -> Result<(), JsValue> {
+        let (center, radius) = self.mesh.as_ref().map(|m| (m.0.center, m.0.radius)).ok_or_else(|| JsValue::from_str("Load a mesh before baking"))?;
+        self.gpu.bake_maps(center, radius, directions).map_err(|e| JsValue::from_str(&e))?;
+        let ids: Vec<u32> = self.fills.keys().copied().collect();
+        for id in ids {
+            self.render_fill(id);
+        }
+        Ok(())
+    }
+
+    pub fn is_baked(&self) -> bool {
+        self.gpu.baked
+    }
+
+    pub fn add_filter_layer(&mut self, name: String) -> u32 {
+        let id = self.add_layer(name);
+        let index = self.layer_index(id);
+        self.layers[index].kind = LayerKind::Filter;
+        self.filters.insert(id, FilterSettings::default());
+        self.dirty = true;
+        id
+    }
+
+    pub fn filter_settings(&self, id: u32) -> String {
+        self.filters.get(&id).map(|f| serde_json::to_string(f).unwrap_or_default()).unwrap_or_default()
+    }
+
+    pub fn set_filter(&mut self, id: u32, json: &str) -> Result<(), JsValue> {
+        if !self.filters.contains_key(&id) {
+            return Err(JsValue::from_str("That layer is not a filter layer"));
+        }
+        let settings: FilterSettings = serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        self.filters.insert(id, settings);
+        self.dirty = true;
+        Ok(())
     }
 
     pub fn snapshot(&mut self) -> js_sys::Promise {
         self.flush();
         if self.dirty {
-            self.gpu.composite(&self.layers);
+            self.gpu.composite(&self.layers, &self.filters);
             self.dirty = false;
         }
         let (forward, right, up, eye) = self.basis();
@@ -558,7 +599,7 @@ impl Engine {
 
     fn paints_mask(&self) -> bool {
         let layer = &self.layers[self.layer_index(self.active)];
-        layer.kind == LayerKind::Fill || (self.mask_target && layer.mask)
+        layer.kind != LayerKind::Paint || (self.mask_target && layer.mask)
     }
 
     fn render_fill(&mut self, id: u32) {

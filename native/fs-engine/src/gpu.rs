@@ -1,5 +1,5 @@
 use crate::shaders;
-use fs_core::{dot, BrushSettings, ChannelValues, LayerInfo, Mesh, StrokeMode, Vec3};
+use fs_core::{dot, BrushSettings, ChannelValues, FilterSettings, LayerInfo, LayerKind, Mesh, StrokeMode, Vec3};
 use wasm_bindgen::prelude::*;
 
 const LAYER_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
@@ -43,6 +43,12 @@ pub struct Gpu {
     camera: wgpu::Buffer,
     stamp_buffer: wgpu::Buffer,
     fill_uniform: wgpu::Buffer,
+    bake: wgpu::Texture,
+    pub baked: bool,
+    light_uniform: wgpu::Buffer,
+    bake_depth_pipe: wgpu::RenderPipeline,
+    bake_accum_pipe: wgpu::RenderPipeline,
+    bake_final_pipe: wgpu::RenderPipeline,
     fill_pipe: wgpu::RenderPipeline,
     apply_mask_pipe: wgpu::RenderPipeline,
     geometry_pipe: wgpu::RenderPipeline,
@@ -106,6 +112,28 @@ fn new_set(device: &wgpu::Device, size: u32) -> Set {
 
 fn new_pair(device: &wgpu::Device, size: u32) -> Pair {
     Pair { color: texture(device, size, LAYER_FORMAT, "composite color"), mat: texture(device, size, LAYER_FORMAT, "composite material") }
+}
+
+fn depth_only_pipeline(device: &wgpu::Device) -> wgpu::RenderPipeline {
+    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("bake depth"), source: wgpu::ShaderSource::Wgsl(shaders::BAKE_DEPTH.into()) });
+    let buffers = [Some(mesh_layout())];
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("bake depth"),
+        layout: None,
+        vertex: wgpu::VertexState { module: &module, entry_point: Some("vs"), compilation_options: Default::default(), buffers: &buffers },
+        primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: DEPTH_FORMAT,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::Less),
+            stencil: Default::default(),
+            bias: Default::default(),
+        }),
+        multisample: Default::default(),
+        fragment: None,
+        multiview_mask: None,
+        cache: None,
+    })
 }
 
 fn white_texture(device: &wgpu::Device, queue: &wgpu::Queue) -> wgpu::Texture {
@@ -307,7 +335,16 @@ impl Gpu {
             }),
             camera: uniform("camera", 128),
             stamp_buffer: uniform("stamps", 64 + 32 * 64),
-            fill_uniform: uniform("fill", 96),
+            fill_uniform: uniform("fill", 112),
+            bake: texture(&device, size, LAYER_FORMAT, "baked maps"),
+            baked: false,
+            light_uniform: uniform("bake light", 96),
+            bake_depth_pipe: depth_only_pipeline(&device),
+            bake_accum_pipe: pipeline(&device, "bake accumulate", shaders::BAKE_ACCUM, false, &[LAYER_FORMAT], Some(wgpu::BlendState {
+                color: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::One, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
+                alpha: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::One, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
+            }), false),
+            bake_final_pipe: pipeline(&device, "bake final", shaders::BAKE_FINAL, false, &[LAYER_FORMAT], None, false),
             fill_pipe: pipeline(&device, "fill", shaders::FILL, false, &[LAYER_FORMAT; 3], None, false),
             apply_mask_pipe: pipeline(&device, "apply mask", shaders::APPLY_MASK, false, &[LAYER_FORMAT], None, false),
             geometry_pipe: pipeline(&device, "geometry", shaders::GEOMETRY, true, &[wgpu::TextureFormat::Rgba32Float, LAYER_FORMAT], None, false),
@@ -386,8 +423,13 @@ impl Gpu {
             pass.set_pipeline(&self.geometry_pipe);
             self.draw_mesh(&mut pass);
         }
+        {
+            let bv = view_of(&self.bake);
+            encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&bv, wgpu::LoadOp::Clear(wgpu::Color { r: 1.0, g: 0.5, b: 0.5, a: 1.0 }))], ..Default::default() });
+        }
         self.queue.submit([encoder.finish()]);
         self.geometry = Some((pos, normal));
+        self.baked = false;
     }
 
     fn draw_mesh(&self, pass: &mut wgpu::RenderPass) {
@@ -416,18 +458,20 @@ impl Gpu {
         self.queue.submit([encoder.finish()]);
     }
 
-    pub fn fill_layer_content(&mut self, index: usize, uniform: &[f32; 24]) {
+    pub fn fill_layer_content(&mut self, index: usize, uniform: &[f32; 28]) {
         let Some(geometry) = &self.geometry else { return };
         let id = self.layers[index].id;
         self.queue.write_buffer(&self.fill_uniform, 0, bytemuck::cast_slice(uniform));
         let (pv, nv) = (view_of(&geometry.0), view_of(&geometry.1));
         let pattern = view_of(self.patterns.get(&id).unwrap_or(&self.white));
+        let bake = view_of(&self.bake);
         let group = bind(&self.device, &self.fill_pipe, &[
             self.fill_uniform.as_entire_binding(),
             wgpu::BindingResource::TextureView(&pv),
             wgpu::BindingResource::TextureView(&nv),
             wgpu::BindingResource::TextureView(&pattern),
             wgpu::BindingResource::Sampler(&self.sampler),
+            wgpu::BindingResource::TextureView(&bake),
         ]);
         let set = &self.layers[index].set;
         let (c, v, k) = (view_of(&set.color), view_of(&set.val), view_of(&set.cov));
@@ -440,6 +484,92 @@ impl Gpu {
             pass.draw(0..3, 0..1);
         }
         self.queue.submit([encoder.finish()]);
+    }
+
+    pub fn bake_maps(&mut self, center: Vec3, radius: f32, directions: u32) -> Result<(), String> {
+        let Some((pos, normal)) = &self.geometry else { return Err("Load a mesh before baking".into()) };
+        let res = 1024;
+        let depth = depth_texture(&self.device, res, res);
+        let depth_view = view_of(&depth);
+        let depth_sample = depth.create_view(&wgpu::TextureViewDescriptor { aspect: wgpu::TextureAspect::DepthOnly, ..Default::default() });
+        let accum = texture(&self.device, self.size, LAYER_FORMAT, "bake accumulation");
+        let accum_view = view_of(&accum);
+        let (pv, nv) = (view_of(pos), view_of(normal));
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&accum_view, wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT))], ..Default::default() });
+        self.queue.submit([encoder.finish()]);
+        let r = radius.max(1e-6);
+        let golden = std::f32::consts::PI * (3.0 - 5.0f32.sqrt());
+        let count = directions.clamp(8, 256);
+        for k in 0..count {
+            let y = 1.0 - 2.0 * (k as f32 + 0.5) / count as f32;
+            let ring = (1.0 - y * y).max(0.0).sqrt();
+            let theta = golden * k as f32;
+            let dir = [theta.cos() * ring, y, theta.sin() * ring];
+            let up = if dir[1].abs() > 0.9 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
+            let right = fs_core::normalize(fs_core::cross(up, dir));
+            let up = fs_core::cross(dir, right);
+            let hs = r * 1.05;
+            let range = 4.0 * r;
+            let eye = fs_core::add(center, fs_core::scale(dir, 2.0 * r));
+            let rows = [
+                [right[0] / hs, right[1] / hs, right[2] / hs, -dot(right, center) / hs],
+                [up[0] / hs, up[1] / hs, up[2] / hs, -dot(up, center) / hs],
+                [-dir[0] / range, -dir[1] / range, -dir[2] / range, dot(dir, eye) / range],
+                [0.0, 0.0, 0.0, 1.0],
+            ];
+            let mut data = [0.0f32; 24];
+            for c in 0..4 {
+                for row in 0..4 {
+                    data[c * 4 + row] = rows[row][c];
+                }
+            }
+            data[16..20].copy_from_slice(&[dir[0], dir[1], dir[2], 0.0]);
+            data[20..24].copy_from_slice(&[0.003, range, r, 0.05 * r]);
+            self.queue.write_buffer(&self.light_uniform, 0, bytemuck::cast_slice(&data));
+            let depth_group = bind(&self.device, &self.bake_depth_pipe, &[self.light_uniform.as_entire_binding()]);
+            let accum_group = bind(&self.device, &self.bake_accum_pipe, &[
+                self.light_uniform.as_entire_binding(),
+                wgpu::BindingResource::TextureView(&pv),
+                wgpu::BindingResource::TextureView(&nv),
+                wgpu::BindingResource::TextureView(&depth_sample),
+            ]);
+            let mut encoder = self.device.create_command_encoder(&Default::default());
+            {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    color_attachments: &[],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &depth_view, depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }), stencil_ops: None }),
+                    ..Default::default()
+                });
+                pass.set_pipeline(&self.bake_depth_pipe);
+                pass.set_bind_group(0, &depth_group, &[]);
+                self.draw_mesh(&mut pass);
+            }
+            {
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&accum_view, wgpu::LoadOp::Load)], ..Default::default() });
+                pass.set_pipeline(&self.bake_accum_pipe);
+                pass.set_bind_group(0, &accum_group, &[]);
+                pass.draw(0..3, 0..1);
+            }
+            self.queue.submit([encoder.finish()]);
+        }
+        let group = bind(&self.device, &self.bake_final_pipe, &[
+            self.light_uniform.as_entire_binding(),
+            wgpu::BindingResource::TextureView(&accum_view),
+            wgpu::BindingResource::TextureView(&pv),
+            wgpu::BindingResource::TextureView(&nv),
+        ]);
+        let bake_view = view_of(&self.bake);
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&bake_view, wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT))], ..Default::default() });
+            pass.set_pipeline(&self.bake_final_pipe);
+            pass.set_bind_group(0, &group, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        self.queue.submit([encoder.finish()]);
+        self.baked = true;
+        Ok(())
     }
 
     pub fn set_pattern(&mut self, id: u32, width: u32, height: u32, rgba: &[u8]) -> Result<(), String> {
@@ -687,7 +817,7 @@ impl Gpu {
         self.queue.submit([encoder.finish()]);
     }
 
-    pub fn composite(&mut self, infos: &[LayerInfo]) {
+    pub fn composite(&mut self, infos: &[LayerInfo], filters: &std::collections::HashMap<u32, FilterSettings>) {
         let b = self.base;
         let base_uniform = [0.0, 0.0, 0.0, 0.0, f32::from_bits(0), f32::from_bits(1), 0.0, 0.0, b[0], b[1], b[2], 1.0, b[3], b[4], 0.5, 0.0];
         self.layer_pass(base_uniform, &self.pong, &self.ping, &self.scratch);
@@ -696,7 +826,14 @@ impl Gpu {
             if !info.visible {
                 continue;
             }
-            let uniform = [info.opacity, if info.mask { 1.0 } else { 0.0 }, 0.0, 0.0, f32::from_bits(info.blend.code()), f32::from_bits(0), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+            let f = filters.get(&info.id).copied().unwrap_or_default();
+            let filter = if info.kind == LayerKind::Filter { 1 } else { 0 };
+            let uniform = [
+                info.opacity, if info.mask { 1.0 } else { 0.0 }, 0.0, 0.0,
+                f32::from_bits(info.blend.code()), f32::from_bits(0), f32::from_bits(filter), 0.0,
+                f.brightness, f.contrast, f.hue.to_radians(), f.saturation,
+                f.gamma.max(0.05), f.roughness_offset, f.metallic_offset, 0.0,
+            ];
             let (prev, out) = if current_is_ping { (&self.ping, &self.pong) } else { (&self.pong, &self.ping) };
             self.layer_pass(uniform, prev, out, &layer.set);
             current_is_ping = !current_is_ping;
@@ -777,7 +914,7 @@ impl Gpu {
         }
     }
 
-    pub fn export(&mut self, channel: u32, normal_strength: f32) -> js_sys::Promise {
+    pub fn export(&mut self, channel: u32, normal_strength: f32, center: Vec3, radius: f32) -> js_sys::Promise {
         let size = self.size;
         let target = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("export"),
@@ -789,10 +926,22 @@ impl Gpu {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
-        let sel = [f32::from_bits(channel), 0.0, 0.0, 0.0, normal_strength, 0.0, 0.0, 0.0];
+        let sel = [f32::from_bits(channel), radius, 0.0, 0.0, normal_strength, center[0], center[1], center[2]];
         self.queue.write_buffer(&self.export_uniform, 0, bytemuck::cast_slice(&sel));
         let (fc, fm) = (view_of(&self.final_set.color), view_of(&self.final_set.mat));
-        let group = bind(&self.device, &self.export_pipe, &[self.export_uniform.as_entire_binding(), wgpu::BindingResource::TextureView(&fc), wgpu::BindingResource::TextureView(&fm)]);
+        let bake = view_of(&self.bake);
+        let (pv, nv) = match &self.geometry {
+            Some((p, n)) => (view_of(p), view_of(n)),
+            None => (view_of(&self.bake), view_of(&self.bake)),
+        };
+        let group = bind(&self.device, &self.export_pipe, &[
+            self.export_uniform.as_entire_binding(),
+            wgpu::BindingResource::TextureView(&fc),
+            wgpu::BindingResource::TextureView(&fm),
+            wgpu::BindingResource::TextureView(&bake),
+            wgpu::BindingResource::TextureView(&pv),
+            wgpu::BindingResource::TextureView(&nv),
+        ]);
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("readback"), size: (size * size * 4) as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
         let tv = view_of(&target);
         let mut encoder = self.device.create_command_encoder(&Default::default());
