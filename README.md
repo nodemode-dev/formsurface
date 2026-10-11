@@ -2,9 +2,9 @@
 
 Paint directly on 3D models, layer by layer, the way Substance 3D Painter works. Part of the Form family.
 
-![version](https://img.shields.io/badge/version-v0.3.0-e0793a) ![engine](https://img.shields.io/badge/engine-Rust%20%2B%20wgpu-555) ![license](https://img.shields.io/badge/license-Apache--2.0-555)
+![version](https://img.shields.io/badge/version-v0.4.0-e0793a) ![engine](https://img.shields.io/badge/engine-Rust%20%2B%20wgpu-555) ![license](https://img.shields.io/badge/license-Apache--2.0-555)
 
-## What works in v0.3.0
+## What works in v0.4.0
 
 - **3D projection painting.** The brush hits the mesh in world space and writes into the UV textures, so strokes keep a constant on-screen size, cross UV seams and do not stretch on distorted islands. Occluded and back-facing surfaces are protected.
 - **GPU engine in Rust.** wgpu running on WebGPU in the browser. Painting, compositing and the viewport never leave the GPU; nothing round-trips through the server while you paint.
@@ -24,7 +24,7 @@ FormSurface ships an MCP server with 19 `formsurface_*` tools that drive the edi
 
 ## Parity
 
-Measured against Substance 3D Painter 12.1.5 on 50 documented capabilities, v0.3.0 scores 14.5 of 50 (29 percent): the painting core and brush engine are real, texturing features (fill projections, masks, generators, smart materials, baking, texture sets, UDIMs, color management) are not built yet. The full page is in the planning sidecar.
+Measured against Substance 3D Painter 12.1.5 on 50 documented capabilities, v0.4.0 scores 15.5 of 50 (31 percent): the painting core, brush engine, fill layers and masks are real; generators, filters, smart materials, baking, texture sets, UDIMs and color management are not built yet. The full page is in the planning sidecar.
 
 ## Quick start
 
