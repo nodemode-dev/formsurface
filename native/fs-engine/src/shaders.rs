@@ -24,6 +24,7 @@ struct VOut {
 fn vs(@location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) uv: vec2<f32>) -> VOut {
     var o: VOut;
     o.clip = cam.view_proj * vec4<f32>(p, 1.0);
+    if (cam.params.w > 0.5) { o.clip = cam.view_proj * vec4<f32>(uv, 0.0, 1.0); }
     o.world = p;
     o.normal = n;
     o.uv = uv;
@@ -43,6 +44,16 @@ fn sky(dir: vec3<f32>) -> vec3<f32> {
 
 @fragment
 fn fs(i: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
+    if (cam.params.w > 0.5) {
+        var flat_color = textureSampleLevel(color_tex, samp, i.uv, 0.0).rgb;
+        if (cam.cursor.w > 0.0) {
+            let d = distance(i.uv, cam.cursor.xy) / cam.cursor.w;
+            flat_color = mix(flat_color, vec3<f32>(1.0), smoothstep(0.90, 0.95, d) * (1.0 - smoothstep(0.98, 1.03, d)) * 0.8);
+        }
+        let flat_quick = textureSampleLevel(quick_tex, samp, i.uv, 0.0).r;
+        flat_color = mix(flat_color, vec3<f32>(0.75, 0.08, 0.06), (1.0 - clamp(flat_quick, 0.0, 1.0)) * 0.5 * cam.params.z);
+        return vec4<f32>(pow(clamp(flat_color, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / 2.2)), 1.0);
+    }
     let dims = vec2<f32>(textureDimensions(mat_tex));
     let texel = 1.0 / dims;
     let base = textureSample(color_tex, samp, i.uv).rgb;
@@ -168,7 +179,7 @@ fn tip_shape(l: vec2<f32>, hardness: f32, seed: f32, texel: vec2<f32>) -> f32 {
     if (kind > 0.5 && kind < 1.5) { d = max(abs(l.x), abs(l.y)); }
     if (d >= 1.0) { return 0.0; }
     if (kind > 2.5) {
-        return textureSampleLevel(alpha_tex, clamp_samp, l * 0.5 + 0.5, 0.0).r;
+        return textureSampleLevel(alpha_tex, clamp_samp, vec2<f32>(l.x, -l.y) * 0.5 + 0.5, 0.0).r;
     }
     var c = 1.0;
     if (d > hardness && hardness < 1.0) {
@@ -200,7 +211,7 @@ fn fs(i: VOut) -> @location(0) vec4<f32> {
     }
     let facing = dot(n, normalize(cam.eye.xyz - i.world)) > 0.0;
     var stencil = 1.0;
-    if (stamps.tip.z > 0.5) {
+    if (stamps.tip.z > 0.5 && stamps.items[0].normal.w < 1.5) {
         let suv = rotate2(frag_px / size - 0.5 - stamps.stencil.zw, stamps.stencil.y) / max(stamps.stencil.x, 0.01) + 0.5;
         if (any(suv < vec2<f32>(0.0)) || any(suv > vec2<f32>(1.0))) { stencil = 0.0; } else {
             stencil = textureSampleLevel(stencil_tex, clamp_samp, suv, 0.0).r;
@@ -214,13 +225,17 @@ fn fs(i: VOut) -> @location(0) vec4<f32> {
         let mirrored = s.normal.w > 0.5;
         if (!mirrored && !visible) { continue; }
         if (!mirrored && cull > 0.5 && !facing) { continue; }
-        if (align < 2.5 && dot(n, s.normal.xyz) < 0.15) { continue; }
+        let in_uv = s.normal.w > 1.5;
+        if (!in_uv && align < 2.5 && dot(n, s.normal.xyz) < 0.15) { continue; }
         let r = s.center.w;
         let off = i.world - s.center.xyz;
         let t = s.tangent.xyz;
         let b = cross(s.normal.xyz, t);
         var l = vec2<f32>(0.0);
-        if (align < 0.5) {
+        if (in_uv) {
+            l = (i.uv - s.uv.xy) / max(s.uv.z, 1e-6);
+            l = vec2<f32>(l.x, -l.y);
+        } else if (align < 0.5) {
             if (mirrored) {
                 l = vec2<f32>(dot(off, t), dot(off, b)) / r;
             } else {
@@ -561,7 +576,7 @@ fn fs(@builtin(position) frag: vec4<f32>) -> Out {
         w = w / max(w.x + w.y + w.z, 1e-6);
         s = pattern(local.zy * 0.5) * w.x + pattern(local.xz * 0.5) * w.y + pattern(local.xy * 0.5) * w.z;
     } else if (mode < 2.5) {
-        s = pattern(axis_coords(local, fill.proj2.w) * 0.5 + 0.5);
+        s = pattern(axis_coords(local, fill.proj2.w) * vec2<f32>(0.5, -0.5) + 0.5);
     } else if (mode < 3.5) {
         let d = normalize(local + vec3<f32>(1e-6));
         s = pattern(vec2<f32>(atan2(d.z, d.x) / 6.2831853 + 0.5, acos(clamp(d.y, -1.0, 1.0)) / 3.1415927));

@@ -83,6 +83,7 @@ pub struct Gpu {
     quick: wgpu::Texture,
     pub quick_mode: u32,
     pub clone_offset: Option<[i32; 2]>,
+    pub flat: bool,
     geometry_pipe: wgpu::RenderPipeline,
     geometry: Option<(wgpu::Texture, wgpu::Texture)>,
     patterns: std::collections::HashMap<u32, wgpu::Texture>,
@@ -420,6 +421,7 @@ impl Gpu {
             quick: texture(&device, size, LAYER_FORMAT, "quick mask"),
             quick_mode: 0,
             clone_offset: None,
+            flat: false,
             geometry_pipe: pipeline(&device, "geometry", shaders::GEOMETRY, true, &[wgpu::TextureFormat::Rgba32Float, LAYER_FORMAT], None, false),
             geometry: None,
             patterns: std::collections::HashMap::new(),
@@ -1248,7 +1250,11 @@ impl Gpu {
 
     fn encode_view(&self, encoder: &mut wgpu::CommandEncoder, target: &wgpu::Texture, view_proj: [f32; 16], eye: Vec3, cursor: Option<(Vec3, Vec3, f32)>, exposure: f32, normal_strength: f32) {
         let overlay = if self.quick_mode == 0 { 0.0 } else { 1.0 };
-        self.queue.write_buffer(&self.camera, 0, bytemuck::cast_slice(&camera_bytes(view_proj, eye, cursor, exposure, normal_strength, overlay)));
+        let mut bytes = camera_bytes(view_proj, eye, cursor, exposure, normal_strength, overlay);
+        if let Some(last) = bytes.last_mut() {
+            *last = if self.flat { 1.0 } else { 0.0 };
+        }
+        self.queue.write_buffer(&self.camera, 0, bytemuck::cast_slice(&bytes));
         let set_group = |final_set: &Pair, baked_normal: &wgpu::Texture, quick: &wgpu::Texture| {
             let (fc, fm, bn, qm) = (view_of(&final_set.color), view_of(&final_set.mat), view_of(baked_normal), view_of(quick));
             bind(&self.device, &self.view_pipe, &[
@@ -1261,7 +1267,7 @@ impl Gpu {
             ])
         };
         let mut draws = vec![(set_group(&self.final_set, &self.baked_normal, &self.quick), self.range)];
-        for state in self.parked.iter().flatten() {
+        for state in self.parked.iter().flatten().filter(|_| !self.flat) {
             draws.push((set_group(&state.final_set, &state.baked_normal, &self.white), state.range));
         }
         let view = view_of(target);

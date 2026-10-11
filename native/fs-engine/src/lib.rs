@@ -60,6 +60,9 @@ pub struct Engine {
     instancing: bool,
     mask_gens: HashMap<u32, FillSettings>,
     id_maps: HashMap<usize, (u32, Vec<u8>)>,
+    flat: Option<[f32; 3]>,
+    flat_cursor: Option<[f32; 2]>,
+    last_uv: Option<[f32; 2]>,
 }
 
 #[wasm_bindgen]
@@ -107,6 +110,9 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         instancing: false,
         mask_gens: HashMap::new(),
         id_maps: HashMap::new(),
+        flat: None,
+        flat_cursor: None,
+        last_uv: None,
     };
     engine.add_layer("Layer 1".into());
     Ok(engine)
@@ -214,7 +220,15 @@ impl Engine {
     }
 
     pub fn set_clone_source(&mut self, x: f32, y: f32) -> Result<(), JsValue> {
-        let hit = self.pick(x, y).ok_or_else(|| JsValue::from_str("Click on the mesh to set the clone source"))?;
+        if let Some(uv) = self.flat_uv(x, y) {
+            if !(0.0..=1.0).contains(&uv[0]) || !(0.0..=1.0).contains(&uv[1]) {
+                return Err(JsValue::from_str("Click inside the UV square to set the clone source"));
+            }
+            self.clone_source = Some(uv);
+            self.gpu.clone_offset = None;
+            return Ok(());
+        }
+        let hit =self.pick(x, y).ok_or_else(|| JsValue::from_str("Click on the mesh to set the clone source"))?;
         let info = &self.sets[self.set_index].info;
         if hit.triangle < info.start / 3 || hit.triangle >= (info.start + info.count) / 3 {
             return Err(JsValue::from_str("The clone source must be on the active texture set"));
@@ -412,7 +426,10 @@ impl Engine {
     }
 
     pub fn id_color_at(&self, x: f32, y: f32) -> Result<String, JsValue> {
-        let hit = self.pick(x, y).ok_or_else(|| JsValue::from_str("Click on the mesh to pick an ID color"))?;
+        if self.flat.is_some() {
+            return Err(JsValue::from_str("Pick an ID color in the 3D view"));
+        }
+        let hit =self.pick(x, y).ok_or_else(|| JsValue::from_str("Click on the mesh to pick an ID color"))?;
         let set = self.sets.iter().position(|s| hit.triangle >= s.info.start / 3 && hit.triangle < (s.info.start + s.info.count) / 3).unwrap_or(self.set_index);
         let (size, bytes) = self.id_maps.get(&set).ok_or_else(|| JsValue::from_str("Bake normal and ID from a high-poly mesh first"))?;
         let s = *size as f32;
@@ -565,17 +582,69 @@ impl Engine {
     }
 
     pub fn pan(&mut self, dx: f32, dy: f32) {
+        if let Some(f) = &mut self.flat {
+            f[0] -= dx / f[2];
+            f[1] -= dy / f[2];
+            return;
+        }
         let (_, right, up, _) = self.basis();
         let k = self.distance * 0.0015;
         self.target = add(self.target, add(scale(right, -dx * k), scale(up, dy * k)));
     }
 
     pub fn zoom(&mut self, delta: f32) {
-        let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
+        if let Some(f) = &mut self.flat {
+            f[2] = (f[2] * (1.0 - delta * 0.001)).clamp(32.0, 32768.0);
+            return;
+        }
+        let r =self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
         self.distance = (self.distance * (1.0 + delta * 0.001)).clamp(r * 0.05, r * 50.0);
     }
 
+    pub fn set_view_2d(&mut self, on: bool) -> bool {
+        if self.stroking {
+            return false;
+        }
+        self.flat = if on { Some([0.5, 0.5, self.width.min(self.height) as f32 * 0.9]) } else { None };
+        self.flat_cursor = None;
+        self.gpu.flat = on;
+        true
+    }
+
+    pub fn view_2d(&self) -> bool {
+        self.flat.is_some()
+    }
+
+    pub fn uv_at(&self, x: f32, y: f32) -> Vec<f32> {
+        self.flat_uv(x, y).map(|uv| uv.to_vec()).unwrap_or_default()
+    }
+
+    pub fn surface_point(&self, x: f32, y: f32) -> Vec<f32> {
+        if self.flat.is_some() {
+            return Vec::new();
+        }
+        self.pick(x, y).map(|h| h.position.to_vec()).unwrap_or_default()
+    }
+
+    pub fn screen_point(&self, px: f32, py: f32, pz: f32) -> Vec<f32> {
+        let (forward, right, up, eye) = self.basis();
+        let d = sub([px, py, pz], eye);
+        let z = dot(d, forward);
+        if z <= 1e-6 {
+            return Vec::new();
+        }
+        let t = (self.fov * 0.5).tan();
+        let aspect = self.width as f32 / self.height as f32;
+        let nx = dot(d, right) / (z * t * aspect);
+        let ny = dot(d, up) / (z * t);
+        vec![(nx + 1.0) * 0.5 * self.width as f32, (1.0 - ny) * 0.5 * self.height as f32]
+    }
+
     pub fn frame_mesh(&mut self) {
+        if self.flat.is_some() {
+            self.flat = Some([0.5, 0.5, self.width.min(self.height) as f32 * 0.9]);
+            return;
+        }
         if let Some((mesh, _)) = &self.mesh {
             self.target = mesh.center;
             self.distance = mesh.radius * 2.8;
@@ -606,12 +675,17 @@ impl Engine {
     }
 
     pub fn hover(&mut self, x: f32, y: f32) -> bool {
+        if self.flat.is_some() {
+            self.flat_cursor = self.flat_uv(x, y);
+            return self.flat_cursor.is_some_and(|uv| (0.0..=1.0).contains(&uv[0]) && (0.0..=1.0).contains(&uv[1]));
+        }
         self.cursor = self.pick(x, y);
         self.cursor.is_some()
     }
 
     pub fn clear_hover(&mut self) {
         self.cursor = None;
+        self.flat_cursor = None;
     }
 
     pub fn stroke_begin(&mut self, x: f32, y: f32, pressure: f32) -> bool {
@@ -630,6 +704,14 @@ impl Engine {
         });
         self.stroking = true;
         self.lazy = Some((x, y));
+        if self.flat.is_some() {
+            self.last_uv = self.flat_uv(x, y);
+            self.flat_cursor = self.last_uv;
+            if let Some(uv) = self.last_uv {
+                self.push_uv_stamp(uv, pressure, None);
+            }
+            return true;
+        }
         self.last_stamp = self.pick(x, y);
         if let Some(hit) = self.last_stamp {
             self.push_stamp(&hit, pressure, None);
@@ -658,6 +740,10 @@ impl Engine {
                 (x, y)
             }
         };
+        if self.flat.is_some() {
+            self.flat_stroke_to(x, y, pressure);
+            return;
+        }
         let hit = self.pick(x, y);
         self.cursor = hit;
         let Some(hit) = hit else {
@@ -695,6 +781,7 @@ impl Engine {
         }
         self.stroking = false;
         self.last_stamp = None;
+        self.last_uv = None;
     }
 
     pub fn set_alpha(&mut self, width: u32, height: u32, rgba: &[u8]) -> Result<(), JsValue> {
@@ -968,6 +1055,11 @@ impl Engine {
         let aspect = self.width as f32 / self.height as f32;
         let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
         let view_proj = gpu::view_projection(eye, forward, right, up, self.fov, aspect, (self.distance - r * 2.0).max(r * 0.01), self.distance + r * 3.0);
+        if self.flat.is_some() {
+            let cursor = self.flat_cursor.map(|uv| ([uv[0], uv[1], 0.0], [0.0, 0.0, 1.0], self.flat_radius(1.0)));
+            self.gpu.render(self.flat_matrix(), eye, cursor, self.exposure, self.normal_strength);
+            return;
+        }
         let cursor = self.cursor.map(|h| (h.position, h.normal, self.world_radius(&h, 1.0)));
         self.gpu.render(view_proj, eye, cursor, self.exposure, self.normal_strength);
     }
@@ -983,6 +1075,9 @@ impl Engine {
     pub fn polygon_fill(&mut self, x: f32, y: f32, mode: u32) -> Result<u32, JsValue> {
         if self.stroking {
             return Err(JsValue::from_str("Finish the stroke first"));
+        }
+        if self.flat.is_some() {
+            return Err(JsValue::from_str("Polygon fill works in the 3D view; press U to return to it"));
         }
         let hit = self.pick(x, y).ok_or_else(|| JsValue::from_str("Click on the mesh to fill"))?;
         let info = &self.sets[self.set_index].info;
@@ -1207,7 +1302,7 @@ impl Engine {
         let (forward, right, up, eye) = self.basis();
         let aspect = self.width as f32 / self.height as f32;
         let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
-        let view_proj = gpu::view_projection(eye, forward, right, up, self.fov, aspect, (self.distance - r * 2.0).max(r * 0.01), self.distance + r * 3.0);
+        let view_proj = if self.flat.is_some() { self.flat_matrix() } else { gpu::view_projection(eye, forward, right, up, self.fov, aspect, (self.distance - r * 2.0).max(r * 0.01), self.distance + r * 3.0) };
         self.gpu.snapshot(view_proj, eye, self.exposure, self.normal_strength)
     }
 
@@ -1246,6 +1341,69 @@ impl Engine {
         }
         let world_per_px = 2.0 * hit.t * (self.fov * 0.5).tan() / self.height as f32;
         self.brush.size_px * 0.5 * world_per_px * p
+    }
+
+    fn flat_uv(&self, x: f32, y: f32) -> Option<[f32; 2]> {
+        let f = self.flat?;
+        Some([f[0] + (x - self.width as f32 * 0.5) / f[2], f[1] + (y - self.height as f32 * 0.5) / f[2]])
+    }
+
+    fn flat_radius(&self, pressure: f32) -> f32 {
+        let p = if self.brush.pressure_size { pressure.clamp(0.05, 1.0) } else { 1.0 };
+        let s = self.flat.map(|f| f[2]).unwrap_or(1.0);
+        (self.brush.size_px * 0.5 / s * p).max(1e-6)
+    }
+
+    fn flat_matrix(&self) -> [f32; 16] {
+        let f = self.flat.unwrap_or([0.5, 0.5, 1.0]);
+        let (sx, sy) = (2.0 * f[2] / self.width as f32, 2.0 * f[2] / self.height as f32);
+        [sx, 0.0, 0.0, 0.0, 0.0, -sy, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -f[0] * sx, f[1] * sy, 0.5, 1.0]
+    }
+
+    fn flat_stroke_to(&mut self, x: f32, y: f32, pressure: f32) {
+        let Some(uv) = self.flat_uv(x, y) else { return };
+        self.flat_cursor = Some(uv);
+        let Some(last) = self.last_uv else {
+            self.last_uv = Some(uv);
+            self.push_uv_stamp(uv, pressure, None);
+            return;
+        };
+        let step = (self.flat_radius(pressure) * 2.0 * self.brush.spacing).max(1e-6);
+        let d = [uv[0] - last[0], uv[1] - last[1]];
+        let span = (d[0] * d[0] + d[1] * d[1]).sqrt();
+        if span < step {
+            return;
+        }
+        let steps = ((span / step).floor() as usize).min(512);
+        for k in 1..=steps {
+            let t = (k as f32 * step) / span;
+            let p = [last[0] + d[0] * t, last[1] + d[1] * t];
+            self.push_uv_stamp(p, pressure, Some(d));
+            self.last_uv = Some(p);
+        }
+    }
+
+    fn push_uv_stamp(&mut self, uv: [f32; 2], pressure: f32, direction: Option<[f32; 2]>) {
+        if let (StrokeMode::Clone, None, Some(source)) = (self.brush.mode, self.gpu.clone_offset, self.clone_source) {
+            let size = self.gpu.size as f32;
+            self.gpu.clone_offset = Some([((source[0] - uv[0]) * size).round() as i32, ((source[1] - uv[1]) * size).round() as i32]);
+        }
+        let b = self.brush;
+        let r = (self.flat_radius(pressure) * (1.0 - b.jitter_size.clamp(0.0, 1.0) * self.random())).max(1e-6);
+        let mut angle = b.angle.to_radians();
+        if b.follow_path {
+            if let Some(d) = direction {
+                angle += (-d[1]).atan2(d[0]);
+            }
+        }
+        angle += (self.random() * 2.0 - 1.0) * b.jitter_angle.clamp(0.0, 1.0) * std::f32::consts::PI;
+        let jp = b.jitter_position.clamp(0.0, 4.0) * r;
+        let (jx, jy) = ((self.random() * 2.0 - 1.0) * jp, (self.random() * 2.0 - 1.0) * jp);
+        let flow_scale = (if b.pressure_flow { pressure.clamp(0.0, 1.0) } else { 1.0 }) * (1.0 - b.jitter_flow.clamp(0.0, 1.0) * self.random());
+        self.pending.push([0.0, 0.0, 0.0, r, 0.0, 0.0, 1.0, 2.0, 1.0, 0.0, 0.0, angle, uv[0] + jx, uv[1] + jy, r, flow_scale]);
+        if self.pending.len() >= 256 {
+            self.flush();
+        }
     }
 
     fn random(&mut self) -> f32 {
@@ -1344,6 +1502,10 @@ impl Engine {
         let to_mask = self.paints_mask();
         self.gpu.paint(&stamps, view_proj, eye, &self.brush, &self.channels, self.layer_index(self.active), to_mask);
         let active = self.active;
+        if self.flat.is_some() {
+            self.dirty = true;
+            return;
+        }
         self.each_sibling(|e| {
             let index = e.layer_index(active);
             let to_mask = e.paints_mask();
