@@ -1,10 +1,10 @@
 import init, { create_engine, type Engine } from './engine/pkg/fs_engine.js';
 import { loadHighPoly, loadMeshFile, sampleHighPoly, sampleMesh, type FlatMesh } from './engine/meshes';
-import type { BakeJob } from './engine/bake-worker';
+import type { BakeJob, BakeResult } from './engine/bake-worker';
 import { VERSION } from './version';
 import { LayerList, type LayerInfo } from './ui/layers';
 import { TextureSetList, type TextureSetInfo } from './ui/sets';
-import { TEMPLATES, encodePng, halfToFloat, halfToUnit16, pack, sourcesOf, validateMaps, type MapSpec, type Pixels, type Template } from './ui/export-templates';
+import { TEMPLATES, emptyPixels, encodePng, halfToFloat, halfToUnit16, pack, sourcesOf, validateMaps, type MapSpec, type Pixels, type Template } from './ui/export-templates';
 import { FORMAT_ALPHA, FORMAT_DEPTHS, checkFormat, encodeImage, gammaToLinear, sampleMax, type Format } from './ui/image-formats';
 import { PADDING_MODES, applyPadding, nearestSource, uvMask, type Padding, type PaddingMode } from './ui/padding';
 import { TemplateEditor, loadTemplates, saveTemplate } from './ui/template-editor';
@@ -324,13 +324,14 @@ function directionOf(yawDegrees: number, pitchDegrees: number): [number, number,
 const FILTER_FIELDS: [string, string][] = [
   ['x-bright', 'brightness'], ['x-contrast', 'contrast'], ['x-hue', 'hue'], ['x-sat', 'saturation'], ['x-gamma', 'gamma'], ['x-rough', 'roughness_offset'], ['x-metal', 'metallic_offset'],
   ['x-blur', 'blur'], ['x-sharp', 'sharpen'],
+  ['x-lin-lo', 'levels_in_low'], ['x-lin-hi', 'levels_in_high'], ['x-lout-lo', 'levels_out_low'], ['x-lout-hi', 'levels_out_high'], ['x-poster', 'posterize'], ['x-pixel', 'pixelate'],
 ];
 
 function syncFilter(): void {
   if (!engine) return;
   const layer = layers().find((l) => l.id === engine!.active_layer());
   if (!layer || layer.kind !== 'filter') return;
-  const out: Record<string, number> = {};
+  const out: Record<string, number | boolean> = { invert: checked('x-invert') };
   for (const [id, key] of FILTER_FIELDS) out[key] = num(id);
   engine.set_filter(layer.id, JSON.stringify(out));
 }
@@ -341,6 +342,7 @@ function loadFilterControls(settings: Record<string, number>): void {
     $<HTMLInputElement>(id).value = String(settings[key]);
     setOutput(id);
   }
+  $<HTMLInputElement>('x-invert').checked = Boolean(settings.invert);
 }
 
 function bakeState(): void {
@@ -488,6 +490,7 @@ let meshGeneration = 0;
 function applyMesh(next: FlatMesh, name: string): void {
   if (!engine) return;
   meshGeneration++;
+  highMaps.clear();
   mesh = next;
   meshName = name;
   const info = engine.set_mesh(next.positions, next.normals, next.uvs, next.indices, next.materials, JSON.stringify(next.materialNames));
@@ -903,6 +906,7 @@ for (const id of ['f-gyaw', 'f-gpitch']) $(id).addEventListener('input', () => {
 for (const [id] of FILL_FIELDS) $(id).addEventListener(id.startsWith('f-use') || id === 'f-imgcolor' || $(id).tagName === 'SELECT' ? 'change' : 'input', () => { setOutput(id); syncFill(); });
 $('f-color').addEventListener('input', syncFill);
 for (const [id] of FILTER_FIELDS) $(id).addEventListener('input', () => { setOutput(id); syncFilter(); });
+$('x-invert').addEventListener('change', syncFilter);
 $('layer-add-folder').addEventListener('click', () => {
   if (!engine) return;
   engine.add_folder(`Folder ${layers().filter((l) => l.kind === 'folder').length + 1}`);
@@ -1104,7 +1108,30 @@ function setHigh(next: FlatMesh, name: string): string {
   return info;
 }
 
-function bakeInWorker(job: BakeJob): Promise<{ normal: Uint8Array; id: Uint8Array; hits: number; texels: number; size: number }> {
+const highMaps = new Map<number, BakeResult>();
+const HIGH_SOURCES: Record<number, keyof BakeResult> = { 100: 'ao', 101: 'height', 102: 'opacity', 103: 'bent' };
+
+function bakedPixels(setIndex: number, code: number, size: number, max: number): Pixels | undefined {
+  const baked = highMaps.get(setIndex);
+  const key = HIGH_SOURCES[code];
+  if (!baked || !key) return undefined;
+  const src = baked[key] as Uint8Array;
+  const from = baked.size;
+  const out = emptyPixels(max, size * size * 4);
+  const k = max / 255;
+  for (let y = 0; y < size; y++) {
+    const sy = Math.min(from - 1, Math.floor(((y + 0.5) * from) / size));
+    for (let x = 0; x < size; x++) {
+      const sx = Math.min(from - 1, Math.floor(((x + 0.5) * from) / size));
+      const i = (sy * from + sx) * 4;
+      const o = (y * size + x) * 4;
+      for (let c = 0; c < 4; c++) out[o + c] = max === 1 ? src[i + c] / 255 : Math.round(src[i + c] * k);
+    }
+  }
+  return out;
+}
+
+function bakeInWorker(job: BakeJob): Promise<BakeResult> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./engine/bake-worker.ts', import.meta.url), { type: 'module' });
     worker.onmessage = (event) => {
@@ -1137,9 +1164,10 @@ async function bakeHigh(): Promise<string> {
       $('k-high-state').textContent = `Baking ${set.name} in the background (${sets.indexOf(set) + 1} of ${sets.length}); you can keep working`;
       const high = { positions: highMesh.positions.slice(), normals: highMesh.normals.slice(), indices: highMesh.indices.slice(), parts: highMesh.parts.slice() };
       const keys = e.texture_set_match_keys(set.index) as Uint32Array[];
-      const result = await bakeInWorker({ low: [positions, normals, uvs, indices], high, size, front: num('k-front'), rear: num('k-rear'), lowKeys: keys[0] ?? new Uint32Array(), highKeys: keys[1] ?? new Uint32Array() });
+      const result = await bakeInWorker({ low: [positions, normals, uvs, indices], high, size, front: num('k-front'), rear: num('k-rear'), lowKeys: keys[0] ?? new Uint32Array(), highKeys: keys[1] ?? new Uint32Array(), aoRays: num('k-ao-rays') });
       if (generation !== meshGeneration || engine !== e) throw new Error('The mesh changed during the bake; bake again');
       e.apply_high_bake(set.index, result.size, result.normal, result.id);
+      highMaps.set(set.index, result);
       hits += result.hits;
       texels += result.texels;
     }
@@ -1149,10 +1177,10 @@ async function bakeHigh(): Promise<string> {
     refreshLayers();
   }
   const text = `${hits} of ${texels} texels hit the high-poly mesh across ${sets.length} texture set${sets.length === 1 ? '' : 's'} in ${((performance.now() - started) / 1000).toFixed(1)} s, baked in a worker${matchNote}`;
-  $('k-high-state').textContent = `Baked normal and ID: ${text}`;
+  $('k-high-state').textContent = `Baked normal, ID, height, opacity${num('k-ao-rays') ? ', AO and bent normal' : ''}: ${text}`;
   return text;
 }
-for (const id of ['k-front', 'k-rear']) $(id).addEventListener('input', () => setOutput(id));
+for (const id of ['k-front', 'k-rear', 'k-ao-rays']) $(id).addEventListener('input', () => setOutput(id));
 const highInput = $<HTMLInputElement>('high-file');
 $('k-high-load').addEventListener('click', () => highInput.click());
 highInput.addEventListener('change', async () => {
@@ -1165,7 +1193,7 @@ $('k-high-sample').addEventListener('click', () => {
   if (!engine) return;
   applyMesh(sampleMesh('sphere'), 'sphere');
   setHigh(sampleHighPoly(), 'bumpy sphere (two parts)');
-  status('Low-poly sphere loaded with a bumpy two-part high-poly sphere; press Bake normal and ID');
+  status('Low-poly sphere loaded with a bumpy two-part high-poly sphere; press Bake maps from high-poly');
 });
 $('k-bake-high').addEventListener('click', () => {
   bakeHigh().then((text) => status(text), (error) => status(error instanceof Error ? error.message : String(error), true));
@@ -1283,6 +1311,11 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
       if (template.maps.length) {
         const channels = new Map<number, Pixels>();
         for (const c of sourcesOf(template.maps)) {
+          if (c >= 100) {
+            const baked = bakedPixels(set.index, c, size, max);
+            if (baked) channels.set(c, baked);
+            continue;
+          }
           if (c >= 5 && !e.is_baked()) continue;
           channels.set(c, await channelPixels(e, c, max));
         }
@@ -1291,6 +1324,10 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
       }
       const wanted = [0, 1, 2, 3, 4, ...(e.is_baked() ? [5, 6, 7, 8, 9] : []), ...(e.is_high_baked() ? [10, 11] : [])];
       for (const i of wanted) await write(`${prefix}${CHANNELS[i]}${suffix}`, await channelPixels(e, i, max), false, i === 0, src);
+      for (const [code, label] of [[100, 'ambient_occlusion_high'], [101, 'height_high'], [102, 'opacity'], [103, 'bent_normal']] as const) {
+        const baked = bakedPixels(set.index, code, size, max);
+        if (baked) await write(`${prefix}${label}${suffix}`, baked, false, false, src);
+      }
     }
   } finally {
     e.select_texture_set(original);
@@ -1488,6 +1525,7 @@ const agentLink = new AgentLink({
   bake_high: async (args) => {
     const { file, sample, front, rear } = args;
     if (args.match_by_name !== undefined && args.match_by_name !== null) $<HTMLInputElement>('k-match').checked = Boolean(args.match_by_name);
+    setControl('k-ao-rays', args.ao_rays);
     if (sample === 'pair') {
       applyMesh(sampleMesh('pair'), 'pair');
       setHigh(sampleHighPoly('pair'), 'two bumpy spheres (left_high, right_high)');

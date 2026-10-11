@@ -177,6 +177,12 @@
         <div class="row"><label for="l-blend">Blend</label><select id="l-blend">
           <option value="normal">Normal</option><option value="multiply">Multiply</option><option value="screen">Screen</option><option value="overlay">Overlay</option>
           <option value="add">Linear dodge (add)</option><option value="subtract">Subtract</option><option value="darken">Darken</option><option value="lighten">Lighten</option>
+          <option value="disable">Disable</option><option value="replace">Replace</option><option value="divide">Divide</option><option value="inverse_divide">Inverse divide</option>
+          <option value="difference">Difference</option><option value="exclusion">Exclusion</option><option value="signed_addition">Signed addition</option><option value="linear_burn">Linear burn</option>
+          <option value="color_burn">Color burn</option><option value="color_dodge">Color dodge</option><option value="soft_light">Soft light</option><option value="hard_light">Hard light</option>
+          <option value="vivid_light">Vivid light</option><option value="linear_light">Linear light</option><option value="pin_light">Pin light</option><option value="tint">Tint</option>
+          <option value="saturation">Saturation</option><option value="color">Color</option><option value="value">Value</option>
+          <option value="normal_map_combine">Normal map combine (height)</option><option value="normal_map_detail">Normal map detail (height)</option><option value="normal_map_inverse_detail">Normal map inverse detail (height)</option>
         </select><output></output></div>
         <div class="row"><label for="l-opacity">Opacity</label><input id="l-opacity" type="range" min="0" max="1" step="0.01" value="1"><output for="l-opacity">1.00</output></div>
         <div class="row"><label for="l-mask">Mask</label><select id="l-mask">
@@ -246,6 +252,13 @@
       <div class="row"><label for="x-metal">Metallic +</label><input id="x-metal" type="range" min="-1" max="1" step="0.01" value="0"><output for="x-metal">0.00</output></div>
       <div class="row"><label for="x-blur">Blur</label><input id="x-blur" type="range" min="0" max="32" step="0.5" value="0"><output for="x-blur">0.00</output></div>
       <div class="row"><label for="x-sharp">Sharpen</label><input id="x-sharp" type="range" min="0" max="4" step="0.05" value="0"><output for="x-sharp">0.00</output></div>
+      <div class="row"><label for="x-lin-lo">Levels in black</label><input id="x-lin-lo" type="range" min="0" max="1" step="0.01" value="0"><output for="x-lin-lo">0.00</output></div>
+      <div class="row"><label for="x-lin-hi">Levels in white</label><input id="x-lin-hi" type="range" min="0" max="1" step="0.01" value="1"><output for="x-lin-hi">1.00</output></div>
+      <div class="row"><label for="x-lout-lo">Levels out black</label><input id="x-lout-lo" type="range" min="0" max="1" step="0.01" value="0"><output for="x-lout-lo">0.00</output></div>
+      <div class="row"><label for="x-lout-hi">Levels out white</label><input id="x-lout-hi" type="range" min="0" max="1" step="0.01" value="1"><output for="x-lout-hi">1.00</output></div>
+      <div class="row"><label for="x-poster">Posterize</label><input id="x-poster" type="range" min="0" max="32" step="1" value="0"><output for="x-poster">0</output></div>
+      <div class="row"><label for="x-pixel">Pixelate</label><input id="x-pixel" type="range" min="0" max="64" step="1" value="0"><output for="x-pixel">0</output></div>
+      <label class="check"><input type="checkbox" id="x-invert">Invert color</label>
     </section>
     <section class="section">
       <h2>Baking</h2>
@@ -258,8 +271,9 @@
       </div>
       <div class="row"><label for="k-front">Cage front</label><input id="k-front" type="range" min="0" max="0.2" step="0.001" value="0.05"><output for="k-front">0.05</output></div>
       <div class="row"><label for="k-rear">Cage rear</label><input id="k-rear" type="range" min="0" max="0.2" step="0.001" value="0.05"><output for="k-rear">0.05</output></div>
+      <div class="row"><label for="k-ao-rays">High AO rays</label><input id="k-ao-rays" type="range" min="0" max="64" step="1" value="16" title="Rays per texel for ambient occlusion and bent normal from the high-poly mesh; 0 skips them"><output for="k-ao-rays">16</output></div>
       <label class="check" title="Pair low and high parts by mesh name, ignoring _low and _high, so rays never land on a neighbouring part"><input type="checkbox" id="k-match">Match by mesh name (_low / _high)</label>
-      <button class="btn" id="k-bake-high" style="width:100%;justify-content:center;margin-top:6px"><svg><use href="#i-bake"/></svg>Bake normal and ID from high-poly</button>
+      <button class="btn" id="k-bake-high" style="width:100%;justify-content:center;margin-top:6px"><svg><use href="#i-bake"/></svg>Bake maps from high-poly</button>
       <p class="check" id="k-high-state" style="min-height:28px;margin:6px 0 0">No high-poly mesh</p>
       <input type="file" id="high-file" accept=".glb,.gltf,.obj,.fbx" hidden>
     </section>

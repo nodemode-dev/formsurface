@@ -1,4 +1,4 @@
-export type Source = 'basecolor' | 'normal_gl' | 'normal_dx' | 'roughness' | 'smoothness' | 'metallic' | 'height' | 'ao' | 'curvature' | 'thickness' | 'one' | 'zero';
+export type Source = 'basecolor' | 'normal_gl' | 'normal_dx' | 'roughness' | 'smoothness' | 'metallic' | 'height' | 'ao' | 'curvature' | 'thickness' | 'ao_high' | 'height_high' | 'opacity' | 'one' | 'zero';
 
 export interface MapSpec {
   suffix: string;
@@ -48,7 +48,7 @@ export const TEMPLATES: Template[] = [
   },
 ];
 
-export const SOURCE_CHANNEL: Record<string, number> = { basecolor: 0, roughness: 1, smoothness: 1, metallic: 2, height: 3, normal_gl: 4, normal_dx: 4, ao: 5, curvature: 6, thickness: 7 };
+export const SOURCE_CHANNEL: Record<string, number> = { basecolor: 0, roughness: 1, smoothness: 1, metallic: 2, height: 3, normal_gl: 4, normal_dx: 4, ao: 5, curvature: 6, thickness: 7, ao_high: 100, height_high: 101, opacity: 102 };
 
 export function sourcesOf(maps: MapSpec[]): number[] {
   const needed = new Set<number>();
@@ -60,7 +60,7 @@ export function sourcesOf(maps: MapSpec[]): number[] {
 
 export function validateMaps(value: unknown): MapSpec[] {
   if (!Array.isArray(value) || !value.length || value.length > 16) throw new Error('A custom template is a list of 1 to 16 maps');
-  const sources = new Set(['basecolor', 'normal_gl', 'normal_dx', 'roughness', 'smoothness', 'metallic', 'height', 'ao', 'curvature', 'thickness', 'one', 'zero']);
+  const sources = new Set(['basecolor', 'normal_gl', 'normal_dx', 'roughness', 'smoothness', 'metallic', 'height', 'ao', 'curvature', 'thickness', 'ao_high', 'height_high', 'opacity', 'one', 'zero']);
   return value.map((raw) => {
     const map = raw as MapSpec;
     if (typeof map.suffix !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(map.suffix)) throw new Error('Each map needs a suffix of letters, digits, dash or underscore');
@@ -112,7 +112,7 @@ export function pack(map: MapSpec, channels: Map<number, Pixels>, size: number, 
     if (source === 'one') return max;
     if (source === 'zero') return 0;
     const data = channels.get(SOURCE_CHANNEL[source]);
-    if (!data) return source === 'ao' ? max : fallback;
+    if (!data) return source === 'ao' || source === 'ao_high' ? max : fallback;
     return source === 'smoothness' ? max - data[i] : data[i];
   };
   for (let i = 0; i < size * size * 4; i += 4) {
