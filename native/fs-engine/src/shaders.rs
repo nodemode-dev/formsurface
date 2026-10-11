@@ -904,7 +904,8 @@ fn pattern(c0: vec2<f32>) -> vec4<f32> {
         }
         return vec4<f32>(vec3<f32>(v), 1.0);
     }
-    return textureSampleLevel(pattern_tex, repeat_samp, c, 0.0);
+    let image = textureSampleLevel(pattern_tex, repeat_samp, c, 0.0);
+    return vec4<f32>(pow(image.rgb, vec3<f32>(2.2)), image.a);
 }
 
 fn axis_coords(p: vec3<f32>, axis: f32) -> vec2<f32> {
