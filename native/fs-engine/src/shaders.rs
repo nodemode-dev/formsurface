@@ -496,6 +496,7 @@ fn blend_any(m: u32, a: vec3<f32>, b: vec3<f32>, values: bool) -> vec3<f32> {
             if (!values) { return b; }
             return vec3<f32>(b.x, b.y, a.z - (b.z - 0.5));
         }
+        case 30u: { return b - a; }
         default: { return b; }
     }
 }

@@ -33,10 +33,11 @@ pub enum BlendMode {
     NormalMapCombine,
     NormalMapDetail,
     NormalMapInverseDetail,
+    InverseSubtract,
 }
 
 impl BlendMode {
-    pub const ALL: [BlendMode; 30] = [
+    pub const ALL: [BlendMode; 31] = [
         BlendMode::Normal,
         BlendMode::Multiply,
         BlendMode::Screen,
@@ -67,6 +68,7 @@ impl BlendMode {
         BlendMode::NormalMapCombine,
         BlendMode::NormalMapDetail,
         BlendMode::NormalMapInverseDetail,
+        BlendMode::InverseSubtract,
     ];
 
     pub fn code(self) -> u32 {
