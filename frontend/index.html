@@ -25,7 +25,8 @@
   <symbol id="i-down" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></symbol>
   <symbol id="i-eye" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
   <symbol id="i-eye-off" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12zM4 20 20 4"/></symbol>
-  <symbol id="i-save" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M5 4h11l4 4v12H4V5a1 1 0 0 1 1-1zM8 4v5h7V4M8 20v-6h8v6"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M10 14a4 4 0 0 0 5.7 0l3.6-3.6a4 4 0 0 0-5.7-5.7L12.5 5.8M14 10a4 4 0 0 0-5.7 0l-3.6 3.6a4 4 0 0 0 5.7 5.7l1.1-1.1"/></symbol>
+  <symbol id="i-save"viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M5 4h11l4 4v12H4V5a1 1 0 0 1 1-1zM8 4v5h7V4M8 20v-6h8v6"/></symbol>
 </svg>
 
 <div class="app">
@@ -45,7 +46,8 @@
       <select id="tex-size"><option value="1024">1024</option><option value="2048" selected>2048</option><option value="4096">4096</option></select>
     </div>
     <div class="spacer"></div>
-    <button class="btn" id="screenshot" title="Save a PNG of the viewport"><svg><use href="#i-frame"/></svg>Screenshot</button>
+    <button class="btn" id="agent-link" aria-pressed="false" title="Let MCP agents (Claude Code, Codex, Cursor) drive this editor through the local service"><svg><use href="#i-link"/></svg><span id="agent-label">Agent link off</span></button>
+    <button class="btn" id="screenshot"title="Save a PNG of the viewport"><svg><use href="#i-frame"/></svg>Screenshot</button>
     <button class="btn" id="save-project" title="Save textures to the local FormSurface service"><svg><use href="#i-save"/></svg>Save</button>
     <button class="btn primary" id="export" title="Export texture maps as PNG"><svg><use href="#i-export"/></svg>Export maps</button>
     <span class="version" id="version"></span>

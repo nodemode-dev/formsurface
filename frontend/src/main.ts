@@ -3,6 +3,7 @@ import { loadMeshFile, sampleMesh, type FlatMesh } from './engine/meshes';
 import { VERSION } from './version';
 import { LayerList, type LayerInfo } from './ui/layers';
 import { api } from './ui/api';
+import { AgentLink } from './ui/agent-link';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>('canvas');
@@ -324,15 +325,20 @@ $('export').addEventListener('click', async () => {
   }
 });
 
+async function viewportPng(): Promise<Blob> {
+  if (!engine) throw new Error('The GPU engine is not running');
+  const [w, h] = engine.viewport_size();
+  const bytes = await engine.snapshot() as Uint8Array;
+  const surface = new OffscreenCanvas(w, h);
+  surface.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength), w, h), 0, 0);
+  return surface.convertToBlob({ type: 'image/png' });
+}
+
 $('screenshot').addEventListener('click', async () => {
   if (!engine) return;
   try {
-    const [w, h] = engine.viewport_size();
-    const bytes = await engine.snapshot() as Uint8Array;
-    const surface = new OffscreenCanvas(w, h);
-    surface.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength), w, h), 0, 0);
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(await surface.convertToBlob({ type: 'image/png' }));
+    link.href = URL.createObjectURL(await viewportPng());
     link.download = `${meshName.replace(/\.[^.]+$/, '')}_viewport.png`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 4000);
@@ -352,6 +358,110 @@ $('save-project').addEventListener('click', async () => {
     status(error instanceof Error ? error.message : String(error), true);
   }
 });
+
+function requireEngine(): Engine {
+  if (!engine) throw new Error('The GPU engine is not running in the editor');
+  return engine;
+}
+
+function setControl(id: string, value: unknown, event = 'input'): void {
+  if (value === undefined || value === null) return;
+  const input = $<HTMLInputElement>(id);
+  if (input.type === 'checkbox') input.checked = Boolean(value);
+  else input.value = String(value);
+  setOutput(id);
+  input.dispatchEvent(new Event(event));
+}
+
+function snapshotState(): Record<string, unknown> {
+  const e = requireEngine();
+  return {
+    mesh: meshName,
+    mesh_info: $('mesh-info').textContent,
+    texture_size: e.texture_size(),
+    layers: layers(),
+    active_layer: e.active_layer(),
+    tool,
+    brush: { size_px: num('b-size'), hardness: num('b-hardness'), flow: num('b-flow'), stroke_opacity: num('b-opacity'), spacing: num('b-spacing'), mirror_x: mirror, backface_culling: checked('b-cull') },
+    paint_material: { base_color: $<HTMLInputElement>('c-color').value, roughness: num('c-rough'), metallic: num('c-metal'), height: num('c-height'), paint_color: checked('c-use-color'), paint_roughness: checked('c-use-rough'), paint_metallic: checked('c-use-metal'), paint_height: checked('c-use-height') },
+    camera: JSON.parse(e.camera_json()),
+    viewport: e.viewport_size(),
+  };
+}
+
+async function blobBase64(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let text = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(text);
+}
+
+const agentLink = new AgentLink({
+  status: () => snapshotState(),
+  load_sample: ({ kind }) => { applyMesh(sampleMesh(String(kind)), String(kind)); return snapshotState(); },
+  camera: ({ yaw, pitch, zoom }) => { requireEngine().set_orbit((Number(yaw) * Math.PI) / 180, (Number(pitch) * Math.PI) / 180, Number(zoom ?? 1)); return JSON.parse(requireEngine().camera_json()); },
+  brush: (args) => {
+    if (args.eraser !== undefined) setTool(args.eraser ? 'erase' : 'paint');
+    if (args.mirror_x !== undefined && Boolean(args.mirror_x) !== mirror) $('tool-mirror').click();
+    setControl('b-size', args.size_px); setControl('b-hardness', args.hardness); setControl('b-flow', args.flow);
+    setControl('b-opacity', args.opacity); setControl('b-spacing', args.spacing); setControl('b-cull', args.backface_culling, 'change');
+    return snapshotState().brush as Record<string, unknown>;
+  },
+  material: (args) => {
+    setControl('c-color', args.base_color); setControl('c-rough', args.roughness); setControl('c-metal', args.metallic); setControl('c-height', args.height);
+    setControl('c-use-color', args.use_color); setControl('c-use-rough', args.use_roughness); setControl('c-use-metal', args.use_metallic); setControl('c-use-height', args.use_height);
+    return snapshotState().paint_material as Record<string, unknown>;
+  },
+  base: (args) => { setControl('m-color', args.base_color); setControl('m-rough', args.roughness); setControl('m-metal', args.metallic); return {}; },
+  add_layer: ({ name }) => { const id = requireEngine().add_layer(String(name || `Layer ${layers().length + 1}`)); refreshLayers(); return { id, layers: layers() }; },
+  update_layer: (args) => {
+    const e = requireEngine();
+    const layer = layers().find((l) => l.id === Number(args.id));
+    if (!layer) throw new Error(`No layer with id ${args.id}`);
+    const next = { ...layer, ...(args.name !== undefined ? { name: String(args.name) } : {}), ...(args.visible !== undefined ? { visible: Boolean(args.visible) } : {}), ...(args.opacity !== undefined ? { opacity: Number(args.opacity) } : {}), ...(args.blend !== undefined ? { blend: String(args.blend) } : {}) };
+    e.update_layer(JSON.stringify(next));
+    if (args.active) e.select_layer(layer.id);
+    refreshLayers();
+    return { layers: layers(), active_layer: e.active_layer() };
+  },
+  move_layer: ({ id, offset }) => { requireEngine().move_layer(Number(id), Number(offset)); refreshLayers(); return { layers: layers() }; },
+  remove_layer: ({ id }) => {
+    if (!requireEngine().remove_layer(Number(id))) throw new Error('A texture set keeps at least one layer');
+    refreshLayers();
+    return { layers: layers() };
+  },
+  fill: () => { if (!requireEngine().fill_layer()) throw new Error('Load a mesh before filling'); return { filled_layer: requireEngine().active_layer() }; },
+  stroke: ({ points, pressure }) => {
+    const e = requireEngine();
+    const list = points as [number, number][];
+    const [w, h] = e.viewport_size();
+    const p = Number(pressure ?? 1);
+    let hits = 0;
+    list.forEach(([u, v], i) => {
+      const x = u * w;
+      const y = v * h;
+      if (e.hover(x, y)) hits++;
+      if (i === 0) e.stroke_begin(x, y, p); else e.stroke_to(x, y, p);
+    });
+    e.stroke_end();
+    e.clear_hover();
+    return { points: list.length, points_on_surface: hits, layer: e.active_layer() };
+  },
+  undo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().undo()) n++; return { undone: n }; },
+  redo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().redo()) n++; return { redone: n }; },
+  screenshot: async () => ({ png_base64: await blobBase64(await viewportPng()) }),
+  export: async ({ name }) => {
+    const maps = await renderMaps();
+    const folder = await api.saveMaps(String(name || meshName.replace(/\.[^.]+$/, '')), maps);
+    return { folder, maps: [...maps.keys()] };
+  },
+}, (state) => {
+  $('agent-link').setAttribute('aria-pressed', String(state !== 'off'));
+  $('agent-label').textContent = state === 'linked' ? 'Agent link on' : state === 'waiting' ? 'Agent link wait' : 'Agent link off';
+  if (state === 'waiting') status('Agent link: waiting for the FormSurface service on 127.0.0.1:8766');
+  if (state === 'linked') status('Agent link on: MCP agents can now edit this document');
+});
+$('agent-link').addEventListener('click', () => agentLink.toggle());
 
 let frames = 0;
 let lastFps = performance.now();
