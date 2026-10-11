@@ -224,10 +224,11 @@ def formsurface_bake_high_poly(
     cage_rear: Annotated[float, Field(ge=0, le=0.5)] = 0.05,
     match_by_name: bool | None = None,
     sample: Literal["sphere", "pair"] | None = None,
+    ao_rays: Annotated[int, Field(ge=0, le=64)] | None = None,
 ) -> dict:
-    """Bake a tangent-space normal map and an ID map (one color per high-poly part) from a high-poly mesh onto the painted mesh. mesh_file is a glb, gltf, obj or fbx the person put in the workspace meshes folder; use_sample (or sample sphere) loads a low sphere with a bumpy two-part high-poly sphere, and sample pair loads two touching low spheres named left_low and right_low with high-poly left_high and right_high. Cage distances are fractions of the mesh radius in front of and behind the low surface; raise them if parts of the high-poly are missed. match_by_name pairs low and high parts whose mesh names match once _low and _high (or _lo and _hi) are removed, so close parts never bake onto each other; unmatched parts bake only against unmatched high-poly parts."""
+    """Bake from a high-poly mesh onto the painted mesh: a tangent-space normal map, an ID map (one color per high-poly part), height (high surface above or below the low one, mid gray is level, cage range maps to 0 to 1), opacity (white where the high mesh was found) and, with ao_rays above 0 (default 16, more is smoother and slower), ambient occlusion and a bent normal map from the high-poly detail. The extra maps export as ambient_occlusion_high, height_high, opacity and bent_normal, and ao_high, height_high and opacity are template sources. mesh_file is a glb, gltf, obj or fbx the person put in the workspace meshes folder; use_sample (or sample sphere) loads a low sphere with a bumpy two-part high-poly sphere, and sample pair loads two touching low spheres named left_low and right_low with high-poly left_high and right_high. Cage distances are fractions of the mesh radius in front of and behind the low surface; raise them if parts of the high-poly are missed. match_by_name pairs low and high parts whose mesh names match once _low and _high (or _lo and _hi) are removed, so close parts never bake onto each other; unmatched parts bake only against unmatched high-poly parts."""
     chosen = sample or ("sphere" if use_sample else None)
-    return call("bake_high", drop_none(file=mesh_file, sample=chosen, front=cage_front, rear=cage_rear, match_by_name=match_by_name), timeout=300)
+    return call("bake_high", drop_none(file=mesh_file, sample=chosen, front=cage_front, rear=cage_rear, match_by_name=match_by_name, ao_rays=ao_rays), timeout=600)
 
 
 @server.tool()
@@ -329,7 +330,7 @@ def formsurface_update_layer(
     name: str | None = None,
     visible: bool | None = None,
     opacity: Unit | None = None,
-    blend: Literal["normal", "multiply", "screen", "overlay", "add", "subtract", "darken", "lighten"] | None = None,
+    blend: Literal["normal", "multiply", "screen", "overlay", "add", "subtract", "darken", "lighten", "disable", "replace", "divide", "inverse_divide", "difference", "exclusion", "signed_addition", "linear_burn", "color_burn", "color_dodge", "soft_light", "hard_light", "vivid_light", "linear_light", "pin_light", "tint", "saturation", "color", "value", "normal_map_combine", "normal_map_detail", "normal_map_inverse_detail"] | None = None,
     make_active: bool = False,
 ) -> dict:
     """Rename, show or hide, set opacity or blend mode of a layer, or make it the active layer."""
@@ -366,9 +367,16 @@ def formsurface_set_filter(
     metallic_offset: Annotated[float | None, Field(ge=-1, le=1)] = None,
     blur: Annotated[float | None, Field(ge=0, le=32)] = None,
     sharpen: Annotated[float | None, Field(ge=0, le=4)] = None,
+    levels_in_low: Unit | None = None,
+    levels_in_high: Unit | None = None,
+    levels_out_low: Unit | None = None,
+    levels_out_high: Unit | None = None,
+    invert: bool | None = None,
+    posterize: Annotated[int | None, Field(ge=0, le=32)] = None,
+    pixelate: Annotated[int | None, Field(ge=0, le=64)] = None,
 ) -> dict:
-    """Change an existing filter layer's settings; only the values given change."""
-    return call("set_filter", {"id": layer_id, "settings": drop_none(brightness=brightness, contrast=contrast, hue=hue_degrees, saturation=saturation, gamma=gamma, roughness_offset=roughness_offset, metallic_offset=metallic_offset, blur=blur, sharpen=sharpen)})
+    """Change an existing filter layer's settings; only the values given change. Besides blur, sharpen, brightness, contrast, hue, saturation, gamma and the roughness or metallic offsets: levels (input black and white points remapped to output black and white) on base color, invert of base color, posterize (number of color steps, 0 off) and pixelate (block size in texels at 1024 px, 0 off, applied to every channel)."""
+    return call("set_filter", {"id": layer_id, "settings": drop_none(brightness=brightness, contrast=contrast, hue=hue_degrees, saturation=saturation, gamma=gamma, roughness_offset=roughness_offset, metallic_offset=metallic_offset, blur=blur, sharpen=sharpen, levels_in_low=levels_in_low, levels_in_high=levels_in_high, levels_out_low=levels_out_low, levels_out_high=levels_out_high, invert=invert, posterize=posterize, pixelate=pixelate)})
 
 
 @server.tool()
@@ -519,7 +527,7 @@ def formsurface_screenshot() -> Image:
     return Image(data=base64.b64decode(result["png_base64"]), format="png")
 
 
-Source = Literal["basecolor", "normal_gl", "normal_dx", "roughness", "smoothness", "metallic", "height", "ao", "curvature", "thickness", "one", "zero"]
+Source = Literal["basecolor", "normal_gl", "normal_dx", "roughness", "smoothness", "metallic", "height", "ao", "curvature", "thickness", "ao_high", "height_high", "opacity", "one", "zero"]
 
 
 class MapSpec(BaseModel):
