@@ -1,4 +1,4 @@
-# FormSurface MCP tools (server 0.19.0)
+# FormSurface MCP tools (server 0.20.0)
 
 When this table and the server disagree, the server wins and this file is stale.
 
@@ -39,6 +39,8 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_undo` | steps 1 to 24 | undone count |
 | `formsurface_redo` | steps 1 to 24 | redone count |
 | `formsurface_screenshot` | none | PNG image of the viewport (post effects included) |
+| `formsurface_load_image` | file (png, jpg or webp in workspace/images), target (fill, alpha, stencil, mask), layer_id, color_space (srgb, linear, raw) | the resource with its index, and layers |
+| `formsurface_set_color_space` | resource (name or index), color_space; no arguments lists resources | the resource, re-applied in its new color space |
 | `formsurface_set_post_effects` | reset, bloom, bloom_threshold, glare, lens_flare, dof_aperture (px, 0 off), dof_focus (-1 front to 1 back of the model), aberration, sharpen, vignette, vignette_softness, grain, gain, contrast, saturation, temperature, tint | current post settings; viewport and screenshots only, exports never change |
 | `formsurface_add_folder` | name, layer_ids to move inside | folder id, moved ids, layers |
 | `formsurface_set_layer_folder` | layer_id, folder_id (0 for top level) | layers |

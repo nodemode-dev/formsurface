@@ -93,6 +93,10 @@ With `uv_tiles` on, tiled sets of one material are siblings. A public engine cal
 
 When `post_params[19]` is set (any effect away from its default, computed in `push_env_params`), `encode_view` draws the scene into `scene` (viewport size, surface format) instead of the target, BLOOM writes a quarter-size thresholded blur into `bloom`, and POST composes into the target, reading `depth` for depth of field (linear depth from the same near and far the frame used, carried in `post.e`). With every effect off the old direct path runs. Both textures are recreated in `resize`. Effects act on the tone-mapped image, so bloom thresholds are display values. A custom cage is stored as 9 floats per split triangle (corners in split order via `tri_order`), sliced per set like match keys (`texture_set_cage`); `cage_ray` casts from the cage point to the low point and falls back to the distance cage where they coincide; reach becomes that distance plus rear.
 
+## Color space (v0.20.0)
+
+Every color in the stack is linear and every export encodes with gamma 2.2, so anything decoded on the way in must use gamma 2.2 too. Fill images are `Rgba8Unorm` and FILL's `pattern` decodes them with `pow(rgb, 2.2)`; an `Rgba8UnormSrgb` texture would use the exact sRGB curve and shift the darks (8/255 came back as 0.065). Per-resource color space lives in the editor: it converts the bytes before upload (linear-marked colors are encoded, srgb-marked data is decoded) and re-uploads on change.
+
 ## Next capabilities, in plan order
 
 Per-tile resolution; isolated folder blending; the whole engine in a Worker with OffscreenCanvas (also what a headless batch needs); tile paging for 4K and 8K; color management; stacked mask effects; warp and stylization filters.

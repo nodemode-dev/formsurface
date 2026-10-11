@@ -17,6 +17,11 @@ MCP client, then `mcp/server.py` (stdio, MCPServer from mcp 2.3.0), then `POST /
 2. Add or change the `formsurface_*` tool in `mcp/server.py` with typed, bounded parameters and a docstring that says what changes and what the coordinates mean.
 3. Update the tool table in `.claude/skills/formsurface-painting/references/tools.md` and its mirror under `.agents/skills`.
 4. Exercise it: link an editor, call the command over `curl -X POST 127.0.0.1:8766/api/agent`, then through an MCP stdio client.
+5. If it belongs to one of Painter's API areas, add a thin wrapper in the matching `mcp/formsurface_api` module (project, textureset, layerstack, baking, export, resource, display). Wrappers go through `tool()`, which calls the server's `call_tool`, so validation stays in one place; `tool()` takes the tool name positional-only because many tools have a `name` argument.
+
+## Python API
+
+`./formsurface script FILE.py` runs `mcp/run_script.py`, which puts `mcp/` on the path and runs the file as `__main__`. Results come back as dicts (structured content, or parsed JSON text) and screenshots as PNG bytes; a refusal or a validation error raises `FormSurfaceError`.
 
 ## Rules
 
