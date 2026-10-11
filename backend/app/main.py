@@ -1,9 +1,11 @@
+import asyncio
 import json
 import os
 import re
+import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
 VERSION = "0.1.0"
@@ -44,9 +46,73 @@ async def write_maps(path: Path, maps: list[UploadFile]) -> list[str]:
     return written
 
 
+class Relay:
+    def __init__(self) -> None:
+        self.socket: WebSocket | None = None
+        self.pending: dict[str, asyncio.Future] = {}
+
+    async def send(self, command: str, args: dict, timeout: float) -> dict:
+        if self.socket is None:
+            raise HTTPException(409, "No FormSurface editor is linked. Open http://localhost:5176 and turn on Agent link in the top bar.")
+        key = uuid.uuid4().hex
+        future = asyncio.get_running_loop().create_future()
+        self.pending[key] = future
+        try:
+            await self.socket.send_json({"id": key, "command": command, "args": args})
+            reply = await asyncio.wait_for(future, timeout)
+        except asyncio.TimeoutError as error:
+            raise HTTPException(504, f"The editor did not answer {command} within {timeout:.0f} s") from error
+        finally:
+            self.pending.pop(key, None)
+        if not reply.get("ok"):
+            raise HTTPException(422, reply.get("error", "The editor refused the command"))
+        return reply.get("result", {})
+
+
+relay = Relay()
+
+
+@app.websocket("/api/live")
+async def live(socket: WebSocket):
+    host = socket.client.host if socket.client else ""
+    if host not in LOCAL_HOSTS:
+        await socket.close(code=1008)
+        return
+    await socket.accept()
+    if relay.socket is not None:
+        try:
+            await relay.socket.close(code=1000)
+        except RuntimeError:
+            pass
+    relay.socket = socket
+    try:
+        while True:
+            message = await socket.receive_json()
+            future = relay.pending.get(message.get("id", ""))
+            if future and not future.done():
+                future.set_result(message)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if relay.socket is socket:
+            relay.socket = None
+
+
+@app.post("/api/agent")
+async def agent(request: Request):
+    body = await request.json()
+    command = body.get("command")
+    if not isinstance(command, str) or not command:
+        raise HTTPException(400, "Body needs a command name")
+    args = body.get("args") or {}
+    if not isinstance(args, dict):
+        raise HTTPException(400, "args must be an object")
+    return {"command": command, "result": await relay.send(command, args, float(body.get("timeout", 60)))}
+
+
 @app.get("/api/health")
 def health():
-    return {"ok": True, "version": VERSION, "data": str(DATA)}
+    return {"ok": True, "version": VERSION, "data": str(DATA), "editor_linked": relay.socket is not None}
 
 
 @app.post("/api/exports/{name}")
