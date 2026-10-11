@@ -2,6 +2,7 @@ pub mod bake;
 pub mod bvh;
 pub mod document;
 pub mod mesh;
+pub mod regions;
 pub mod sets;
 
 pub use bvh::{Bvh, Hit};

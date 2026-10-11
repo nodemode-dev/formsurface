@@ -94,6 +94,25 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
 }
 
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn bake_high_detached(low_positions: &[f32], low_normals: &[f32], low_uvs: &[f32], low_indices: &[u32], high_positions: &[f32], high_normals: &[f32], high_indices: &[u32], parts: &[u32], size: u32, front: f32, rear: f32) -> Result<js_sys::Array, JsValue> {
+    let low = Mesh::from_flat(low_positions, low_normals, low_uvs, low_indices).map_err(|e| JsValue::from_str(&e))?;
+    let high = Mesh::geometry_only(high_positions, high_normals, high_indices).map_err(|e| JsValue::from_str(&e))?;
+    let bvh = Bvh::build(&high);
+    let tris = high.triangle_count();
+    let parts = if parts.len() == tris { parts.to_vec() } else { vec![0; tris] };
+    let r = low.radius;
+    let size = size.clamp(64, 2048) as usize;
+    let result = fs_core::bake::bake_high(&low, &high, &bvh, &parts, size, front.max(0.0) * r, rear.max(0.0) * r);
+    let out = js_sys::Array::new();
+    out.push(&js_sys::Uint8Array::from(&result.normal[..]));
+    out.push(&js_sys::Uint8Array::from(&result.id[..]));
+    out.push(&JsValue::from_f64(result.hits as f64));
+    out.push(&JsValue::from_f64(result.texels as f64));
+    Ok(out)
+}
+
+#[wasm_bindgen]
 impl Engine {
     pub fn backend(&self) -> String {
         self.gpu.backend.clone()
@@ -530,13 +549,38 @@ impl Engine {
     }
 
     pub fn export_channel(&mut self, channel: u32) -> js_sys::Promise {
-        self.flush();
-        if self.dirty {
-            self.gpu.composite(&self.layers, &self.filters);
-            self.dirty = false;
+        self.export_any(channel, false)
+    }
+
+    pub fn export_channel_wide(&mut self, channel: u32) -> js_sys::Promise {
+        self.export_any(channel, true)
+    }
+
+    pub fn polygon_fill(&mut self, x: f32, y: f32, mode: u32) -> Result<u32, JsValue> {
+        if self.stroking {
+            return Err(JsValue::from_str("Finish the stroke first"));
         }
-        let (center, radius) = self.mesh.as_ref().map(|m| (m.0.center, m.0.radius)).unwrap_or(([0.0; 3], 1.0));
-        self.gpu.export(channel, self.normal_strength, center, radius)
+        let hit = self.pick(x, y).ok_or_else(|| JsValue::from_str("Click on the mesh to fill"))?;
+        let info = &self.sets[self.set_index].info;
+        let (first, last) = (info.start / 3, (info.start + info.count) / 3);
+        if hit.triangle < first || hit.triangle >= last {
+            return Err(JsValue::from_str("That part belongs to another texture set; select it first"));
+        }
+        let index = self.layer_index(self.active);
+        if self.layers[index].kind != LayerKind::Paint && !self.layers[index].mask {
+            return Err(JsValue::from_str("Fill, filter and folder layers are filled through their mask: choose a mask first"));
+        }
+        let (mesh, _) = self.mesh.as_ref().unwrap();
+        let region = fs_core::regions::select(mesh, hit.triangle, first, last, fs_core::regions::Mode::from_code(mode));
+        self.gpu.begin_stroke(index);
+        self.gpu.mask_triangles(&mesh.indices, &region);
+        let (forward, right, up, eye) = self.basis();
+        let view_proj = gpu::view_projection(eye, forward, right, up, self.fov, 1.0, 0.1, 10.0);
+        let to_mask = self.paints_mask();
+        self.gpu.paint(&[], view_proj, eye, &self.brush, &self.channels, index, to_mask);
+        self.gpu.end_stroke();
+        self.dirty = true;
+        Ok(region.len() as u32)
     }
 
     pub fn bake_maps(&mut self, directions: u32) -> Result<(), JsValue> {
@@ -586,6 +630,33 @@ impl Engine {
         .map_err(|e| JsValue::from_str(&e))?;
         let sets = self.sets.len();
         Ok(format!("{hits} of {texels} texels hit the high-poly mesh across {sets} texture set{}", if sets == 1 { "" } else { "s" }))
+    }
+
+    pub fn texture_set_mesh(&self, index: u32) -> Result<js_sys::Array, JsValue> {
+        let (mesh, _) = self.mesh.as_ref().ok_or_else(|| JsValue::from_str("Load the low-poly mesh first"))?;
+        let info = &self.sets.get(index as usize).ok_or_else(|| JsValue::from_str("No such texture set"))?.info;
+        let flat = |v: &[[f32; 3]]| v.iter().flat_map(|p| p.iter().copied()).collect::<Vec<f32>>();
+        let uvs: Vec<f32> = mesh.uvs.iter().flat_map(|p| p.iter().copied()).collect();
+        let indices = &mesh.indices[info.start as usize..(info.start + info.count) as usize];
+        let out = js_sys::Array::new();
+        out.push(&js_sys::Float32Array::from(&flat(&mesh.positions)[..]));
+        out.push(&js_sys::Float32Array::from(&flat(&mesh.normals)[..]));
+        out.push(&js_sys::Float32Array::from(&uvs[..]));
+        out.push(&js_sys::Uint32Array::from(indices));
+        out.push(&JsValue::from_f64(self.gpu.size.min(2048) as f64));
+        Ok(out)
+    }
+
+    pub fn apply_high_bake(&mut self, index: u32, size: u32, normal: &[u8], id: &[u8]) -> Result<(), JsValue> {
+        if size == 0 || normal.len() != (size * size * 4) as usize || id.len() != normal.len() {
+            return Err(JsValue::from_str("Baked maps do not match their size"));
+        }
+        if index as usize >= self.sets.len() {
+            return Err(JsValue::from_str("No such texture set"));
+        }
+        self.gpu.set_high_bake_for(index as usize, size, normal, id);
+        self.dirty = true;
+        Ok(())
     }
 
     pub fn is_high_baked(&self) -> bool {
@@ -766,6 +837,16 @@ impl Engine {
     fn paints_mask(&self) -> bool {
         let layer = &self.layers[self.layer_index(self.active)];
         layer.kind != LayerKind::Paint || (self.mask_target && layer.mask)
+    }
+
+    fn export_any(&mut self, channel: u32, wide: bool) -> js_sys::Promise {
+        self.flush();
+        if self.dirty {
+            self.gpu.composite(&self.layers, &self.filters);
+            self.dirty = false;
+        }
+        let (center, radius) = self.mesh.as_ref().map(|m| (m.0.center, m.0.radius)).unwrap_or(([0.0; 3], 1.0));
+        self.gpu.export(channel, self.normal_strength, center, radius, wide)
     }
 
     fn each_set(&mut self, mut work: impl FnMut(&mut Engine) -> Result<(), String>) -> Result<(), String> {

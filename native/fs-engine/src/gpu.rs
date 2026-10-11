@@ -89,6 +89,8 @@ pub struct Gpu {
     dilate_pipe: wgpu::RenderPipeline,
     coverage_pipe: wgpu::RenderPipeline,
     export_pipe: wgpu::RenderPipeline,
+    export16_pipe: wgpu::RenderPipeline,
+    region_pipe: wgpu::RenderPipeline,
     vertices: Option<wgpu::Buffer>,
     indices: Option<wgpu::Buffer>,
     range: (u32, u32),
@@ -364,6 +366,8 @@ impl Gpu {
             dilate_pipe: pipeline(&device, "dilate", shaders::DILATE, false, &[LAYER_FORMAT; 2], None, false),
             coverage_pipe: pipeline(&device, "coverage", shaders::COVERAGE, true, &[wgpu::TextureFormat::R8Unorm], None, false),
             export_pipe: pipeline(&device, "export", shaders::EXPORT, false, &[wgpu::TextureFormat::Rgba8Unorm], None, false),
+            export16_pipe: pipeline(&device, "export 16-bit", shaders::EXPORT, false, &[LAYER_FORMAT], None, false),
+            region_pipe: pipeline(&device, "polygon fill", shaders::COVERAGE, true, &[LAYER_FORMAT], None, false),
             depth: depth_texture(&device, width, height),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
                 mag_filter: wgpu::FilterMode::Linear,
@@ -543,6 +547,18 @@ impl Gpu {
         self.baked_normal = rgba_texture(&self.device, &self.queue, 1, 1, &[128, 128, 255, 255]);
         self.baked_id = rgba_texture(&self.device, &self.queue, 1, 1, &[128, 128, 128, 255]);
         self.high_baked = false;
+    }
+
+    pub fn set_high_bake_for(&mut self, index: usize, size: u32, normal: &[u8], id: &[u8]) {
+        if index == self.current {
+            return self.set_high_bake(size, normal, id);
+        }
+        let (n, i) = (rgba_texture(&self.device, &self.queue, size, size, normal), rgba_texture(&self.device, &self.queue, size, size, id));
+        if let Some(Some(state)) = self.parked.get_mut(index) {
+            state.baked_normal = n;
+            state.baked_id = i;
+            state.high_baked = true;
+        }
     }
 
     pub fn set_high_bake(&mut self, size: u32, normal: &[u8], id: &[u8]) {
@@ -778,6 +794,23 @@ impl Gpu {
         }
         self.queue.submit([encoder.finish()]);
         self.stroke = Some((index, Snapshot { layer: self.layers[index].id, set }));
+    }
+
+    pub fn mask_triangles(&self, indices: &[u32], triangles: &[u32]) {
+        let view = view_of(&self.mask);
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        let selected: Vec<u32> = triangles.iter().flat_map(|&t| indices[t as usize * 3..t as usize * 3 + 3].iter().copied()).collect();
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&view, wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT))], ..Default::default() });
+        if let (Some(v), false) = (&self.vertices, selected.is_empty()) {
+            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("polygon fill indices"), size: (selected.len() * 4) as u64, usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+            self.queue.write_buffer(&buffer, 0, bytemuck::cast_slice(&selected));
+            pass.set_pipeline(&self.region_pipe);
+            pass.set_vertex_buffer(0, v.slice(..));
+            pass.set_index_buffer(buffer.slice(..), wgpu::IndexFormat::Uint32);
+            pass.draw_indexed(0..selected.len() as u32, 0, 0..1);
+        }
+        drop(pass);
+        self.queue.submit([encoder.finish()]);
     }
 
     pub fn fill_mask(&self) {
@@ -1087,15 +1120,17 @@ impl Gpu {
         }
     }
 
-    pub fn export(&mut self, channel: u32, normal_strength: f32, center: Vec3, radius: f32) -> js_sys::Promise {
+    pub fn export(&mut self, channel: u32, normal_strength: f32, center: Vec3, radius: f32, wide: bool) -> js_sys::Promise {
         let size = self.size;
+        let texel = if wide { 8 } else { 4 };
+        let pipe = if wide { &self.export16_pipe } else { &self.export_pipe };
         let target = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("export"),
             size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
+            format: if wide { LAYER_FORMAT } else { wgpu::TextureFormat::Rgba8Unorm },
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
@@ -1107,7 +1142,7 @@ impl Gpu {
             Some((p, n)) => (view_of(p), view_of(n)),
             None => (view_of(&self.bake), view_of(&self.bake)),
         };
-        let group = bind(&self.device, &self.export_pipe, &[
+        let group = bind(&self.device, pipe, &[
             self.export_uniform.as_entire_binding(),
             wgpu::BindingResource::TextureView(&fc),
             wgpu::BindingResource::TextureView(&fm),
@@ -1118,18 +1153,18 @@ impl Gpu {
             wgpu::BindingResource::TextureView(&view_of(&self.baked_id)),
             wgpu::BindingResource::Sampler(&self.clamp_sampler),
         ]);
-        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("readback"), size: (size * size * 4) as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("readback"), size: (size * size * texel) as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
         let tv = view_of(&target);
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&tv, wgpu::LoadOp::Load)], ..Default::default() });
-            pass.set_pipeline(&self.export_pipe);
+            pass.set_pipeline(pipe);
             pass.set_bind_group(0, &group, &[]);
             pass.draw(0..3, 0..1);
         }
         encoder.copy_texture_to_buffer(
             target.as_image_copy(),
-            wgpu::TexelCopyBufferInfo { buffer: &buffer, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(size * 4), rows_per_image: Some(size) } },
+            wgpu::TexelCopyBufferInfo { buffer: &buffer, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(size * texel), rows_per_image: Some(size) } },
             wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
         );
         self.queue.submit([encoder.finish()]);
