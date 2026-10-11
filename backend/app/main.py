@@ -121,6 +121,19 @@ async def export_maps(name: str, maps: list[UploadFile] = File(...)):
     return {"folder": str(path), "files": await write_maps(path, maps)}
 
 
+@app.post("/api/exports/{name}/mesh")
+async def export_mesh(name: str, mesh: UploadFile = File(...)):
+    path = folder("exports", name)
+    file = Path(mesh.filename or "").name
+    if not file.endswith(".obj") or not SAFE.match(file):
+        raise HTTPException(400, f"Unexpected mesh file {file!r}")
+    data = await mesh.read()
+    if not data.startswith(b"# FormSurface"):
+        raise HTTPException(400, f"{file} is not an OBJ written by FormSurface")
+    (path / file).write_bytes(data)
+    return {"folder": str(path), "file": file}
+
+
 @app.post("/api/projects/{name}")
 async def save_project(name: str, document: str = Form(...), maps: list[UploadFile] = File(...)):
     path = folder("projects", name)

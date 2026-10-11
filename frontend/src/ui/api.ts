@@ -14,6 +14,12 @@ export const api = {
     }
   },
 
+  async saveMesh(stem: string, obj: string): Promise<string> {
+    const form = new FormData();
+    form.append('mesh', new Blob([obj], { type: 'text/plain' }), `${stem}.obj`);
+    return (await post(`/api/exports/${encodeURIComponent(stem)}/mesh`, form)).folder;
+  },
+
   async saveMaps(stem: string, maps: Map<string, Blob>): Promise<string> {
     const form = new FormData();
     for (const [channel, blob] of maps) form.append('maps', blob, `${stem}_${channel}.png`);

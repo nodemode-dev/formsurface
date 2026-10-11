@@ -16,7 +16,7 @@ const statusEl = $('status');
 let engine: Engine | undefined;
 let mesh: FlatMesh | undefined;
 let meshName = 'sphere';
-let tool: 'paint' | 'erase' | 'polyfill' = 'paint';
+let tool: 'paint' | 'erase' | 'polyfill' | 'clone' = 'paint';
 let mirror = false;
 let painting = false;
 let nav: 'orbit' | 'pan' | undefined;
@@ -48,7 +48,7 @@ function hex(id: string): [number, number, number] {
 function syncBrush(): void {
   engine?.set_brush(JSON.stringify({
     size_px: num('b-size'), hardness: num('b-hardness'), flow: num('b-flow'), opacity: num('b-opacity'), spacing: num('b-spacing'),
-    mode: tool === 'erase' ? 'erase' : 'paint', mirror_x: false, backface_culling: checked('b-cull'), pressure_size: checked('b-psize'), pressure_flow: checked('b-pflow'),
+    mode: tool === 'erase' ? 'erase' : tool === 'clone' ? 'clone' : 'paint', mirror_x: false, backface_culling: checked('b-cull'), pressure_size: checked('b-psize'), pressure_flow: checked('b-pflow'),
     alignment: sel('b-align'), size_space: sel('b-space'), angle: num('b-angle'), follow_path: checked('b-follow'),
     jitter_size: num('b-jsize'), jitter_angle: num('b-jangle'), jitter_position: num('b-jpos'), jitter_flow: num('b-jflow'),
     lazy_px: num('b-lazy') * Math.min(window.devicePixelRatio || 1, 2), tip: sel('b-tip'), spray_density: num('b-density'),
@@ -304,11 +304,13 @@ function updateActiveLayer(patch: Partial<LayerInfo>): void {
   refreshLayers();
 }
 
-function setTool(next: 'paint' | 'erase' | 'polyfill'): void {
+function setTool(next: 'paint' | 'erase' | 'polyfill' | 'clone'): void {
   tool = next;
   $('tool-paint').setAttribute('aria-pressed', String(next === 'paint'));
   $('tool-erase').setAttribute('aria-pressed', String(next === 'erase'));
   $('tool-polyfill').setAttribute('aria-pressed', String(next === 'polyfill'));
+  $('tool-clone').setAttribute('aria-pressed', String(next === 'clone'));
+  if (next === 'clone' && engine && !engine.has_clone_source()) status('Clone: Ctrl+click the mesh to set the source, then paint where the copy should go');
   syncBrush();
 }
 
@@ -390,6 +392,15 @@ canvas.addEventListener('pointerdown', (event) => {
     }
     return;
   }
+  if (tool === 'clone' && (event.ctrlKey || event.metaKey)) {
+    try {
+      engine.set_clone_source(x, y);
+      status('Clone source set: the first stroke fixes the offset, later strokes keep it');
+    } catch (error) {
+      status(error instanceof Error ? error.message : String(error), true);
+    }
+    return;
+  }
   if (tool === 'polyfill') {
     try {
       const count = engine.polygon_fill(x, y, Number(sel('pf-mode')));
@@ -400,6 +411,7 @@ canvas.addEventListener('pointerdown', (event) => {
     return;
   }
   painting = engine.stroke_begin(x, y, pressure(event));
+  if (!painting && tool === 'clone' && !engine.has_clone_source()) { status('Ctrl+click the mesh to set a clone source first', true); return; }
   const activeKind = layers().find((l) => l.id === engine!.active_layer())?.kind;
   if (!painting && (activeKind === 'fill' || activeKind === 'filter' || activeKind === 'folder')) status(`A ${activeKind} is painted through its mask: choose a mask in the layer properties first.`, true);
 });
@@ -439,6 +451,7 @@ window.addEventListener('keydown', (event) => {
   if ((event.ctrlKey || event.metaKey) && key === 'y') { event.preventDefault(); engine.redo(); return; }
   if (key === 'b') setTool('paint');
   else if (key === 'p') setTool('polyfill');
+  else if (key === 'c' && !event.ctrlKey && !event.metaKey) setTool('clone');
   else if (key === 't') setQuickMask(engine.quick_mask_mode() === 1 ? 2 : 1);
   else if (key === 'e') setTool('erase');
   else if (key === 'm') $('tool-mirror').click();
@@ -463,6 +476,50 @@ $('l-blend').addEventListener('change', () => updateActiveLayer({ blend: $<HTMLS
 $('tool-paint').addEventListener('click', () => setTool('paint'));
 $('tool-erase').addEventListener('click', () => setTool('erase'));
 $('tool-polyfill').addEventListener('click', () => setTool('polyfill'));
+$('tool-clone').addEventListener('click', () => setTool('clone'));
+
+function downloadBlob(blob: Blob, name: string): void {
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 4000);
+}
+
+async function exportMesh(name = meshName.replace(/\.[^.]+$/, '')): Promise<string> {
+  const obj = requireEngine().mesh_obj();
+  if (await api.alive()) return api.saveMesh(name, obj);
+  downloadBlob(new Blob([obj], { type: 'text/plain' }), `${name}.obj`);
+  return 'your downloads';
+}
+
+async function exportMask(id: number, name: string): Promise<string> {
+  const e = requireEngine();
+  const size = e.texture_size();
+  const blob = await pngOf(await (e.export_layer_mask(id) as Promise<Uint8Array>), size);
+  if (await api.alive()) return api.saveMaps(name, new Map([[`mask_${id}`, blob]]));
+  downloadBlob(blob, `${name}_mask_${id}.png`);
+  return 'your downloads';
+}
+
+function flattenStack(name = 'Flattened'): number {
+  const id = requireEngine().flatten_stack(name);
+  if (!id) throw new Error('Finish the stroke first');
+  refreshLayers();
+  return id;
+}
+
+$('x-mesh').addEventListener('click', () => {
+  exportMesh().then((where) => status(`Mesh written to ${where}`), (error) => status(error instanceof Error ? error.message : String(error), true));
+});
+$('l-mask-export').addEventListener('click', () => {
+  if (!engine) return;
+  exportMask(engine.active_layer(), meshName.replace(/\.[^.]+$/, '')).then((where) => status(`Mask written to ${where}`), (error) => status(error instanceof Error ? error.message : String(error), true));
+});
+$('l-flatten').addEventListener('click', () => {
+  if (!window.confirm('Flatten replaces every layer of this texture set with one paint layer. Fill, filter and generator settings are lost and this cannot be undone. Flatten?')) return;
+  try { flattenStack(); status('Flattened into one paint layer'); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+});
 
 const QUICK_STATUS = [
   'Quick mask off: painting is not limited',
@@ -952,6 +1009,7 @@ const agentLink = new AgentLink({
   camera: ({ yaw, pitch, zoom }) => { requireEngine().set_orbit((Number(yaw) * Math.PI) / 180, (Number(pitch) * Math.PI) / 180, Number(zoom ?? 1)); return JSON.parse(requireEngine().camera_json()); },
   brush: (args) => {
     if (args.eraser !== undefined) setTool(args.eraser ? 'erase' : 'paint');
+    if (args.tool === 'paint' || args.tool === 'erase' || args.tool === 'clone') setTool(args.tool);
     if (args.mirror_x !== undefined && Boolean(args.mirror_x) !== mirror) $('tool-mirror').click();
     setControl('b-size', args.size_px); setControl('b-hardness', args.hardness); setControl('b-flow', args.flow);
     setControl('b-opacity', args.opacity); setControl('b-spacing', args.spacing); setControl('b-cull', args.backface_culling, 'change');
@@ -1048,6 +1106,16 @@ const agentLink = new AgentLink({
     if (paint_target === 'mask' || paint_target === 'layer') e.set_paint_target(paint_target === 'mask');
     refreshLayers();
     return { layers: layers(), paints_mask: e.paint_target_is_mask() };
+  },
+  export_mesh: async ({ name }) => ({ folder: await exportMesh(name ? String(name) : undefined), format: 'obj' }),
+  flatten: ({ name }) => ({ id: flattenStack(String(name || 'Flattened')), layers: layers() }),
+  export_mask: async ({ id, name }) => ({ folder: await exportMask(Number(id), String(name || meshName.replace(/\.[^.]+$/, ''))) }),
+  clone_source: ({ x, y }) => {
+    const e = requireEngine();
+    const [w, h] = e.viewport_size();
+    e.set_clone_source(Number(x) * w, Number(y) * h);
+    setTool('clone');
+    return { tool: 'clone', source_set: true };
   },
   uv_tiles: ({ on }) => {
     if (on !== undefined && on !== null) setUvTiles(Boolean(on));

@@ -12,6 +12,7 @@
   <symbol id="i-logo" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M12 2.8 20 7.4v9.2L12 21.2 4 16.6V7.4z"/><path fill="currentColor" d="M12 12 20 7.4v9.2L12 21.2z" opacity=".55"/></symbol>
   <symbol id="i-brush" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M14.5 4.5 19.5 9.5 11 18 6 13zM6 13c-2 0-3 1.5-3 3.5 0 1.2-.5 2-1 2.5 3 .5 6.5-.5 7-3.5"/></symbol>
   <symbol id="i-eraser" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="m4 15 9.5-9.5 6 6L12 19H8zM9 10l6 6M8 19h12"/></symbol>
+  <symbol id="i-clone" viewBox="0 0 24 24"><circle cx="9" cy="9" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="15" cy="15" r="5.5" fill="currentColor" opacity=".55"/></symbol>
   <symbol id="i-polyfill" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 19 12 4l8 15z"/><path fill="currentColor" d="M8 15.5 12 8l4 7.5z" opacity=".55"/></symbol>
   <symbol id="i-mirror" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 3v18M9 7 4 12l5 5zM15 7l5 5-5 5z"/></symbol>
   <symbol id="i-undo" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
@@ -63,6 +64,7 @@
   <nav class="tools" aria-label="Tools">
     <button class="icon-btn" id="tool-paint" aria-pressed="true" title="Paint (B)"><svg><use href="#i-brush"/></svg></button>
     <button class="icon-btn" id="tool-erase" aria-pressed="false" title="Eraser (E)"><svg><use href="#i-eraser"/></svg></button>
+    <button class="icon-btn" id="tool-clone" aria-pressed="false" title="Clone (C): Ctrl+click sets the source, then strokes copy what is visible there, keeping that offset"><svg><use href="#i-clone"/></svg></button>
     <button class="icon-btn" id="tool-polyfill" aria-pressed="false" title="Polygon fill (P): click a triangle, polygon, mesh part or UV chunk to fill it with the paint material"><svg><use href="#i-polyfill"/></svg></button>
     <hr>
     <button class="icon-btn" id="tool-mirror" aria-pressed="false" title="Mirror X symmetry (M)"><svg><use href="#i-mirror"/></svg></button>
@@ -158,6 +160,7 @@
         </select><output></output></div>
         <div class="row"><label for="l-target">Paint into</label><select id="l-target"><option value="layer">Layer</option><option value="mask">Mask</option></select><output></output></div>
         <div class="row"><label for="l-msrc">Mask from</label><select id="l-msrc"><option value="">Choose a source</option><option value="cavity">Cavity (baked AO)</option><option value="edges">Edges (baked curvature)</option><option value="thin">Thin parts</option><option value="top">From top</option><option value="id">ID color (click the mesh)</option><option value="image">Image file</option></select><output></output></div>
+        <div class="row" style="grid-template-columns:1fr 1fr"><button class="btn" id="l-flatten" style="justify-content:center" title="Replace every layer of this texture set with one paint layer holding what you see">Flatten stack</button><button class="btn" id="l-mask-export" style="justify-content:center" title="Save the active layer's mask as a PNG">Export mask</button></div>
         <div class="row"><label for="l-parent">In folder</label><select id="l-parent"><option value="0">None (top level)</option></select><output></output></div>
       </div>
     </section>
@@ -239,6 +242,7 @@
       <div class="row" style="grid-template-columns:84px 1fr"><label for="x-template">Template</label><select id="x-template"></select></div>
       <div class="row" style="grid-template-columns:84px 1fr"><label for="x-depth">Bit depth</label><select id="x-depth"><option value="8">8-bit PNG</option><option value="16">16-bit PNG (smooth height and normals)</option></select></div>
       <p class="check" id="x-maps" style="min-height:42px;margin:6px 0 0"></p>
+      <button class="btn" id="x-mesh" style="width:100%;justify-content:center" title="Write the mesh as OBJ with its UDIM UVs, normals and one group per texture set (triangulated)"><svg><use href="#i-export"/></svg>Export mesh (OBJ)</button>
     </section>
   </aside>
 
