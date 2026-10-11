@@ -17,7 +17,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_set_fill` | layer_id, projection, pattern, base_color, roughness, metallic, height, scale, rotation_degrees, offset_u, offset_v, planar_axis, sharpness, amount | settings |
 | `formsurface_bake_maps` | directions 8 to 256 | baked flag and map names |
 | `formsurface_bake_high_poly` | mesh_file (in workspace/meshes), use_sample, sample (sphere, pair), cage_front, cage_rear (fractions of mesh radius), match_by_name | hit count, map names, matched part count |
-| `formsurface_view_2d` | on, center_u, center_v, zoom (frame part of the layout) | view (2d or 3d); in 2D, paint_stroke points paint the UV layout directly |
+| `formsurface_view_2d` | on, channel (base_color, roughness, metallic, height), center_u, center_v, zoom (frame part of the layout) | view (2d or 3d); in 2D, paint_stroke, paint_path and polygon_fill points land on the UV layout |
 | `formsurface_paint_path` | points (2 to 64 [x, y] in 0 to 1, kept on the surface), closed, smooth, erase | control points, missed points, samples; one undo step; 3D view only |
 | `formsurface_text_resource` | text, target (alpha, stencil, fill), font (sans-serif, serif, monospace or a loaded font), bold | image size, brush |
 | `formsurface_load_mesh` | file (glb, gltf, obj, fbx in workspace/meshes) | status; bakes reset, first set keeps its layers |
@@ -43,7 +43,11 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_set_layer_folder` | layer_id, folder_id (0 for top level) | layers |
 | `formsurface_list_export_templates` | none | templates with their maps and packed sources |
 | `formsurface_clone_source` | x, y in 0 to 1 on the active set | clone tool on; the next stroke fixes the offset |
+| `formsurface_clone_layer` | layer_id (0 for everything visible) | what the clone tool copies |
 | `formsurface_flatten_stack` | name | new layer id, layers (destructive, not undoable) |
+| `formsurface_merge_down` | layer_id (paint or fill, with a paint or fill layer below in the same folder) | new layer id, layers (destructive, not undoable) |
+| `formsurface_flatten_folder` | folder_id (paint and fill children only) | new layer id, layers (destructive, not undoable) |
+| `formsurface_export_layer` | layer_id, name | folder with layer_ID_basecolor, roughness, metallic and height PNGs, coverage in alpha |
 | `formsurface_export_layer_mask` | layer_id, name | folder |
 | `formsurface_export_mesh` | name | folder (OBJ with UDIM UVs, one group per texture set) |
 | `formsurface_uv_tiles` | on (omit to read) | uv_tiles and texture sets with linked flags |
