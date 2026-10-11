@@ -196,6 +196,7 @@ pub enum LayerKind {
     Paint,
     Fill,
     Filter,
+    Folder,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -209,6 +210,54 @@ pub struct LayerInfo {
     pub kind: LayerKind,
     #[serde(default)]
     pub mask: bool,
+    #[serde(default)]
+    pub parent: u32,
+}
+
+pub fn tree_order(layers: &[LayerInfo]) -> Vec<LayerInfo> {
+    fn emit(parent: u32, layers: &[LayerInfo], out: &mut Vec<LayerInfo>, depth: usize) {
+        for layer in layers.iter().filter(|l| l.parent == parent) {
+            if layer.kind == LayerKind::Folder && depth < 16 {
+                emit(layer.id, layers, out, depth + 1);
+            }
+            out.push(layer.clone());
+        }
+    }
+    let ids: std::collections::HashSet<u32> = layers.iter().filter(|l| l.kind == LayerKind::Folder).map(|l| l.id).collect();
+    let fixed: Vec<LayerInfo> = layers.iter().map(|l| LayerInfo { parent: if ids.contains(&l.parent) && l.parent != l.id { l.parent } else { 0 }, ..l.clone() }).collect();
+    let mut out = Vec::with_capacity(fixed.len());
+    emit(0, &fixed, &mut out, 0);
+    for layer in &fixed {
+        if !out.iter().any(|o| o.id == layer.id) {
+            out.push(LayerInfo { parent: 0, ..layer.clone() });
+        }
+    }
+    out
+}
+
+pub fn ancestors(layers: &[LayerInfo], id: u32) -> Vec<usize> {
+    let mut out = Vec::new();
+    let mut parent = layers.iter().find(|l| l.id == id).map(|l| l.parent).unwrap_or(0);
+    while parent != 0 && out.len() < 16 {
+        let Some(index) = layers.iter().position(|l| l.id == parent) else { break };
+        out.push(index);
+        parent = layers[index].parent;
+    }
+    out
+}
+
+pub fn descendants(layers: &[LayerInfo], id: u32) -> Vec<u32> {
+    let mut out = Vec::new();
+    let mut frontier = vec![id];
+    while let Some(p) = frontier.pop() {
+        for layer in layers.iter().filter(|l| l.parent == p) {
+            out.push(layer.id);
+            if layer.kind == LayerKind::Folder && out.len() < 4096 {
+                frontier.push(layer.id);
+            }
+        }
+    }
+    out
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]

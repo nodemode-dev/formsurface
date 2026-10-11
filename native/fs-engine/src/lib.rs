@@ -370,45 +370,84 @@ impl Engine {
     pub fn add_layer(&mut self, name: String) -> u32 {
         let id = self.next_id;
         self.next_id += 1;
-        let at = if self.layers.is_empty() { 0 } else { self.layer_index(self.active) + 1 };
-        self.layers.insert(at, LayerInfo { id, name, visible: true, opacity: 1.0, blend: BlendMode::Normal, kind: LayerKind::Paint, mask: false });
+        let (at, parent) = if self.layers.is_empty() {
+            (0, 0)
+        } else {
+            let index = self.layer_index(self.active);
+            let active = &self.layers[index];
+            if active.kind == LayerKind::Folder { (index, active.id) } else { (index + 1, active.parent) }
+        };
+        self.layers.insert(at, LayerInfo { id, name, visible: true, opacity: 1.0, blend: BlendMode::Normal, kind: LayerKind::Paint, mask: false, parent });
         self.gpu.insert_layer(at, id);
         self.active = id;
+        self.normalize();
+        id
+    }
+
+    pub fn add_folder(&mut self, name: String) -> u32 {
+        let id = self.add_layer(name);
+        let index = self.layer_index(id);
+        self.layers[index].kind = LayerKind::Folder;
         self.dirty = true;
         id
     }
 
+    pub fn set_parent(&mut self, id: u32, parent: u32) -> bool {
+        let Some(index) = self.layers.iter().position(|l| l.id == id) else { return false };
+        if parent != 0 {
+            let is_folder = self.layers.iter().any(|l| l.id == parent && l.kind == LayerKind::Folder);
+            if !is_folder || parent == id || fs_core::descendants(&self.layers, id).contains(&parent) {
+                return false;
+            }
+        }
+        let mut layer = self.layers.remove(index);
+        layer.parent = parent;
+        self.layers.push(layer);
+        self.normalize();
+        true
+    }
+
     pub fn remove_layer(&mut self, id: u32) -> bool {
-        if self.layers.len() <= 1 {
+        let Some(first) = self.layers.iter().position(|l| l.id == id) else { return false };
+        let mut doomed = vec![id];
+        doomed.extend(fs_core::descendants(&self.layers, id));
+        if self.layers.len() <= doomed.len() {
             return false;
         }
-        let index = self.layer_index(id);
-        self.layers.remove(index);
-        self.fills.remove(&id);
-        self.filters.remove(&id);
-        self.gpu.remove_layer(index, id);
-        if self.active == id {
-            self.active = self.layers[index.min(self.layers.len() - 1)].id;
+        for d in &doomed {
+            let Some(index) = self.layers.iter().position(|l| l.id == *d) else { continue };
+            self.layers.remove(index);
+            self.fills.remove(d);
+            self.filters.remove(d);
+            self.gpu.remove_layer(index, *d);
         }
-        self.dirty = true;
+        if doomed.contains(&self.active) {
+            self.active = self.layers[first.min(self.layers.len() - 1)].id;
+        }
+        self.normalize();
         true
     }
 
     pub fn move_layer(&mut self, id: u32, offset: i32) {
-        let index = self.layer_index(id);
-        let to = (index as i32 + offset).clamp(0, self.layers.len() as i32 - 1) as usize;
-        if to != index {
-            let layer = self.layers.remove(index);
-            self.layers.insert(to, layer);
-            self.gpu.move_layer(index, to);
-            self.dirty = true;
+        for _ in 0..offset.unsigned_abs().min(64) {
+            let Some(index) = self.layers.iter().position(|l| l.id == id) else { return };
+            let parent = self.layers[index].parent;
+            let siblings: Vec<usize> = (0..self.layers.len()).filter(|&i| self.layers[i].parent == parent).collect();
+            let pos = siblings.iter().position(|&i| i == index).unwrap_or(0) as i32;
+            let next = pos + offset.signum();
+            if next < 0 || next >= siblings.len() as i32 {
+                break;
+            }
+            self.layers.swap(index, siblings[next as usize]);
+            self.normalize();
         }
     }
 
     pub fn update_layer(&mut self, json: &str) -> Result<(), JsValue> {
         let mut info: LayerInfo = serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        let index = self.layer_index(info.id);
+        let index = self.layers.iter().position(|l| l.id == info.id).ok_or_else(|| JsValue::from_str("No layer with that id"))?;
         info.kind = self.layers[index].kind;
+        info.parent = self.layers[index].parent;
         self.layers[index] = info;
         self.dirty = true;
         Ok(())
@@ -758,6 +797,13 @@ impl Engine {
         let uniform = settings.uniform(mesh.center, mesh.radius);
         let index = self.layer_index(id);
         self.gpu.fill_layer_content(index, &uniform);
+        self.dirty = true;
+    }
+
+    fn normalize(&mut self) {
+        self.layers = fs_core::tree_order(&self.layers);
+        let ids = self.layer_ids();
+        self.gpu.reorder(&ids);
         self.dirty = true;
     }
 

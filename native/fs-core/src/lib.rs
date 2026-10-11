@@ -5,7 +5,7 @@ pub mod mesh;
 pub mod sets;
 
 pub use bvh::{Bvh, Hit};
-pub use document::{Alignment, BlendMode, BrushSettings, ChannelValues, FillSettings, FilterSettings, Generator, LayerInfo, LayerKind, Pattern, Projection, SizeSpace, StrokeMode, Symmetry, Tip};
+pub use document::{ancestors, descendants, tree_order, Alignment, BlendMode, BrushSettings, ChannelValues, FillSettings, FilterSettings, Generator, LayerInfo, LayerKind, Pattern, Projection, SizeSpace, StrokeMode, Symmetry, Tip};
 pub use mesh::Mesh;
 
 pub type Vec3 = [f32; 3];

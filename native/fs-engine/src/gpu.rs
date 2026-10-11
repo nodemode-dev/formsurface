@@ -70,6 +70,8 @@ pub struct Gpu {
     bake_final_pipe: wgpu::RenderPipeline,
     fill_pipe: wgpu::RenderPipeline,
     apply_mask_pipe: wgpu::RenderPipeline,
+    mask_mul_pipe: wgpu::RenderPipeline,
+    group_mask: wgpu::Texture,
     geometry_pipe: wgpu::RenderPipeline,
     geometry: Option<(wgpu::Texture, wgpu::Texture)>,
     patterns: std::collections::HashMap<u32, wgpu::Texture>,
@@ -387,6 +389,11 @@ impl Gpu {
             bake_final_pipe: pipeline(&device, "bake final", shaders::BAKE_FINAL, false, &[LAYER_FORMAT], None, false),
             fill_pipe: pipeline(&device, "fill", shaders::FILL, false, &[LAYER_FORMAT; 3], None, false),
             apply_mask_pipe: pipeline(&device, "apply mask", shaders::APPLY_MASK, false, &[LAYER_FORMAT], None, false),
+            mask_mul_pipe: pipeline(&device, "folder mask", shaders::MASK_MUL, false, &[LAYER_FORMAT], Some(wgpu::BlendState {
+                color: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::Dst, dst_factor: wgpu::BlendFactor::Zero, operation: wgpu::BlendOperation::Add },
+                alpha: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::One, dst_factor: wgpu::BlendFactor::Zero, operation: wgpu::BlendOperation::Add },
+            }), false),
+            group_mask: texture(&device, size, LAYER_FORMAT, "folder mask"),
             geometry_pipe: pipeline(&device, "geometry", shaders::GEOMETRY, true, &[wgpu::TextureFormat::Rgba32Float, LAYER_FORMAT], None, false),
             geometry: None,
             patterns: std::collections::HashMap::new(),
@@ -739,9 +746,23 @@ impl Gpu {
         self.pool.extend(drop_u.into_iter().chain(drop_r).map(|s| s.set));
     }
 
-    pub fn move_layer(&mut self, from: usize, to: usize) {
-        let layer = self.layers.remove(from);
-        self.layers.insert(to, layer);
+    pub fn reorder(&mut self, ids: &[u32]) {
+        self.layers.sort_by_key(|l| ids.iter().position(|id| *id == l.id).unwrap_or(usize::MAX));
+    }
+
+    fn build_group_mask(&self, masks: &[&wgpu::Texture]) {
+        let target = view_of(&self.group_mask);
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&target, wgpu::LoadOp::Clear(wgpu::Color::WHITE))], ..Default::default() });
+        for mask in masks {
+            let source = view_of(mask);
+            let group = bind(&self.device, &self.mask_mul_pipe, &[wgpu::BindingResource::TextureView(&source)]);
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&target, wgpu::LoadOp::Load)], ..Default::default() });
+            pass.set_pipeline(&self.mask_mul_pipe);
+            pass.set_bind_group(0, &group, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        self.queue.submit([encoder.finish()]);
     }
 
     pub fn begin_stroke(&mut self, index: usize) {
@@ -914,9 +935,9 @@ impl Gpu {
         self.queue.submit([encoder.finish()]);
     }
 
-    fn layer_pass(&self, uniform: [f32; 16], prev: &Pair, out: &Pair, layer: &Set) {
+    fn layer_pass(&self, uniform: [f32; 16], prev: &Pair, out: &Pair, layer: &Set, mask: &wgpu::Texture) {
         self.queue.write_buffer(&self.layer_uniform, 0, bytemuck::cast_slice(&uniform));
-        let (pc, pm, lc, lv, lk, lm) = (view_of(&prev.color), view_of(&prev.mat), view_of(&layer.color), view_of(&layer.val), view_of(&layer.cov), view_of(&layer.mask));
+        let (pc, pm, lc, lv, lk, lm) = (view_of(&prev.color), view_of(&prev.mat), view_of(&layer.color), view_of(&layer.val), view_of(&layer.cov), view_of(mask));
         let group = bind(&self.device, &self.composite_pipe, &[
             self.layer_uniform.as_entire_binding(),
             wgpu::BindingResource::TextureView(&pc),
@@ -940,22 +961,36 @@ impl Gpu {
     pub fn composite(&mut self, infos: &[LayerInfo], filters: &std::collections::HashMap<u32, FilterSettings>) {
         let b = self.base;
         let base_uniform = [0.0, 0.0, 0.0, 0.0, f32::from_bits(0), f32::from_bits(1), 0.0, 0.0, b[0], b[1], b[2], 1.0, b[3], b[4], 0.5, 0.0];
-        self.layer_pass(base_uniform, &self.pong, &self.ping, &self.scratch);
+        self.layer_pass(base_uniform, &self.pong, &self.ping, &self.scratch, &self.scratch.mask);
         let mut current_is_ping = true;
         for (info, layer) in infos.iter().zip(self.layers.iter()) {
-            if !info.visible {
+            if !info.visible || info.kind == LayerKind::Folder {
                 continue;
             }
+            let chain = fs_core::ancestors(infos, info.id);
+            if chain.iter().any(|&a| !infos[a].visible) {
+                continue;
+            }
+            let opacity = chain.iter().fold(info.opacity, |o, &a| o * infos[a].opacity);
+            let mut masks: Vec<&wgpu::Texture> = chain.iter().filter(|&&a| infos[a].mask).map(|&a| &self.layers[a].set.mask).collect();
+            let grouped = !masks.is_empty();
+            if grouped && info.mask {
+                masks.push(&layer.set.mask);
+            }
+            if grouped {
+                self.build_group_mask(&masks);
+            }
+            let mask_texture = if grouped { &self.group_mask } else { &layer.set.mask };
             let f = filters.get(&info.id).copied().unwrap_or_default();
             let filter = if info.kind == LayerKind::Filter { 1 } else { 0 };
             let uniform = [
-                info.opacity, if info.mask { 1.0 } else { 0.0 }, 0.0, 0.0,
+                opacity, if info.mask || grouped { 1.0 } else { 0.0 }, 0.0, 0.0,
                 f32::from_bits(info.blend.code()), f32::from_bits(0), f32::from_bits(filter), 0.0,
                 f.brightness, f.contrast, f.hue.to_radians(), f.saturation,
                 f.gamma.max(0.05), f.roughness_offset, f.metallic_offset, 0.0,
             ];
             let (prev, out) = if current_is_ping { (&self.ping, &self.pong) } else { (&self.pong, &self.ping) };
-            self.layer_pass(uniform, prev, out, &layer.set);
+            self.layer_pass(uniform, prev, out, &layer.set, mask_texture);
             current_is_ping = !current_is_ping;
         }
         let src = if current_is_ping { &self.ping } else { &self.pong };

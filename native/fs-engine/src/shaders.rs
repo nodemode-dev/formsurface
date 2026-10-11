@@ -554,6 +554,16 @@ fn fs(@builtin(position) frag: vec4<f32>) -> Out {
 }
 "#;
 
+pub const MASK_MUL: &str = r#"
+@group(0) @binding(0) var source_mask: texture_2d<f32>;
+
+@fragment
+fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    let v = textureLoad(source_mask, vec2<i32>(pos.xy), 0).r;
+    return vec4<f32>(v, v, v, 1.0);
+}
+"#;
+
 pub const DILATE: &str = r#"
 @group(0) @binding(0) var src_color: texture_2d<f32>;
 @group(0) @binding(1) var src_mat: texture_2d<f32>;
