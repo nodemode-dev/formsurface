@@ -2,12 +2,28 @@ mod gpu;
 mod shaders;
 
 use fs_core::{add, cross, dot, normalize, scale, sub, BlendMode, BrushSettings, Bvh, ChannelValues, FillSettings, FilterSettings, Hit, LayerInfo, LayerKind, Mesh, SizeSpace, Symmetry, Vec3};
+use fs_core::sets::TextureSet;
 use gpu::Gpu;
+use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
+
+struct Parked {
+    layers: Vec<LayerInfo>,
+    active: u32,
+    fills: HashMap<u32, FillSettings>,
+    filters: HashMap<u32, FilterSettings>,
+}
+
+struct SetEntry {
+    info: TextureSet,
+    parked: Option<Parked>,
+}
 
 #[wasm_bindgen]
 pub struct Engine {
     gpu: Gpu,
+    sets: Vec<SetEntry>,
+    set_index: usize,
     mesh: Option<(Mesh, Bvh)>,
     yaw: f32,
     pitch: f32,
@@ -44,6 +60,8 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
     let gpu = Gpu::new(canvas, width, height, texture_size).await.map_err(|e| JsValue::from_str(&e))?;
     let mut engine = Engine {
         gpu,
+        sets: Vec::new(),
+        set_index: 0,
         mesh: None,
         yaw: 0.6,
         pitch: 0.25,
@@ -85,20 +103,84 @@ impl Engine {
         self.gpu.size
     }
 
-    pub fn set_mesh(&mut self, positions: &[f32], normals: &[f32], uvs: &[f32], indices: &[u32]) -> Result<String, JsValue> {
-        let mesh = Mesh::from_flat(positions, normals, uvs, indices).map_err(|e| JsValue::from_str(&e))?;
+    pub fn set_mesh(&mut self, positions: &[f32], normals: &[f32], uvs: &[f32], indices: &[u32], materials: &[u32], names_json: &str) -> Result<String, JsValue> {
+        if self.stroking {
+            return Err(JsValue::from_str("Finish the stroke before loading a mesh"));
+        }
+        let names: Vec<String> = serde_json::from_str(names_json).unwrap_or_default();
+        let split = fs_core::sets::split(positions, normals, uvs, indices, materials, &names).map_err(|e| JsValue::from_str(&e))?;
+        let mesh = Mesh::from_flat(&split.positions, &split.normals, &split.uvs, &split.indices).map_err(|e| JsValue::from_str(&e))?;
         let bvh = Bvh::build(&mesh);
-        self.gpu.upload_mesh(&mesh);
+        self.select_texture_set(0);
+        let ranges: Vec<(u32, u32)> = split.sets.iter().map(|s| (s.start, s.count)).collect();
+        self.gpu.upload_mesh(&mesh, &ranges);
+        self.sets = split.sets.into_iter().map(|info| SetEntry { info, parked: None }).collect();
+        self.set_index = 0;
         self.target = mesh.center;
         self.distance = mesh.radius * 2.8;
-        let info = format!("{} vertices, {} triangles", mesh.positions.len(), mesh.triangle_count());
+        let count = self.sets.len();
+        let info = format!("{} vertices, {} triangles, {} texture set{}", mesh.positions.len(), mesh.triangle_count(), count, if count == 1 { "" } else { "s" });
         self.mesh = Some((mesh, bvh));
-        let ids: Vec<u32> = self.fills.keys().copied().collect();
-        for id in ids {
-            self.render_fill(id);
+        self.each_set(|engine| {
+            engine.render_fills();
+            Ok(())
+        })
+        .map_err(|e| JsValue::from_str(&e))?;
+        Ok(info)
+    }
+
+    pub fn texture_sets_json(&self) -> String {
+        let list: Vec<serde_json::Value> = self
+            .sets
+            .iter()
+            .enumerate()
+            .map(|(k, s)| {
+                let layers = if k == self.set_index { self.layers.len() } else { s.parked.as_ref().map(|p| p.layers.len()).unwrap_or(1) };
+                serde_json::json!({ "index": k, "name": s.info.name(), "material": s.info.material, "udim": s.info.udim, "tiled": s.info.tiled, "triangles": s.info.count / 3, "layers": layers })
+            })
+            .collect();
+        serde_json::Value::Array(list).to_string()
+    }
+
+    pub fn active_texture_set(&self) -> u32 {
+        self.set_index as u32
+    }
+
+    pub fn select_texture_set(&mut self, index: u32) -> bool {
+        let to = index as usize;
+        if self.stroking || to >= self.sets.len() {
+            return false;
+        }
+        if to == self.set_index {
+            return true;
+        }
+        let current = Parked {
+            layers: std::mem::take(&mut self.layers),
+            active: self.active,
+            fills: std::mem::take(&mut self.fills),
+            filters: std::mem::take(&mut self.filters),
+        };
+        self.sets[self.set_index].parked = Some(current);
+        self.gpu.select_set(to);
+        self.set_index = to;
+        match self.sets[to].parked.take() {
+            Some(p) => {
+                self.layers = p.layers;
+                self.active = p.active;
+                self.fills = p.fills;
+                self.filters = p.filters;
+            }
+            None => {
+                self.add_layer("Layer 1".into());
+            }
         }
         self.dirty = true;
-        Ok(info)
+        true
+    }
+
+    pub fn base_json(&self) -> String {
+        let b = self.gpu.base;
+        serde_json::json!({ "base_color": [b[0], b[1], b[2]], "roughness": b[3], "metallic": b[4] }).to_string()
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -420,12 +502,12 @@ impl Engine {
 
     pub fn bake_maps(&mut self, directions: u32) -> Result<(), JsValue> {
         let (center, radius) = self.mesh.as_ref().map(|m| (m.0.center, m.0.radius)).ok_or_else(|| JsValue::from_str("Load a mesh before baking"))?;
-        self.gpu.bake_maps(center, radius, directions).map_err(|e| JsValue::from_str(&e))?;
-        let ids: Vec<u32> = self.fills.keys().copied().collect();
-        for id in ids {
-            self.render_fill(id);
-        }
-        Ok(())
+        self.each_set(|engine| {
+            engine.gpu.bake_maps(center, radius, directions)?;
+            engine.render_fills();
+            Ok(())
+        })
+        .map_err(|e| JsValue::from_str(&e))
     }
 
     pub fn set_high_mesh(&mut self, positions: &[f32], normals: &[f32], indices: &[u32], parts: &[u32]) -> Result<String, JsValue> {
@@ -443,13 +525,28 @@ impl Engine {
     }
 
     pub fn bake_high(&mut self, front: f32, rear: f32) -> Result<String, JsValue> {
-        let (low, _) = self.mesh.as_ref().ok_or_else(|| JsValue::from_str("Load the low-poly mesh first"))?;
-        let (high, bvh, parts) = self.high.as_ref().ok_or_else(|| JsValue::from_str("Load a high-poly mesh first"))?;
-        let size = self.gpu.size.min(2048) as usize;
-        let r = low.radius;
-        let result = fs_core::bake::bake_high(low, high, bvh, parts, size, front.max(0.0) * r, rear.max(0.0) * r);
-        self.gpu.set_high_bake(size as u32, &result.normal, &result.id);
-        Ok(format!("{} of {} texels hit the high-poly mesh", result.hits, result.texels))
+        if self.mesh.is_none() {
+            return Err(JsValue::from_str("Load the low-poly mesh first"));
+        }
+        if self.high.is_none() {
+            return Err(JsValue::from_str("Load a high-poly mesh first"));
+        }
+        let (mut hits, mut texels) = (0usize, 0usize);
+        self.each_set(|engine| {
+            let (Some((low, _)), Some((high, bvh, parts))) = (engine.mesh.as_ref(), engine.high.as_ref()) else { return Ok(()) };
+            let info = &engine.sets[engine.set_index].info;
+            let low = low.subset(info.start as usize, info.count as usize);
+            let size = engine.gpu.size.min(2048) as usize;
+            let r = low.radius;
+            let result = fs_core::bake::bake_high(&low, high, bvh, parts, size, front.max(0.0) * r, rear.max(0.0) * r);
+            hits += result.hits;
+            texels += result.texels;
+            engine.gpu.set_high_bake(size as u32, &result.normal, &result.id);
+            Ok(())
+        })
+        .map_err(|e| JsValue::from_str(&e))?;
+        let sets = self.sets.len();
+        Ok(format!("{hits} of {texels} texels hit the high-poly mesh across {sets} texture set{}", if sets == 1 { "" } else { "s" }))
     }
 
     pub fn is_high_baked(&self) -> bool {
@@ -630,6 +727,29 @@ impl Engine {
     fn paints_mask(&self) -> bool {
         let layer = &self.layers[self.layer_index(self.active)];
         layer.kind != LayerKind::Paint || (self.mask_target && layer.mask)
+    }
+
+    fn each_set(&mut self, mut work: impl FnMut(&mut Engine) -> Result<(), String>) -> Result<(), String> {
+        let original = self.set_index as u32;
+        let mut result = Ok(());
+        for k in 0..self.sets.len() {
+            self.select_texture_set(k as u32);
+            if let Err(e) = work(self) {
+                result = Err(e);
+                break;
+            }
+            self.gpu.composite(&self.layers, &self.filters);
+        }
+        self.select_texture_set(original);
+        self.dirty = true;
+        result
+    }
+
+    fn render_fills(&mut self) {
+        let ids: Vec<u32> = self.fills.keys().copied().collect();
+        for id in ids {
+            self.render_fill(id);
+        }
     }
 
     fn render_fill(&mut self, id: u32) {

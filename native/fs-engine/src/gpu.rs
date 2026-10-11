@@ -28,6 +28,22 @@ struct Pair {
     mat: wgpu::Texture,
 }
 
+struct SetState {
+    base: [f32; 5],
+    range: (u32, u32),
+    layers: Vec<LayerTex>,
+    undo_stack: Vec<Snapshot>,
+    redo_stack: Vec<Snapshot>,
+    final_set: Pair,
+    coverage: wgpu::Texture,
+    geometry: Option<(wgpu::Texture, wgpu::Texture)>,
+    bake: wgpu::Texture,
+    baked: bool,
+    baked_normal: wgpu::Texture,
+    baked_id: wgpu::Texture,
+    high_baked: bool,
+}
+
 pub struct Gpu {
     pub backend: String,
     pub size: u32,
@@ -73,7 +89,10 @@ pub struct Gpu {
     export_pipe: wgpu::RenderPipeline,
     vertices: Option<wgpu::Buffer>,
     indices: Option<wgpu::Buffer>,
-    index_count: u32,
+    range: (u32, u32),
+    total: u32,
+    parked: Vec<Option<SetState>>,
+    current: usize,
     coverage: wgpu::Texture,
     mask: wgpu::Texture,
     ping: Pair,
@@ -380,7 +399,10 @@ impl Gpu {
             export_uniform: uniform("export", 32),
             vertices: None,
             indices: None,
-            index_count: 0,
+            range: (0, 0),
+            total: 0,
+            parked: vec![None],
+            current: 0,
             coverage: texture(&device, size, wgpu::TextureFormat::R8Unorm, "uv coverage"),
             mask: texture(&device, size, LAYER_FORMAT, "stroke mask"),
             ping: new_pair(&device, size),
@@ -409,7 +431,7 @@ impl Gpu {
         self.depth = depth_texture(&self.device, width, height);
     }
 
-    pub fn upload_mesh(&mut self, mesh: &Mesh) {
+    pub fn upload_mesh(&mut self, mesh: &Mesh, ranges: &[(u32, u32)]) {
         let data = mesh.interleaved();
         let upload = |label: &str, bytes: &[u8], usage: wgpu::BufferUsages| {
             let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size: bytes.len().next_multiple_of(4) as u64, usage: usage | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
@@ -418,7 +440,67 @@ impl Gpu {
         };
         self.vertices = Some(upload("vertices", bytemuck::cast_slice(&data), wgpu::BufferUsages::VERTEX));
         self.indices = Some(upload("indices", bytemuck::cast_slice(&mesh.indices), wgpu::BufferUsages::INDEX));
-        self.index_count = mesh.indices.len() as u32;
+        self.total = mesh.indices.len() as u32;
+        let ranges: Vec<(u32, u32)> = if ranges.is_empty() { vec![(0, self.total)] } else { ranges.to_vec() };
+        self.select_set(0);
+        self.parked = (0..ranges.len()).map(|_| None).collect();
+        for (k, range) in ranges.iter().enumerate().skip(1) {
+            self.parked[k] = Some(self.new_state(*range));
+        }
+        self.current = 0;
+        self.range = ranges[0];
+        for k in 0..ranges.len() {
+            self.select_set(k);
+            self.prepare_set();
+        }
+        self.select_set(0);
+    }
+
+    fn new_state(&self, range: (u32, u32)) -> SetState {
+        SetState {
+            base: self.base,
+            range,
+            layers: Vec::new(),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            final_set: new_pair(&self.device, self.size),
+            coverage: texture(&self.device, self.size, wgpu::TextureFormat::R8Unorm, "uv coverage"),
+            geometry: None,
+            bake: texture(&self.device, self.size, LAYER_FORMAT, "baked maps"),
+            baked: false,
+            baked_normal: rgba_texture(&self.device, &self.queue, 1, 1, &[128, 128, 255, 255]),
+            baked_id: rgba_texture(&self.device, &self.queue, 1, 1, &[128, 128, 128, 255]),
+            high_baked: false,
+        }
+    }
+
+    fn exchange(&mut self, s: &mut SetState) {
+        std::mem::swap(&mut self.base, &mut s.base);
+        std::mem::swap(&mut self.range, &mut s.range);
+        std::mem::swap(&mut self.layers, &mut s.layers);
+        std::mem::swap(&mut self.undo_stack, &mut s.undo_stack);
+        std::mem::swap(&mut self.redo_stack, &mut s.redo_stack);
+        std::mem::swap(&mut self.final_set, &mut s.final_set);
+        std::mem::swap(&mut self.coverage, &mut s.coverage);
+        std::mem::swap(&mut self.geometry, &mut s.geometry);
+        std::mem::swap(&mut self.bake, &mut s.bake);
+        std::mem::swap(&mut self.baked, &mut s.baked);
+        std::mem::swap(&mut self.baked_normal, &mut s.baked_normal);
+        std::mem::swap(&mut self.baked_id, &mut s.baked_id);
+        std::mem::swap(&mut self.high_baked, &mut s.high_baked);
+    }
+
+    pub fn select_set(&mut self, to: usize) {
+        if to == self.current || to >= self.parked.len() || self.stroke.is_some() {
+            return;
+        }
+        let Some(mut state) = self.parked[to].take() else { return };
+        self.exchange(&mut state);
+        self.parked[self.current] = Some(state);
+        self.current = to;
+    }
+
+    fn prepare_set(&mut self) {
         let view = view_of(&self.coverage);
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
@@ -466,7 +548,15 @@ impl Gpu {
         if let (Some(v), Some(i)) = (&self.vertices, &self.indices) {
             pass.set_vertex_buffer(0, v.slice(..));
             pass.set_index_buffer(i.slice(..), wgpu::IndexFormat::Uint32);
-            pass.draw_indexed(0..self.index_count, 0, 0..1);
+            pass.draw_indexed(self.range.0..self.range.0 + self.range.1, 0, 0..1);
+        }
+    }
+
+    fn draw_all(&self, pass: &mut wgpu::RenderPass) {
+        if let (Some(v), Some(i)) = (&self.vertices, &self.indices) {
+            pass.set_vertex_buffer(0, v.slice(..));
+            pass.set_index_buffer(i.slice(..), wgpu::IndexFormat::Uint32);
+            pass.draw_indexed(0..self.total, 0, 0..1);
         }
     }
 
@@ -573,7 +663,7 @@ impl Gpu {
                 });
                 pass.set_pipeline(&self.bake_depth_pipe);
                 pass.set_bind_group(0, &depth_group, &[]);
-                self.draw_mesh(&mut pass);
+                self.draw_all(&mut pass);
             }
             {
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&accum_view, wgpu::LoadOp::Load)], ..Default::default() });
@@ -924,15 +1014,20 @@ impl Gpu {
 
     fn encode_view(&self, encoder: &mut wgpu::CommandEncoder, target: &wgpu::Texture, view_proj: [f32; 16], eye: Vec3, cursor: Option<(Vec3, Vec3, f32)>, exposure: f32, normal_strength: f32) {
         self.queue.write_buffer(&self.camera, 0, bytemuck::cast_slice(&camera_bytes(view_proj, eye, cursor, exposure, normal_strength)));
-        let (fc, fm) = (view_of(&self.final_set.color), view_of(&self.final_set.mat));
-        let bn = view_of(&self.baked_normal);
-        let group = bind(&self.device, &self.view_pipe, &[
-            self.camera.as_entire_binding(),
-            wgpu::BindingResource::TextureView(&fc),
-            wgpu::BindingResource::TextureView(&fm),
-            wgpu::BindingResource::Sampler(&self.sampler),
-            wgpu::BindingResource::TextureView(&bn),
-        ]);
+        let set_group = |final_set: &Pair, baked_normal: &wgpu::Texture| {
+            let (fc, fm, bn) = (view_of(&final_set.color), view_of(&final_set.mat), view_of(baked_normal));
+            bind(&self.device, &self.view_pipe, &[
+                self.camera.as_entire_binding(),
+                wgpu::BindingResource::TextureView(&fc),
+                wgpu::BindingResource::TextureView(&fm),
+                wgpu::BindingResource::Sampler(&self.sampler),
+                wgpu::BindingResource::TextureView(&bn),
+            ])
+        };
+        let mut draws = vec![(set_group(&self.final_set, &self.baked_normal), self.range)];
+        for state in self.parked.iter().flatten() {
+            draws.push((set_group(&state.final_set, &state.baked_normal), state.range));
+        }
         let view = view_of(target);
         let depth = view_of(&self.depth);
         {
@@ -946,8 +1041,14 @@ impl Gpu {
                 ..Default::default()
             });
             pass.set_pipeline(&self.view_pipe);
-            pass.set_bind_group(0, &group, &[]);
-            self.draw_mesh(&mut pass);
+            if let (Some(v), Some(i)) = (&self.vertices, &self.indices) {
+                pass.set_vertex_buffer(0, v.slice(..));
+                pass.set_index_buffer(i.slice(..), wgpu::IndexFormat::Uint32);
+                for (group, (start, count)) in &draws {
+                    pass.set_bind_group(0, group, &[]);
+                    pass.draw_indexed(*start..*start + *count, 0, 0..1);
+                }
+            }
         }
     }
 

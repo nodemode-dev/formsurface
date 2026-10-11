@@ -2,6 +2,7 @@ pub mod bake;
 pub mod bvh;
 pub mod document;
 pub mod mesh;
+pub mod sets;
 
 pub use bvh::{Bvh, Hit};
 pub use document::{Alignment, BlendMode, BrushSettings, ChannelValues, FillSettings, FilterSettings, Generator, LayerInfo, LayerKind, Pattern, Projection, SizeSpace, StrokeMode, Symmetry, Tip};

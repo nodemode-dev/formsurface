@@ -80,6 +80,17 @@ impl Mesh {
         if world > 1e-12 && uv > 1e-12 { (uv / world).sqrt() } else { 1.0 / (self.radius * 2.0) }
     }
 
+    pub fn subset(&self, start: usize, count: usize) -> Mesh {
+        Mesh {
+            positions: self.positions.clone(),
+            normals: self.normals.clone(),
+            uvs: self.uvs.clone(),
+            indices: self.indices[start..start + count].to_vec(),
+            center: self.center,
+            radius: self.radius,
+        }
+    }
+
     pub fn triangle_count(&self) -> usize {
         self.indices.len() / 3
     }
