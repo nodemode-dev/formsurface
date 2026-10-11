@@ -120,6 +120,10 @@ function refreshLayers(): void {
     const isFill = layer.kind === 'fill';
     $('fill-section').setAttribute('aria-disabled', String(!isFill));
     if (isFill) loadFillControls(JSON.parse(engine.fill_settings(layer.id)) as Record<string, unknown>);
+    const isFilter = layer.kind === 'filter';
+    $('filter-section').setAttribute('aria-disabled', String(!isFilter));
+    if (isFilter) loadFilterControls(JSON.parse(engine.filter_settings(layer.id)) as Record<string, number>);
+    if (isFilter) target.disabled = true;
   }
 }
 
@@ -127,7 +131,34 @@ const FILL_FIELDS: [string, string][] = [
   ['f-proj', 'projection'], ['f-axis', 'axis'], ['f-pattern', 'pattern'], ['f-imgcolor', 'image_color'], ['f-scale', 'scale'], ['f-rot', 'rotation'],
   ['f-ox', 'offset_x'], ['f-oy', 'offset_y'], ['f-sharp', 'sharpness'], ['f-rough', 'roughness'], ['f-metal', 'metallic'], ['f-height', 'height'],
   ['f-use-color', 'use_color'], ['f-use-rough', 'use_roughness'], ['f-use-metal', 'use_metallic'], ['f-use-height', 'use_height'], ['f-opacity', 'opacity'],
+  ['f-gen', 'generator'], ['f-glevel', 'generator_level'], ['f-gsoft', 'generator_softness'], ['f-ginvert', 'generator_invert'],
 ];
+
+const FILTER_FIELDS: [string, string][] = [
+  ['x-bright', 'brightness'], ['x-contrast', 'contrast'], ['x-hue', 'hue'], ['x-sat', 'saturation'], ['x-gamma', 'gamma'], ['x-rough', 'roughness_offset'], ['x-metal', 'metallic_offset'],
+];
+
+function syncFilter(): void {
+  if (!engine) return;
+  const layer = layers().find((l) => l.id === engine!.active_layer());
+  if (!layer || layer.kind !== 'filter') return;
+  const out: Record<string, number> = {};
+  for (const [id, key] of FILTER_FIELDS) out[key] = num(id);
+  engine.set_filter(layer.id, JSON.stringify(out));
+}
+
+function loadFilterControls(settings: Record<string, number>): void {
+  for (const [id, key] of FILTER_FIELDS) {
+    if (settings[key] === undefined) continue;
+    $<HTMLInputElement>(id).value = String(settings[key]);
+    setOutput(id);
+  }
+}
+
+function bakeState(): void {
+  const baked = !!engine?.is_baked();
+  $('k-state').textContent = baked ? 'Baked: AO, curvature, thickness, position and world normal are available to generators and export' : 'Not baked: generators other than From top need baked maps';
+}
 
 function loadFillControls(settings: Record<string, unknown>): void {
   for (const [id, key] of FILL_FIELDS) {
@@ -204,6 +235,7 @@ function applyMesh(next: FlatMesh, name: string): void {
   meshName = name;
   const info = engine.set_mesh(next.positions, next.normals, next.uvs, next.indices);
   $('mesh-info').textContent = `${name} · ${info}`;
+  bakeState();
   status(next.skipped ? `Loaded ${name}. ${next.skipped} part(s) without UVs were skipped.` : `Loaded ${name}`);
 }
 
@@ -240,7 +272,8 @@ canvas.addEventListener('pointerdown', (event) => {
   if (event.button !== 0) return;
   const [x, y] = local(event);
   painting = engine.stroke_begin(x, y, pressure(event));
-  if (!painting && layers().find((l) => l.id === engine!.active_layer())?.kind === 'fill') status('A fill layer is painted through its mask: choose a mask in the layer properties first.', true);
+  const activeKind = layers().find((l) => l.id === engine!.active_layer())?.kind;
+  if (!painting && (activeKind === 'fill' || activeKind === 'filter')) status(`A ${activeKind} layer is painted through its mask: choose a mask in the layer properties first.`, true);
 });
 canvas.addEventListener('pointermove', (event) => {
   if (!engine) return;
@@ -368,6 +401,23 @@ $('l-mask').addEventListener('change', () => {
 $('l-target').addEventListener('change', () => { engine?.set_paint_target(sel('l-target') === 'mask'); });
 for (const [id] of FILL_FIELDS) $(id).addEventListener(id.startsWith('f-use') || id === 'f-imgcolor' || $(id).tagName === 'SELECT' ? 'change' : 'input', () => { setOutput(id); syncFill(); });
 $('f-color').addEventListener('input', syncFill);
+for (const [id] of FILTER_FIELDS) $(id).addEventListener('input', () => { setOutput(id); syncFilter(); });
+$('layer-add-filter').addEventListener('click', () => {
+  if (!engine) return;
+  engine.add_filter_layer(`Filter ${layers().length + 1}`);
+  refreshLayers();
+});
+$('k-bake').addEventListener('click', () => {
+  if (!engine) return;
+  try {
+    status('Baking mesh maps on the GPU');
+    engine.bake_maps(Number(sel('k-dirs')));
+    bakeState();
+    status('Mesh maps baked');
+  } catch (error) {
+    status(error instanceof Error ? error.message : String(error), true);
+  }
+});
 $('f-image-load').addEventListener('click', () => { imageTarget = 'fill'; imageInput.click(); });
 $('layer-delete').addEventListener('click', () => {
   if (!engine) return;
@@ -410,7 +460,7 @@ $('tex-size').addEventListener('change', () => {
   void boot();
 });
 
-const CHANNELS = ['basecolor', 'roughness', 'metallic', 'height', 'normal'];
+const CHANNELS = ['basecolor', 'roughness', 'metallic', 'height', 'normal', 'ambient_occlusion', 'curvature', 'thickness', 'position', 'world_normal'];
 
 async function pngOf(bytes: Uint8Array, size: number): Promise<Blob> {
   const surface = new OffscreenCanvas(size, size);
@@ -423,7 +473,8 @@ async function renderMaps(): Promise<Map<string, Blob>> {
   const maps = new Map<string, Blob>();
   if (!engine) return maps;
   const size = engine.texture_size();
-  for (let i = 0; i < CHANNELS.length; i++) {
+  const count = engine.is_baked() ? CHANNELS.length : 5;
+  for (let i = 0; i < count; i++) {
     const bytes = await engine.export_channel(i) as Uint8Array;
     maps.set(CHANNELS[i], await pngOf(bytes, size));
   }
@@ -582,6 +633,29 @@ const agentLink = new AgentLink({
     e.set_fill(id, JSON.stringify({ ...JSON.parse(raw), ...patch }));
     refreshLayers();
     return { id, settings: JSON.parse(e.fill_settings(id)) };
+  },
+  bake: ({ directions }) => {
+    const e = requireEngine();
+    e.bake_maps(Number(directions ?? 64));
+    bakeState();
+    return { baked: e.is_baked(), maps: ['ambient_occlusion', 'curvature', 'thickness', 'position', 'world_normal'] };
+  },
+  add_filter_layer: (args) => {
+    const e = requireEngine();
+    const id = e.add_filter_layer(String(args.name || `Filter ${layers().length + 1}`));
+    const patch = (args.settings ?? {}) as Record<string, unknown>;
+    e.set_filter(id, JSON.stringify({ ...JSON.parse(e.filter_settings(id)), ...patch }));
+    refreshLayers();
+    return { id, settings: JSON.parse(e.filter_settings(id)), layers: layers() };
+  },
+  set_filter: (args) => {
+    const e = requireEngine();
+    const id = Number(args.id);
+    const raw = e.filter_settings(id);
+    if (!raw) throw new Error(`Layer ${id} is not a filter layer`);
+    e.set_filter(id, JSON.stringify({ ...JSON.parse(raw), ...((args.settings ?? {}) as Record<string, unknown>) }));
+    refreshLayers();
+    return { id, settings: JSON.parse(e.filter_settings(id)) };
   },
   mask: ({ id, action, paint_target }) => {
     const e = requireEngine();

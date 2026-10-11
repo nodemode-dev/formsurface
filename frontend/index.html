@@ -27,6 +27,8 @@
   <symbol id="i-eye-off" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12zM4 20 20 4"/></symbol>
   <symbol id="i-link" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M10 14a4 4 0 0 0 5.7 0l3.6-3.6a4 4 0 0 0-5.7-5.7L12.5 5.8M14 10a4 4 0 0 0-5.7 0l-3.6 3.6a4 4 0 0 0 5.7 5.7l1.1-1.1"/></symbol>
   <symbol id="i-fill" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 12 11 5l8 8-7 7z"/><path fill="currentColor" d="M5.5 13.5h12L12 19z" opacity=".55"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M20 16s1.5 1.8 1.5 3a1.5 1.5 0 0 1-3 0c0-1.2 1.5-3 1.5-3z"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M5 6h14M8 12h8M11 18h2"/><circle cx="9" cy="6" r="1.8" fill="currentColor"/><circle cx="14" cy="12" r="1.8" fill="currentColor"/></symbol>
+  <symbol id="i-bake" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/><path fill="currentColor" d="M12 4a8 8 0 0 1 0 16z" opacity=".55"/></symbol>
   <symbol id="i-save" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M5 4h11l4 4v12H4V5a1 1 0 0 1 1-1zM8 4v5h7V4M8 20v-6h8v6"/></symbol>
 </svg>
 
@@ -128,6 +130,7 @@
         <span>
           <button class="icon-btn" id="layer-add" title="Add paint layer"><svg><use href="#i-plus"/></svg></button>
           <button class="icon-btn" id="layer-add-fill" title="Add fill layer"><svg><use href="#i-fill"/></svg></button>
+          <button class="icon-btn" id="layer-add-filter" title="Add filter layer (adjusts everything below)"><svg><use href="#i-filter"/></svg></button>
           <button class="icon-btn" id="layer-delete" title="Delete layer"><svg><use href="#i-trash"/></svg></button>
         </span>
       </h2>
@@ -166,6 +169,28 @@
       <div class="channel"><input type="checkbox" id="f-use-metal" checked aria-label="Fill metallic"><label for="f-metal">Metallic</label><input id="f-metal" type="range" min="0" max="1" step="0.01" value="0"><output for="f-metal">0.00</output></div>
       <div class="channel"><input type="checkbox" id="f-use-height" aria-label="Fill height"><label for="f-height">Height</label><input id="f-height" type="range" min="0" max="1" step="0.01" value="0.5"><output for="f-height">0.50</output></div>
       <div class="row"><label for="f-opacity">Fill amount</label><input id="f-opacity" type="range" min="0" max="1" step="0.01" value="1"><output for="f-opacity">1.00</output></div>
+      <div class="row"><label for="f-gen">Generator</label><select id="f-gen">
+        <option value="none">None</option><option value="cavity">Cavity dirt (AO)</option><option value="edges">Edge wear (curvature)</option><option value="thin">Thin areas (thickness)</option><option value="top">From top (position)</option>
+      </select><output></output></div>
+      <div class="row"><label for="f-glevel">Level</label><input id="f-glevel" type="range" min="0" max="1" step="0.01" value="0.5"><output for="f-glevel">0.50</output></div>
+      <div class="row"><label for="f-gsoft">Softness</label><input id="f-gsoft" type="range" min="0.01" max="0.5" step="0.01" value="0.1"><output for="f-gsoft">0.10</output></div>
+      <label class="check"><input type="checkbox" id="f-ginvert">Invert generator</label>
+    </section>
+    <section class="section" id="filter-section" aria-disabled="true">
+      <h2>Filter layer</h2>
+      <div class="row"><label for="x-bright">Brightness</label><input id="x-bright" type="range" min="-0.5" max="0.5" step="0.01" value="0"><output for="x-bright">0.00</output></div>
+      <div class="row"><label for="x-contrast">Contrast</label><input id="x-contrast" type="range" min="-1" max="1" step="0.01" value="0"><output for="x-contrast">0.00</output></div>
+      <div class="row"><label for="x-hue">Hue</label><input id="x-hue" type="range" min="-180" max="180" step="1" value="0"><output for="x-hue">0</output></div>
+      <div class="row"><label for="x-sat">Saturation</label><input id="x-sat" type="range" min="0" max="2" step="0.01" value="1"><output for="x-sat">1.00</output></div>
+      <div class="row"><label for="x-gamma">Gamma</label><input id="x-gamma" type="range" min="0.2" max="3" step="0.01" value="1"><output for="x-gamma">1.00</output></div>
+      <div class="row"><label for="x-rough">Roughness +</label><input id="x-rough" type="range" min="-1" max="1" step="0.01" value="0"><output for="x-rough">0.00</output></div>
+      <div class="row"><label for="x-metal">Metallic +</label><input id="x-metal" type="range" min="-1" max="1" step="0.01" value="0"><output for="x-metal">0.00</output></div>
+    </section>
+    <section class="section">
+      <h2>Baking</h2>
+      <div class="row"><label for="k-dirs">Samples</label><select id="k-dirs"><option value="32">32 directions</option><option value="64" selected>64 directions</option><option value="128">128 directions</option></select><output></output></div>
+      <button class="btn" id="k-bake" style="width:100%;justify-content:center"><svg><use href="#i-bake"/></svg>Bake AO, curvature, thickness, position, normal</button>
+      <p class="check" id="k-state" style="min-height:28px;margin:6px 0 0">Not baked</p>
     </section>
     <section class="section">
       <h2>Base material</h2>

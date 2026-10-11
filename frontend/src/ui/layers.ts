@@ -4,7 +4,7 @@ export interface LayerInfo {
   visible: boolean;
   opacity: number;
   blend: string;
-  kind?: 'paint' | 'fill';
+  kind?: 'paint' | 'fill' | 'filter';
   mask?: boolean;
 }
 
@@ -56,7 +56,7 @@ export class LayerList {
       const row = this.rows.get(layer.id) ?? this.create(layer);
       row.layer = layer;
       if (row.name.firstChild?.textContent !== layer.name) row.name.firstChild!.textContent = layer.name;
-      const kind = `${layer.kind === 'fill' ? 'fill' : 'paint'}${layer.mask ? ' + mask' : ''}`;
+      const kind = `${layer.kind ?? 'paint'}${layer.mask ? ' + mask' : ''}`;
       if (row.kind.textContent !== kind) row.kind.textContent = kind;
       const eye = layer.visible ? '#i-eye' : '#i-eye-off';
       if (row.eye.getAttribute('href') !== eye) row.eye.setAttribute('href', eye);
