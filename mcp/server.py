@@ -249,21 +249,51 @@ def formsurface_save_smart_material(name: str) -> dict:
 
 
 @server.tool()
-def formsurface_apply_smart_mask(layer_id: int, name: Literal["Edge wear", "Cavity dirt", "Dust from top", "Thin parts", "Protect edges"]) -> dict:
-    """Apply a smart mask preset (a generator setup) to a fill layer."""
+def formsurface_apply_smart_mask(layer_id: int, name: Annotated[str, Field(min_length=1, max_length=80)]) -> dict:
+    """Apply a smart mask (a generator setup) by name: the built-in Edge wear, Cavity dirt, Dust from top, Thin parts, Protect edges, Grunge dirt, Metal edge wear and Sun bleached, or one saved with formsurface_save_smart_mask (formsurface_list_smart_materials lists them). A fill layer takes it as its generator; any other layer gets it as a generator mask that follows every bake."""
     return call("smart_mask", {"id": layer_id, "name": name})
+
+
+@server.tool()
+def formsurface_save_smart_mask(layer_id: int, name: Annotated[str, Field(pattern=r"^[A-Za-z0-9 _.-]{1,80}$")]) -> dict:
+    """Save the generator setup of a layer (a fill layer's generator, or a generator mask from formsurface_mask_source) as a named smart mask in the workspace library, so it can be applied to other layers and models. Built-in names cannot be reused."""
+    return call("save_smart_mask", {"id": layer_id, "name": name})
+
+
+GeneratorName = Literal["none", "cavity", "edges", "thin", "top", "light", "position", "noise", "mask_builder", "dirt", "metal_edge_wear"]
 
 
 @server.tool()
 def formsurface_set_generator(
     layer_id: int,
-    generator: Literal["none", "cavity", "edges", "thin", "top"],
+    generator: GeneratorName,
     level: Unit = 0.5,
     softness: Annotated[float, Field(ge=0.001, le=0.5)] = 0.1,
     invert: bool = False,
+    noise: Unit | None = None,
+    noise_scale: Annotated[float, Field(ge=0.1, le=64)] | None = None,
+    direction: Annotated[list[float], Field(min_length=3, max_length=3)] | None = None,
+    builder_ao: Unit | None = None,
+    builder_curvature: Unit | None = None,
+    builder_noise: Unit | None = None,
 ) -> dict:
-    """Drive where a fill layer shows from baked maps: cavity puts it in occluded crevices (dirt), edges on convex curvature (wear), thin on thin parts, top fades it from the top of the mesh down. level moves the threshold, softness widens the transition. Bake first for cavity, edges and thin."""
-    return call("set_fill", {"id": layer_id, "settings": {"generator": generator, "generator_level": level, "generator_softness": softness, "generator_invert": invert}})
+    """Drive where a fill layer shows. From baked maps: cavity (occluded crevices, dirt), edges (convex curvature, wear), thin (thickness); dirt and metal_edge_wear are cavity and edges broken up with grunge noise. From the mesh alone: top (fades from the top down), position (gradient along direction), light (faces turned toward direction, x y z in mesh space), noise (3D noise at noise_scale). mask_builder mixes cavity, curvature and noise by the builder weights. noise breaks up any generator's edge. level moves the threshold, softness widens the transition. Bake first for the baked-map generators."""
+    settings = {"generator": generator, "generator_level": level, "generator_softness": softness, "generator_invert": invert}
+    settings.update(drop_none(generator_noise=noise, noise_scale=noise_scale, generator_direction=direction, builder_ao=builder_ao, builder_curvature=builder_curvature, builder_noise=builder_noise))
+    return call("set_fill", {"id": layer_id, "settings": settings})
+
+
+@server.tool()
+def formsurface_set_environment(
+    file: Annotated[str, Field(pattern=r"^[A-Za-z0-9 _.-]{1,80}\.hdr$")] | None = None,
+    studio: bool = False,
+    rotation_degrees: Annotated[float, Field(ge=-180, le=180)] | None = None,
+    blur: Unit | None = None,
+    background: bool | None = None,
+    exposure: Annotated[float, Field(ge=0.2, le=3)] | None = None,
+) -> dict:
+    """Light the viewport with an HDR environment: file is a Radiance .hdr (equirectangular) in the workspace environments folder; studio true returns to the built-in sky and two lights. rotation_degrees turns the environment around the vertical axis, blur softens the background (lighting is unchanged), background shows or hides it behind the model, exposure scales everything. Only the viewport changes, never the exported maps."""
+    return call("environment", drop_none(file=file, studio=studio or None, rotation_degrees=rotation_degrees, blur=blur, background=background, exposure=exposure), timeout=120)
 
 
 @server.tool()
@@ -407,7 +437,7 @@ def formsurface_uv_tiles(on: bool | None = None) -> dict:
 @server.tool()
 def formsurface_mask_source(
     layer_id: int,
-    source: Literal["cavity", "edges", "thin", "top", "id_color"],
+    source: Literal["cavity", "edges", "thin", "top", "light", "position", "noise", "mask_builder", "dirt", "metal_edge_wear", "id_color"],
     color: Annotated[str | None, Field(pattern=r"^#[0-9a-fA-F]{6}$")] = None,
     x: Annotated[float | None, Field(ge=0, le=1)] = None,
     y: Annotated[float | None, Field(ge=0, le=1)] = None,
