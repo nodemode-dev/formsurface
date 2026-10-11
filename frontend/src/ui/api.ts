@@ -22,14 +22,14 @@ export const api = {
 
   async saveMaps(stem: string, maps: Map<string, Blob>): Promise<string> {
     const form = new FormData();
-    for (const [channel, blob] of maps) form.append('maps', blob, `${stem}_${channel}.png`);
+    for (const [file, blob] of maps) form.append('maps', blob, `${stem}_${file}`);
     return (await post(`/api/exports/${encodeURIComponent(stem)}`, form)).folder;
   },
 
   async saveProject(name: string, document: unknown, maps: Map<string, Blob>): Promise<string> {
     const form = new FormData();
     form.append('document', JSON.stringify(document));
-    for (const [channel, blob] of maps) form.append('maps', blob, `${channel}.png`);
+    for (const [file, blob] of maps) form.append('maps', blob, file);
     return (await post(`/api/projects/${encodeURIComponent(name)}`, form)).folder;
   },
 };

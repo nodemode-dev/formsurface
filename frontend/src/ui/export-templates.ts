@@ -71,7 +71,7 @@ export function validateMaps(value: unknown): MapSpec[] {
   });
 }
 
-export type Pixels = Uint8Array | Uint16Array;
+export type Pixels = Uint8Array | Uint16Array | Float32Array;
 
 const HALF = (() => {
   const table = new Float32Array(65536);
@@ -94,8 +94,19 @@ export function halfToUnit16(bytes: Uint8Array): Uint16Array {
   return out;
 }
 
+export function halfToFloat(bytes: Uint8Array): Float32Array {
+  const halves = new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
+  const out = new Float32Array(halves.length);
+  for (let i = 0; i < halves.length; i++) out[i] = HALF[halves[i]];
+  return out;
+}
+
+export function emptyPixels(max: number, length: number): Pixels {
+  return max === 255 ? new Uint8Array(length) : max === 65535 ? new Uint16Array(length) : new Float32Array(length);
+}
+
 export function pack(map: MapSpec, channels: Map<number, Pixels>, size: number, max = 255): Pixels {
-  const out = max === 255 ? new Uint8Array(size * size * 4) : new Uint16Array(size * size * 4);
+  const out = emptyPixels(max, size * size * 4);
   const read = (source: Source | undefined, i: number, fallback: number): number => {
     if (!source) return fallback;
     if (source === 'one') return max;
@@ -147,7 +158,7 @@ function chunk(type: string, data: Uint8Array): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-export async function encodePng(rgba: Pixels, width: number, height: number, alpha: boolean): Promise<Blob> {
+export async function encodePng(rgba: Uint8Array | Uint16Array, width: number, height: number, alpha: boolean): Promise<Blob> {
   const channels = alpha ? 4 : 3;
   const depth = rgba instanceof Uint16Array ? 16 : 8;
   const bytesPer = depth / 8;

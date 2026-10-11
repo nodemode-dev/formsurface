@@ -4,7 +4,10 @@ import type { BakeJob } from './engine/bake-worker';
 import { VERSION } from './version';
 import { LayerList, type LayerInfo } from './ui/layers';
 import { TextureSetList, type TextureSetInfo } from './ui/sets';
-import { TEMPLATES, encodePng, halfToUnit16, pack, sourcesOf, validateMaps, type MapSpec, type Pixels } from './ui/export-templates';
+import { TEMPLATES, halfToFloat, halfToUnit16, pack, sourcesOf, validateMaps, type MapSpec, type Pixels, type Template } from './ui/export-templates';
+import { FORMAT_ALPHA, FORMAT_DEPTHS, checkFormat, encodeImage, gammaToLinear, sampleMax, type Format } from './ui/image-formats';
+import { PADDING_MODES, applyPadding, nearestSource, uvMask, type Padding, type PaddingMode } from './ui/padding';
+import { TemplateEditor, loadTemplates, saveTemplate } from './ui/template-editor';
 import { api } from './ui/api';
 import { AgentLink } from './ui/agent-link';
 import { BUILT_IN_MATERIALS, SMART_MASKS, saveMaterial, savedMaterials, type SmartMaterial } from './ui/smart';
@@ -42,6 +45,11 @@ function num(id: string): number {
 
 function checked(id: string): boolean {
   return $<HTMLInputElement>(id).checked;
+}
+
+function hexColor(v: string): [number, number, number] {
+  if (!/^#[0-9a-fA-F]{6}$/.test(v)) throw new Error('Colors are #rrggbb');
+  return [1, 3, 5].map((i) => Math.pow(parseInt(v.slice(i, i + 2), 16) / 255, 2.2)) as [number, number, number];
 }
 
 function hex(id: string): [number, number, number] {
@@ -683,7 +691,7 @@ async function exportMask(id: number, name: string): Promise<string> {
   const e = requireEngine();
   const size = e.texture_size();
   const blob = await pngOf(await (e.export_layer_mask(id) as Promise<Uint8Array>), size);
-  if (await api.alive()) return api.saveMaps(name, new Map([[`mask_${id}`, blob]]));
+  if (await api.alive()) return api.saveMaps(name, new Map([[`mask_${id}.png`, blob]]));
   downloadBlob(blob, `${name}_mask_${id}.png`);
   return 'your downloads';
 }
@@ -806,14 +814,56 @@ async function refreshLibrary(): Promise<void> {
   fillOption($<HTMLSelectElement>('sm-list'), library.map((m) => m.name));
 }
 fillOption($<HTMLSelectElement>('sm-mask'), Object.keys(SMART_MASKS));
-for (const template of TEMPLATES) {
-  const option = document.createElement('option');
-  option.value = template.name;
-  option.textContent = template.label;
-  $<HTMLSelectElement>('x-template').appendChild(option);
+let savedTemplates: Template[] = [];
+function addTemplateOption(template: Template): void {
+  const list = $<HTMLSelectElement>('x-template');
+  if ([...list.options].some((o) => o.value === template.name)) return;
+  list.add(new Option(TEMPLATES.includes(template) ? template.label : `${template.label} (saved)`, template.name));
 }
+for (const template of TEMPLATES) addTemplateOption(template);
+async function refreshTemplates(select?: string): Promise<void> {
+  savedTemplates = await loadTemplates();
+  for (const template of savedTemplates) addTemplateOption(template);
+  if (select) { $<HTMLSelectElement>('x-template').value = select; describeTemplate(); }
+}
+const templateEditor = new TemplateEditor($('te-maps'));
+$('te-add').addEventListener('click', () => { try { templateEditor.addMap(); } catch (error) { status(error instanceof Error ? error.message : String(error), true); } });
+$('te-load').addEventListener('click', () => {
+  const template = allTemplates().find((t) => t.name === sel('x-template'));
+  if (!template || !template.maps.length) { status('Pick a packed template (not separate PBR maps) to start from', true); return; }
+  templateEditor.load(template);
+  $<HTMLInputElement>('te-name').value = TEMPLATES.includes(template) ? `${template.name}_custom` : template.name;
+});
+$('te-save').addEventListener('click', async () => {
+  try {
+    const name = $<HTMLInputElement>('te-name').value.trim();
+    const template = { name, label: name, maps: validateMaps(templateEditor.maps()) };
+    if (TEMPLATES.some((t) => t.name === name)) throw new Error(`${name} is a built-in template; choose another name`);
+    const file = await saveTemplate(template);
+    await refreshTemplates(name);
+    status(`Template ${name} saved to ${file}`);
+  } catch (error) {
+    status(error instanceof Error ? error.message : String(error), true);
+  }
+});
+void refreshTemplates();
+function syncDepths(): void {
+  const format = sel('x-format') as Format;
+  const allowed = FORMAT_DEPTHS[format] ?? [8];
+  const depth = $<HTMLSelectElement>('x-depth');
+  for (const option of depth.options) option.disabled = !allowed.includes(Number(option.value));
+  if (!allowed.includes(Number(depth.value))) depth.value = String(allowed[allowed.length > 1 && allowed.includes(16) ? allowed.indexOf(16) : 0]);
+  const transparent = $<HTMLSelectElement>('x-pad').querySelector<HTMLOptionElement>('option[value="transparent"]')!;
+  transparent.disabled = !FORMAT_ALPHA[format];
+  if (transparent.disabled && sel('x-pad') === 'transparent') $<HTMLSelectElement>('x-pad').value = 'infinite';
+  $<HTMLInputElement>('x-pad-width').disabled = sel('x-pad') === 'infinite';
+}
+$('x-format').addEventListener('change', syncDepths);
+$('x-pad').addEventListener('change', syncDepths);
+$('x-pad-width').addEventListener('input', () => setOutput('x-pad-width'));
+syncDepths();
 function describeTemplate(): void {
-  const template = TEMPLATES.find((t) => t.name === sel('x-template'));
+  const template = allTemplates().find((t) => t.name === sel('x-template'));
   $('x-maps').textContent = !template ? '' : template.maps.length
     ? `Writes ${template.maps.map((m) => m.suffix).join(', ')} per texture set; AO is white until baked.`
     : 'Writes basecolor, roughness, metallic, height and normal per texture set, plus every baked map.';
@@ -1021,39 +1071,64 @@ async function pngOf(bytes: Uint8Array, size: number): Promise<Blob> {
   return surface.convertToBlob({ type: 'image/png' });
 }
 
-async function channelPixels(e: Engine, channel: number, wide: boolean): Promise<Pixels> {
-  return wide ? halfToUnit16(await e.export_channel_wide(channel) as Uint8Array) : await e.export_channel(channel) as Uint8Array;
+async function channelPixels(e: Engine, channel: number, max: number): Promise<Pixels> {
+  if (max === 255) return await e.export_channel(channel) as Uint8Array;
+  const raw = await e.export_channel_wide(channel) as Uint8Array;
+  return max === 65535 ? halfToUnit16(raw) : halfToFloat(raw);
 }
 
-async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], depth = Number(sel('x-depth'))): Promise<Map<string, Blob>> {
-  const wide = depth === 16;
+interface ExportChoice {
+  format: Format;
+  depth: number;
+  padding: Padding;
+}
+
+function exportChoice(format = sel('x-format'), depth = Number(sel('x-depth')), mode = sel('x-pad'), width = num('x-pad-width'), color = hex('x-pad-color')): ExportChoice {
+  const checked = checkFormat(format, depth);
+  if (!PADDING_MODES.includes(mode as PaddingMode)) throw new Error(`padding is one of ${PADDING_MODES.join(', ')}`);
+  if (mode === 'transparent' && !FORMAT_ALPHA[checked]) throw new Error(`${checked.toUpperCase()} has no alpha channel, so transparent padding cannot be written; choose infinite, color or diffusion`);
+  const gamma = color.map((v) => Math.pow(v, 1 / 2.2)) as [number, number, number];
+  return { format: checked, depth, padding: { mode: mode as PaddingMode, width: Math.max(0, Math.min(256, Math.round(width))), color: gamma } };
+}
+
+function allTemplates(): Template[] {
+  return [...TEMPLATES, ...savedTemplates.filter((t) => !TEMPLATES.some((b) => b.name === t.name))];
+}
+
+async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], choice: ExportChoice = exportChoice()): Promise<Map<string, Blob>> {
+  const { format, depth, padding } = choice;
+  const max = sampleMax(format, depth);
   const maps = new Map<string, Blob>();
   if (!engine) return maps;
   const e = engine;
-  const template = custom ? { name: 'custom', label: 'Custom', maps: custom } : TEMPLATES.find((t) => t.name === templateName);
-  if (!template) throw new Error(`Unknown export template ${templateName}. Templates: ${TEMPLATES.map((t) => t.name).join(', ')}`);
+  const template = custom ? { name: 'custom', label: 'Custom', maps: custom } : allTemplates().find((t) => t.name === templateName);
+  if (!template) throw new Error(`Unknown export template ${templateName}. Templates: ${allTemplates().map((t) => t.name).join(', ')}`);
   const size = e.texture_size();
   const sets = textureSets();
   const original = e.active_texture_set();
+  const write = async (name: string, px: Pixels, alpha: boolean, linearize: boolean, src: Int32Array) => {
+    const transparent = applyPadding(px, size, src, padding, max);
+    if (linearize && px instanceof Float32Array) gammaToLinear(px);
+    maps.set(`${name}.${format}`, await encodeImage(format, px, size, size, alpha || transparent, depth));
+  };
   try {
     for (const set of sets) {
       if (!e.select_texture_set(set.index)) throw new Error('Finish the stroke before exporting');
       const prefix = sets.length > 1 ? `${set.material.replace(/[^A-Za-z0-9_-]/g, '_')}_` : '';
       const suffix = set.tiled ? `.${set.udim}` : '';
+      const [, , uvs, indices] = e.texture_set_mesh(set.index) as [Float32Array, Float32Array, Float32Array, Uint32Array, number];
+      const src = nearestSource(uvMask(uvs, indices, size), size, padding.mode === 'infinite' ? Infinity : padding.width);
       if (template.maps.length) {
         const channels = new Map<number, Pixels>();
         for (const c of sourcesOf(template.maps)) {
           if (c >= 5 && !e.is_baked()) continue;
-          channels.set(c, await channelPixels(e, c, wide));
+          channels.set(c, await channelPixels(e, c, max));
         }
-        for (const map of template.maps) maps.set(`${prefix}${map.suffix}${suffix}`, await encodePng(pack(map, channels, size, wide ? 65535 : 255), size, size, !!map.a));
+        for (const map of template.maps) await write(`${prefix}${map.suffix}${suffix}`, pack(map, channels, size, max), !!map.a, map.rgb === 'basecolor', src);
         continue;
       }
       const wanted = [0, 1, 2, 3, 4, ...(e.is_baked() ? [5, 6, 7, 8, 9] : []), ...(e.is_high_baked() ? [10, 11] : [])];
-      for (const i of wanted) {
-        const pixels = await channelPixels(e, i, wide);
-        maps.set(`${prefix}${CHANNELS[i]}${suffix}`, wide ? await encodePng(pixels, size, size, false) : await pngOf(pixels as Uint8Array, size));
-      }
+      for (const i of wanted) await write(`${prefix}${CHANNELS[i]}${suffix}`, await channelPixels(e, i, max), false, i === 0, src);
     }
   } finally {
     e.select_texture_set(original);
@@ -1074,7 +1149,7 @@ $('export').addEventListener('click', async () => {
     for (const [channel, blob] of maps) {
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `${stem}_${channel}.png`;
+      link.download = `${stem}_${channel}`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(link.href), 4000);
     }
@@ -1432,14 +1507,23 @@ const agentLink = new AgentLink({
   undo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().undo()) n++; return { undone: n }; },
   redo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().redo()) n++; return { redone: n }; },
   screenshot: async () => ({ png_base64: await blobBase64(await viewportPng()) }),
-  export: async ({ name, template, maps: custom, bit_depth }) => {
-    const depth = bit_depth === undefined || bit_depth === null ? Number(sel('x-depth')) : Number(bit_depth);
-    if (depth !== 8 && depth !== 16) throw new Error('bit_depth is 8 or 16');
-    const maps = await renderMaps(template ? String(template) : sel('x-template'), custom ? validateMaps(custom) : undefined, depth);
+  export: async ({ name, template, maps: custom, bit_depth, format, padding, padding_width, padding_color }) => {
+    const given = (v: unknown) => v !== undefined && v !== null;
+    const choice = exportChoice(given(format) ? String(format) : sel('x-format'), given(bit_depth) ? Number(bit_depth) : Number(sel('x-depth')),
+      given(padding) ? String(padding) : sel('x-pad'), given(padding_width) ? Number(padding_width) : num('x-pad-width'),
+      given(padding_color) ? hexColor(String(padding_color)) : hex('x-pad-color'));
+    const maps = await renderMaps(template ? String(template) : sel('x-template'), custom ? validateMaps(custom) : undefined, choice);
     const folder = await api.saveMaps(String(name || meshName.replace(/\.[^.]+$/, '')), maps);
-    return { folder, template: custom ? 'custom' : template ?? sel('x-template'), bit_depth: depth, maps: [...maps.keys()] };
+    return { folder, template: custom ? 'custom' : template ?? sel('x-template'), format: choice.format, bit_depth: choice.depth, padding: choice.padding.mode, padding_width: choice.padding.width, maps: [...maps.keys()] };
   },
-  export_templates: () => ({ templates: TEMPLATES.map((t) => ({ name: t.name, label: t.label, maps: t.maps })) }),
+  export_templates: () => ({ templates: allTemplates().map((t) => ({ name: t.name, label: t.label, maps: t.maps, saved: !TEMPLATES.includes(t) })) }),
+  save_export_template: async ({ name, label, maps: list }) => {
+    const template = { name: String(name ?? ''), label: String(label || name || ''), maps: validateMaps(list) };
+    if (TEMPLATES.some((t) => t.name === template.name)) throw new Error(`${template.name} is a built-in template; choose another name`);
+    const file = await saveTemplate(template);
+    await refreshTemplates(template.name);
+    return { file, templates: allTemplates().map((t) => t.name) };
+  },
 }, (state) => {
   $('agent-link').setAttribute('aria-pressed', String(state !== 'off'));
   $('agent-label').textContent = state === 'linked' ? 'Agent link on' : state === 'waiting' ? 'Agent link wait' : 'Agent link off';

@@ -265,8 +265,19 @@
     <section class="section">
       <h2>Export</h2>
       <div class="row" style="grid-template-columns:84px 1fr"><label for="x-template">Template</label><select id="x-template"></select></div>
-      <div class="row" style="grid-template-columns:84px 1fr"><label for="x-depth">Bit depth</label><select id="x-depth"><option value="8">8-bit PNG</option><option value="16">16-bit PNG (smooth height and normals)</option></select></div>
+      <div class="row" style="grid-template-columns:84px 1fr"><label for="x-format">Format</label><select id="x-format"><option value="png" selected>PNG</option><option value="tif">TIFF</option><option value="exr">OpenEXR</option><option value="hdr">Radiance HDR</option><option value="jpg">JPEG</option><option value="psd">Photoshop PSD</option></select></div>
+      <div class="row" style="grid-template-columns:84px 1fr"><label for="x-depth">Bit depth</label><select id="x-depth"><option value="8">8-bit</option><option value="16">16-bit (half float in EXR)</option><option value="32">32-bit float</option></select></div>
+      <div class="row" style="grid-template-columns:84px 1fr"><label for="x-pad">Padding</label><select id="x-pad"><option value="infinite" selected>Dilation infinite</option><option value="transparent">Dilation + transparent</option><option value="color">Dilation + color</option><option value="diffusion">Dilation + diffusion</option></select></div>
+      <div class="row"><label for="x-pad-width">Dilation width</label><input id="x-pad-width" type="range" min="0" max="64" step="1" value="8"><output for="x-pad-width">8</output></div>
+      <div class="row" style="grid-template-columns:84px 1fr"><label for="x-pad-color">Pad color</label><input id="x-pad-color" type="color" value="#000000"></div>
       <p class="check" id="x-maps" style="min-height:42px;margin:6px 0 0"></p>
+      <details class="te">
+        <summary>Edit templates</summary>
+        <div class="row" style="grid-template-columns:84px 1fr"><label for="te-name">Name</label><input id="te-name" type="text" maxlength="80" placeholder="my_engine" style="min-width:0"></div>
+        <div class="row te-head" style="grid-template-columns:minmax(0,1.3fr) repeat(4, minmax(0,1fr)) 24px;gap:4px"><span>Suffix</span><span>R/RGB</span><span>G</span><span>B</span><span>A</span><span></span></div>
+        <div id="te-maps"></div>
+        <div class="row" style="grid-template-columns:1fr 1fr 1fr"><button class="btn" id="te-load" style="justify-content:center" title="Copy the selected template's maps here">From selected</button><button class="btn" id="te-add" style="justify-content:center">Add map</button><button class="btn" id="te-save" style="justify-content:center" title="Save to the workspace library; it then appears in the Template list">Save</button></div>
+      </details>
       <button class="btn" id="x-mesh" style="width:100%;justify-content:center" title="Write the mesh as OBJ with its UDIM UVs, normals and one group per texture set (triangulated)"><svg><use href="#i-export"/></svg>Export mesh (OBJ)</button>
     </section>
   </aside>
