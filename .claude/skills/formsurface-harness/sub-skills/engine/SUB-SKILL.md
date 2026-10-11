@@ -53,6 +53,10 @@ A stamp is 16 floats: center and world radius, normal and a mirrored flag, tange
 
 `LayerInfo.parent` names the containing folder (0 is the top level). `fs_core::tree_order` keeps the flat list so each folder's contents sit directly below it; every structural change ends in `Engine::normalize`, which also calls `Gpu::reorder`, because `composite` zips infos and GPU layers by index. Folders are passthrough: they are skipped as leaves, and each leaf takes the product of its ancestors' opacity, is skipped when any ancestor is hidden, and when ancestors carry masks gets one mask multiplied in `group_mask` by MASK_MUL (blend src Dst, dst Zero). A folder blend mode is not applied. Folders own a layer set only for their mask.
 
+## Polygon fill, 16-bit export, bake worker (v0.9.0)
+
+`fs_core::regions::select` picks triangles inside the active set's range: Triangle, Polygon (edge neighbours whose face normal is within 0.9995 of the seed's), Mesh (shared welded positions, so UV seams do not split it) and UvChunk (shared vertex indices, which three.js splits at UV seams). `Gpu::mask_triangles` draws them with the COVERAGE shader into the stroke mask, then the normal apply runs, so fills honour stroke opacity, eraser, masks and undo. `export(.., wide)` renders EXPORT into Rgba16Float and reads 8 bytes per texel; the editor turns halves into 16-bit values. `bake_high_detached` takes plain arrays so the module Worker in `frontend/src/engine/bake-worker.ts` can run it; `apply_high_bake(index, ..)` stores the maps in any set without switching to it.
+
 ## Next capabilities, in plan order
 
-Engine and bakes in a Worker; blur and sharpen filters; isolated folder blending; a shared layer stack across UDIM tiles (Painter's UV tiles workflow); match-by-name and bent normal baking; tile paging for 4K and 8K; color management; 16-bit export.
+Quick mask; blur and sharpen filters; isolated folder blending; the whole engine in a Worker with OffscreenCanvas; a shared layer stack across UDIM tiles (Painter's UV tiles workflow); match-by-name and bent normal baking; tile paging for 4K and 8K; color management; EXR and 32-bit export.

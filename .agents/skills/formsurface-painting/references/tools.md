@@ -1,4 +1,4 @@
-# FormSurface MCP tools (server 0.8.0)
+# FormSurface MCP tools (server 0.9.0)
 
 When this table and the server disagree, the server wins and this file is stale.
 
@@ -35,6 +35,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_add_folder` | name, layer_ids to move inside | folder id, moved ids, layers |
 | `formsurface_set_layer_folder` | layer_id, folder_id (0 for top level) | layers |
 | `formsurface_list_export_templates` | none | templates with their maps and packed sources |
-| `formsurface_export_maps` | name, template (pbr, gltf, unreal, unity_hdrp, unity_urp), custom_maps (suffix plus rgb or r, g, b, a sources) | folder, template and map names; every texture set is exported, as name_material_suffix (plus .udim for tiled materials) when there is more than one |
+| `formsurface_polygon_fill` | x, y in 0 to 1, mode (triangle, polygon, mesh, uv_chunk) | filled triangle count, mode, layer |
+| `formsurface_export_maps` | name, template (pbr, gltf, unreal, unity_hdrp, unity_urp), custom_maps (suffix plus rgb or r, g, b, a sources), bit_depth (8 or 16) | folder, template and map names; every texture set is exported, as name_material_suffix (plus .udim for tiled materials) when there is more than one |
 
-Errors arrive as text naming the fix: no editor linked (turn on Agent link), service not running (run ./formsurface), or a timeout.
+Errors arrive as text after "Error executing tool name:" and name the fix: no editor linked (turn on Agent link), service not running (run ./formsurface), or a timeout.
