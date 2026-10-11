@@ -2,9 +2,9 @@
 
 Paint directly on 3D models, layer by layer, the way Substance 3D Painter works. Part of the Form family.
 
-![version](https://img.shields.io/badge/version-v0.11.0-e0793a) ![engine](https://img.shields.io/badge/engine-Rust%20%2B%20wgpu-555) ![license](https://img.shields.io/badge/license-Apache--2.0-555)
+![version](https://img.shields.io/badge/version-v0.12.0-e0793a) ![engine](https://img.shields.io/badge/engine-Rust%20%2B%20wgpu-555) ![license](https://img.shields.io/badge/license-Apache--2.0-555)
 
-## What works in v0.11.0
+## What works in v0.12.0
 
 - **3D projection painting.** The brush hits the mesh in world space and writes into the UV textures, so strokes keep a constant on-screen size, cross UV seams and do not stretch on distorted islands. Occluded and back-facing surfaces are protected.
 - **GPU engine in Rust.** wgpu running on WebGPU in the browser. Painting, compositing and the viewport never leave the GPU; nothing round-trips through the server while you paint.
@@ -31,7 +31,7 @@ FormSurface ships an MCP server with 41 `formsurface_*` tools that drive the edi
 
 ## Parity
 
-Measured against Substance 3D Painter 12.1.5 on 50 documented capabilities, v0.11.0 scores 23 of 50 (46 percent): the painting core, brush engine, polygon fill, quick mask, fill layers, masks, folders, baking from the mesh and from a high-poly mesh, generators, filter layers, smart materials, texture sets per material, UDIM tiles with one shared stack and engine export presets are real; per-tile resolution, stacked mask effects, color management, EXR and 32-bit export and a full asset library are not built yet. The full page is in the planning sidecar.
+Measured against Substance 3D Painter 12.1.5 on 50 documented capabilities, v0.12.0 scores 24.5 of 50 (49 percent): the painting core, brush engine, polygon fill, clone, quick mask, fill layers, masks, folders, baking from the mesh and from a high-poly mesh, generators, filter layers, smart materials, texture sets per material, UDIM tiles with one shared stack, engine export presets and OBJ mesh export are real; per-tile resolution, stacked mask effects, color management, EXR and 32-bit export and a full asset library are not built yet. The full page is in the planning sidecar.
 
 ## Quick start
 
