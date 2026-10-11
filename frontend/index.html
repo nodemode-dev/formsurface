@@ -162,6 +162,7 @@
         <div class="row"><label for="l-target">Paint into</label><select id="l-target"><option value="layer">Layer</option><option value="mask">Mask</option></select><output></output></div>
         <div class="row"><label for="l-msrc">Mask from</label><select id="l-msrc"><option value="">Choose a source</option><option value="cavity">Cavity (baked AO)</option><option value="edges">Edges (baked curvature)</option><option value="thin">Thin parts</option><option value="top">From top</option><option value="id">ID color (click the mesh)</option><option value="image">Image file</option></select><output></output></div>
         <div class="row" style="grid-template-columns:1fr 1fr"><button class="btn" id="l-flatten" style="justify-content:center" title="Replace every layer of this texture set with one paint layer holding what you see">Flatten stack</button><button class="btn" id="l-mask-export" style="justify-content:center" title="Save the active layer's mask as a PNG">Export mask</button></div>
+        <div class="row"><label for="l-instance">Instance into</label><select id="l-instance" title="Fill and filter layers: put a live copy in another texture set; changes to either update both"><option value="">Choose a texture set</option></select><output></output></div>
         <div class="row"><label for="l-parent">In folder</label><select id="l-parent"><option value="0">None (top level)</option></select><output></output></div>
       </div>
     </section>

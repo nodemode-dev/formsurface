@@ -7,6 +7,7 @@ export interface LayerInfo {
   kind?: 'paint' | 'fill' | 'filter' | 'folder';
   mask?: boolean;
   parent?: number;
+  instance?: boolean;
 }
 
 export function depthOf(layers: LayerInfo[], layer: LayerInfo): number {
@@ -67,7 +68,7 @@ export class LayerList {
       const row = this.rows.get(layer.id) ?? this.create(layer);
       row.layer = layer;
       if (row.name.firstChild?.textContent !== layer.name) row.name.firstChild!.textContent = layer.name;
-      const kind = `${layer.kind ?? 'paint'}${layer.mask ? ' + mask' : ''}`;
+      const kind = `${layer.kind ?? 'paint'}${layer.mask ? ' + mask' : ''}${layer.instance ? ' · instance' : ''}`;
       if (row.kind.textContent !== kind) row.kind.textContent = kind;
       const depth = String(depthOf(layers, layer));
       if (row.root.style.getPropertyValue('--depth') !== depth) row.root.style.setProperty('--depth', depth);

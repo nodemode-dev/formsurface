@@ -114,9 +114,37 @@ function textureSets(): TextureSetInfo[] {
 
 function refreshSets(): void {
   if (!engine) return;
-  setList.render(textureSets(), engine.active_texture_set());
+  const sets = textureSets();
+  const active = engine.active_texture_set();
+  setList.render(sets, active);
   $<HTMLInputElement>('uv-tiles').checked = engine.uv_tiles();
+  const select = $<HTMLSelectElement>('l-instance');
+  const wanted = [['', 'Choose a texture set'], ...sets.filter((s) => s.index !== active).map((s) => [String(s.index), s.name])];
+  if ([...select.options].map((o) => `${o.value}:${o.textContent}`).join('|') !== wanted.map(([v, t]) => `${v}:${t}`).join('|')) {
+    select.replaceChildren(...wanted.map(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; return o; }));
+  }
+  const kind = layers().find((l) => l.id === engine!.active_layer())?.kind;
+  select.disabled = sets.length < 2 || (kind !== 'fill' && kind !== 'filter');
 }
+
+function instanceLayer(id: number, target: number): number {
+  const created = requireEngine().instance_layer(id, target);
+  refreshLayers();
+  return created;
+}
+
+$('l-instance').addEventListener('change', () => {
+  if (!engine) return;
+  const value = sel('l-instance');
+  $<HTMLSelectElement>('l-instance').value = '';
+  if (!value) return;
+  try {
+    instanceLayer(engine.active_layer(), Number(value));
+    status(`Instanced into ${textureSets().find((s) => s.index === Number(value))?.name}: changes to its settings, mask generator, name, opacity or blend now update every copy`);
+  } catch (error) {
+    status(error instanceof Error ? error.message : String(error), true);
+  }
+});
 
 function setUvTiles(on: boolean): void {
   const e = requireEngine();
@@ -1123,6 +1151,12 @@ const agentLink = new AgentLink({
     if (paint_target === 'mask' || paint_target === 'layer') e.set_paint_target(paint_target === 'mask');
     refreshLayers();
     return { layers: layers(), paints_mask: e.paint_target_is_mask() };
+  },
+  instance_layer: ({ id, texture_set }) => {
+    const sets = textureSets();
+    const target = sets.find((s) => s.name === String(texture_set) || s.material === String(texture_set) || s.index === Number(texture_set));
+    if (!target) throw new Error(`No texture set ${texture_set}. Sets: ${sets.map((s) => s.name).join(', ')}`);
+    return { id: instanceLayer(Number(id), target.index), texture_set: target.name };
   },
   export_mesh: async ({ name }) => ({ folder: await exportMesh(name ? String(name) : undefined), format: 'obj' }),
   flatten: ({ name }) => ({ id: flattenStack(String(name || 'Flattened')), layers: layers() }),
