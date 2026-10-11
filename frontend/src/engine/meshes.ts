@@ -11,6 +11,7 @@ export interface FlatMesh {
   parts: Uint32Array;
   materials: Uint32Array;
   materialNames: string[];
+  partNames: string[];
   skipped: number;
 }
 
@@ -23,6 +24,7 @@ function flatten(root: THREE.Object3D, requireUv = true): FlatMesh {
   const parts: number[] = [];
   const materials: number[] = [];
   const materialNames: string[] = [];
+  const partNames: string[] = [];
   const materialId = (material: THREE.Material | undefined, fallback: string): number => {
     const name = (material?.name || fallback).trim();
     let id = materialNames.indexOf(name);
@@ -67,11 +69,12 @@ function flatten(root: THREE.Object3D, requireUv = true): FlatMesh {
       }
     }
     for (let t = 0; t < count; t++) { parts.push(part); materials.push(perTriangle[t]); }
+    partNames.push(mesh.name || mesh.parent?.name || '');
     part++;
   });
   return {
     positions: new Float32Array(positions), normals: new Float32Array(normals), uvs: new Float32Array(uvs), indices: new Uint32Array(indices),
-    parts: new Uint32Array(parts), materials: new Uint32Array(materials), materialNames, skipped,
+    parts: new Uint32Array(parts), materials: new Uint32Array(materials), materialNames, partNames, skipped,
   };
 }
 
@@ -83,7 +86,46 @@ export async function loadHighPoly(name: string, data: ArrayBuffer): Promise<Fla
   throw new Error('Unsupported high-poly format. Use glTF, GLB, OBJ or FBX.');
 }
 
-export function sampleHighPoly(): FlatMesh {
+function bumpySphere(radius: number, x: number, name: string, segments = 192): THREE.Mesh {
+  const geometry = new THREE.SphereGeometry(radius, segments * 2, segments);
+  const pos = geometry.getAttribute('position');
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    v.multiplyScalar(1 + 0.03 * Math.sin(v.x * 30) * Math.sin(v.y * 30) * Math.sin(v.z * 30));
+    pos.setXYZ(i, v.x, v.y, v.z);
+  }
+  geometry.computeVertexNormals();
+  const mesh = new THREE.Mesh(geometry);
+  mesh.position.x = x;
+  mesh.name = name;
+  return mesh;
+}
+
+function samplePair(): FlatMesh {
+  const group = new THREE.Group();
+  for (const [x, name] of [[-0.55, 'left_low'], [0.55, 'right_low']] as const) {
+    const mesh = namedMesh(new THREE.SphereGeometry(0.5, 64, 32), 'pair');
+    mesh.position.x = x;
+    mesh.name = name;
+    if (x > 0) {
+      const uv = mesh.geometry.getAttribute('uv');
+      for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * 0.5 + 0.5);
+    } else {
+      const uv = mesh.geometry.getAttribute('uv');
+      for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) * 0.5);
+    }
+    group.add(mesh);
+  }
+  return flatten(group);
+}
+
+export function sampleHighPoly(kind = 'sphere'): FlatMesh {
+  if (kind === 'pair') {
+    const group = new THREE.Group();
+    group.add(bumpySphere(0.5, -0.55, 'left_high'), bumpySphere(0.5, 0.55, 'right_high'));
+    return flatten(group, false);
+  }
   const group = new THREE.Group();
   for (const half of [0, 1]) {
     const geometry = new THREE.SphereGeometry(1, 384, 192, 0, Math.PI * 2, half * Math.PI / 2, Math.PI / 2);
@@ -136,6 +178,7 @@ function sampleSets(): FlatMesh {
 
 export function sampleMesh(kind: string): FlatMesh {
   if (kind === 'sets') return sampleSets();
+  if (kind === 'pair') return samplePair();
   const geometry =
     kind === 'knot' ? new THREE.TorusKnotGeometry(0.7, 0.24, 360, 48) :
     kind === 'torus' ? new THREE.TorusGeometry(0.8, 0.32, 96, 192) :

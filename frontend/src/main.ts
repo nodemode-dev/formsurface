@@ -759,13 +759,17 @@ async function bakeHigh(): Promise<string> {
   const sets = textureSets();
   let hits = 0;
   let texels = 0;
+  let matchNote = '';
+  if (checked('k-match') && mesh) matchNote = `; ${e.set_match_names(mesh.parts, JSON.stringify(mesh.partNames), JSON.stringify(highMesh.partNames))}`;
+  else e.clear_match_names();
   const started = performance.now();
   try {
     for (const set of sets) {
       const [positions, normals, uvs, indices, size] = e.texture_set_mesh(set.index) as [Float32Array, Float32Array, Float32Array, Uint32Array, number];
       $('k-high-state').textContent = `Baking ${set.name} in the background (${sets.indexOf(set) + 1} of ${sets.length}); you can keep working`;
       const high = { positions: highMesh.positions.slice(), normals: highMesh.normals.slice(), indices: highMesh.indices.slice(), parts: highMesh.parts.slice() };
-      const result = await bakeInWorker({ low: [positions, normals, uvs, indices], high, size, front: num('k-front'), rear: num('k-rear') });
+      const keys = e.texture_set_match_keys(set.index) as Uint32Array[];
+      const result = await bakeInWorker({ low: [positions, normals, uvs, indices], high, size, front: num('k-front'), rear: num('k-rear'), lowKeys: keys[0] ?? new Uint32Array(), highKeys: keys[1] ?? new Uint32Array() });
       if (generation !== meshGeneration || engine !== e) throw new Error('The mesh changed during the bake; bake again');
       e.apply_high_bake(set.index, result.size, result.normal, result.id);
       hits += result.hits;
@@ -776,7 +780,7 @@ async function bakeHigh(): Promise<string> {
     button.disabled = false;
     refreshLayers();
   }
-  const text = `${hits} of ${texels} texels hit the high-poly mesh across ${sets.length} texture set${sets.length === 1 ? '' : 's'} in ${((performance.now() - started) / 1000).toFixed(1)} s, baked in a worker`;
+  const text = `${hits} of ${texels} texels hit the high-poly mesh across ${sets.length} texture set${sets.length === 1 ? '' : 's'} in ${((performance.now() - started) / 1000).toFixed(1)} s, baked in a worker${matchNote}`;
   $('k-high-state').textContent = `Baked normal and ID: ${text}`;
   return text;
 }
@@ -827,6 +831,7 @@ sampleMenu.addEventListener('click', (event) => {
   sampleMenu.hidden = true;
   $('sample-toggle').setAttribute('aria-expanded', 'false');
   applyMesh(sampleMesh(kind), kind);
+  if (kind === 'pair') setHigh(sampleHighPoly('pair'), 'two bumpy spheres (left_high, right_high)');
 });
 document.addEventListener('pointerdown', (event) => {
   if (!sampleMenu.hidden && !(event.target as HTMLElement).closest('.menu')) sampleMenu.hidden = true;
@@ -1005,6 +1010,13 @@ async function blobBase64(blob: Blob): Promise<string> {
 
 const agentLink = new AgentLink({
   status: () => snapshotState(),
+  load_mesh: async ({ file }) => {
+    const name = String(file);
+    const response = await fetch(`/api/meshes/${encodeURIComponent(name)}`);
+    if (!response.ok) throw new Error(`${name} is not in the workspace meshes folder`);
+    applyMesh(await loadMeshFile(new File([await response.arrayBuffer()], name)), name);
+    return snapshotState();
+  },
   load_sample: ({ kind }) => { applyMesh(sampleMesh(String(kind)), String(kind)); return snapshotState(); },
   camera: ({ yaw, pitch, zoom }) => { requireEngine().set_orbit((Number(yaw) * Math.PI) / 180, (Number(pitch) * Math.PI) / 180, Number(zoom ?? 1)); return JSON.parse(requireEngine().camera_json()); },
   brush: (args) => {
@@ -1062,8 +1074,13 @@ const agentLink = new AgentLink({
   smart_apply: async ({ name }) => { await refreshLibrary(); return { layer_ids: applySmartMaterial(String(name)), baked: requireEngine().is_baked(), layers: layers() }; },
   smart_mask: ({ id, name }) => ({ settings: applySmartMask(Number(id), String(name)) }),
   smart_save: async ({ name }) => { const file = await saveMaterial(captureSmartMaterial(String(name))); await refreshLibrary(); return { file }; },
-  bake_high: async ({ file, sample, front, rear }) => {
-    if (sample) {
+  bake_high: async (args) => {
+    const { file, sample, front, rear } = args;
+    if (args.match_by_name !== undefined && args.match_by_name !== null) $<HTMLInputElement>('k-match').checked = Boolean(args.match_by_name);
+    if (sample === 'pair') {
+      applyMesh(sampleMesh('pair'), 'pair');
+      setHigh(sampleHighPoly('pair'), 'two bumpy spheres (left_high, right_high)');
+    } else if (sample) {
       applyMesh(sampleMesh('sphere'), 'sphere');
       setHigh(sampleHighPoly(), 'bumpy sphere (two parts)');
     } else if (file) {

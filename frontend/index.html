@@ -46,6 +46,7 @@
         <button data-sample="torus">Torus</button>
         <button data-sample="capsule">Capsule</button>
         <button data-sample="sets">Figure (2 materials, UDIM 1001 and 1002)</button>
+        <button data-sample="pair">Two spheres with high-poly pair (match by name)</button>
       </div>
     </div>
     <div class="row" style="grid-template-columns:auto 96px;width:auto;gap:6px"><label for="tex-size">Texture</label>
@@ -222,6 +223,7 @@
       </div>
       <div class="row"><label for="k-front">Cage front</label><input id="k-front" type="range" min="0" max="0.2" step="0.001" value="0.05"><output for="k-front">0.05</output></div>
       <div class="row"><label for="k-rear">Cage rear</label><input id="k-rear" type="range" min="0" max="0.2" step="0.001" value="0.05"><output for="k-rear">0.05</output></div>
+      <label class="check" title="Pair low and high parts by mesh name, ignoring _low and _high, so rays never land on a neighbouring part"><input type="checkbox" id="k-match">Match by mesh name (_low / _high)</label>
       <button class="btn" id="k-bake-high" style="width:100%;justify-content:center;margin-top:6px"><svg><use href="#i-bake"/></svg>Bake normal and ID from high-poly</button>
       <p class="check" id="k-high-state" style="min-height:28px;margin:6px 0 0">No high-poly mesh</p>
       <input type="file" id="high-file" accept=".glb,.gltf,.obj,.fbx" hidden>
