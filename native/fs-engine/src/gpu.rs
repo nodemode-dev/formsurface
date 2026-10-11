@@ -41,6 +41,9 @@ pub struct Gpu {
     sampler: wgpu::Sampler,
     camera: wgpu::Buffer,
     stamp_buffer: wgpu::Buffer,
+    clamp_sampler: wgpu::Sampler,
+    alpha_tex: wgpu::Texture,
+    stencil_tex: wgpu::Texture,
     paint_uniform: wgpu::Buffer,
     layer_uniform: wgpu::Buffer,
     export_uniform: wgpu::Buffer,
@@ -94,6 +97,21 @@ fn new_set(device: &wgpu::Device, size: u32) -> Set {
 
 fn new_pair(device: &wgpu::Device, size: u32) -> Pair {
     Pair { color: texture(device, size, LAYER_FORMAT, "composite color"), mat: texture(device, size, LAYER_FORMAT, "composite material") }
+}
+
+fn white_texture(device: &wgpu::Device, queue: &wgpu::Queue) -> wgpu::Texture {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("white"),
+        size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(texture.as_image_copy(), &[255, 255, 255, 255], wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(4), rows_per_image: Some(1) }, wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 });
+    texture
 }
 
 fn depth_texture(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Texture {
@@ -279,7 +297,10 @@ impl Gpu {
                 ..Default::default()
             }),
             camera: uniform("camera", 128),
-            stamp_buffer: uniform("stamps", 32 + 32 * 32),
+            stamp_buffer: uniform("stamps", 64 + 32 * 64),
+            clamp_sampler: device.create_sampler(&wgpu::SamplerDescriptor { mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, ..Default::default() }),
+            alpha_tex: white_texture(&device, &queue),
+            stencil_tex: white_texture(&device, &queue),
             paint_uniform: uniform("paint", 64),
             layer_uniform: uniform("layer", 64),
             export_uniform: uniform("export", 32),
@@ -441,23 +462,57 @@ impl Gpu {
         ok
     }
 
-    pub fn paint(&mut self, stamps: &[[f32; 8]], view_proj: [f32; 16], eye: Vec3, brush: &BrushSettings, channels: &ChannelValues, index: usize) {
+    pub fn set_image(&mut self, stencil: bool, width: u32, height: u32, rgba: &[u8]) -> Result<(), String> {
+        if width == 0 || height == 0 || width > 4096 || height > 4096 || rgba.len() != (width * height * 4) as usize {
+            return Err("Brush images must be RGBA, 1 to 4096 pixels per side".into());
+        }
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(if stencil { "stencil" } else { "brush alpha" }),
+            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(
+            texture.as_image_copy(),
+            rgba,
+            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(width * 4), rows_per_image: Some(height) },
+            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        );
+        if stencil { self.stencil_tex = texture } else { self.alpha_tex = texture }
+        Ok(())
+    }
+
+    pub fn paint(&mut self, stamps: &[[f32; 16]], view_proj: [f32; 16], eye: Vec3, brush: &BrushSettings, channels: &ChannelValues, index: usize) {
         let Some((stroke_index, _)) = self.stroke.as_ref() else { return };
         if *stroke_index != index || self.vertices.is_none() {
             return;
         }
         self.queue.write_buffer(&self.camera, 0, bytemuck::cast_slice(&camera_bytes(view_proj, eye, None, 1.0, 1.0)));
         let depth_view = self.depth.create_view(&wgpu::TextureViewDescriptor { aspect: wgpu::TextureAspect::DepthOnly, ..Default::default() });
-        let group = bind(&self.device, &self.paint_pipe, &[self.camera.as_entire_binding(), self.stamp_buffer.as_entire_binding(), wgpu::BindingResource::TextureView(&depth_view)]);
+        let (alpha_view, stencil_view) = (view_of(&self.alpha_tex), view_of(&self.stencil_tex));
+        let group = bind(&self.device, &self.paint_pipe, &[
+            self.camera.as_entire_binding(),
+            self.stamp_buffer.as_entire_binding(),
+            wgpu::BindingResource::TextureView(&depth_view),
+            wgpu::BindingResource::TextureView(&alpha_view),
+            wgpu::BindingResource::TextureView(&stencil_view),
+            wgpu::BindingResource::Sampler(&self.clamp_sampler),
+        ]);
         let mask_view = view_of(&self.mask);
         for chunk in stamps.chunks(32) {
-            let mut data: Vec<f32> = Vec::with_capacity(8 + 32 * 8);
+            let mut data: Vec<f32> = Vec::with_capacity(16 + 32 * 16);
             data.extend_from_slice(&[f32::from_bits(chunk.len() as u32), 0.0, 0.0, 0.0]);
-            data.extend_from_slice(&[brush.hardness, brush.flow, if brush.backface_culling { 1.0 } else { 0.0 }, 1.0]);
+            data.extend_from_slice(&[brush.hardness, brush.flow, if brush.backface_culling { 1.0 } else { 0.0 }, brush.alignment.code()]);
+            data.extend_from_slice(&[brush.tip.code(), brush.spray_density, if brush.stencil { 1.0 } else { 0.0 }, 0.0]);
+            data.extend_from_slice(&[brush.stencil_scale, brush.stencil_angle.to_radians(), brush.stencil_x, brush.stencil_y]);
             for s in chunk {
                 data.extend_from_slice(s);
             }
-            data.resize(8 + 32 * 8, 0.0);
+            data.resize(16 + 32 * 16, 0.0);
             self.queue.write_buffer(&self.stamp_buffer, 0, bytemuck::cast_slice(&data));
             let mut encoder = self.device.create_command_encoder(&Default::default());
             {

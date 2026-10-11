@@ -107,20 +107,28 @@ struct Camera {
 struct Stamp {
     center: vec4<f32>,
     normal: vec4<f32>,
+    tangent: vec4<f32>,
+    uv: vec4<f32>,
 };
 struct Stamps {
     count: vec4<u32>,
     brush: vec4<f32>,
+    tip: vec4<f32>,
+    stencil: vec4<f32>,
     items: array<Stamp, 32>,
 };
 @group(0) @binding(0) var<uniform> cam: Camera;
 @group(0) @binding(1) var<uniform> stamps: Stamps;
 @group(0) @binding(2) var depth_tex: texture_depth_2d;
+@group(0) @binding(3) var alpha_tex: texture_2d<f32>;
+@group(0) @binding(4) var stencil_tex: texture_2d<f32>;
+@group(0) @binding(5) var clamp_samp: sampler;
 
 struct VOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) world: vec3<f32>,
     @location(1) normal: vec3<f32>,
+    @location(2) uv: vec2<f32>,
 };
 
 @vertex
@@ -129,7 +137,43 @@ fn vs(@location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) uv: vec
     o.clip = vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 0.0, 1.0);
     o.world = p;
     o.normal = n;
+    o.uv = uv;
     return o;
+}
+
+fn to_pixels(world: vec3<f32>, size: vec2<f32>) -> vec2<f32> {
+    let c = cam.view_proj * vec4<f32>(world, 1.0);
+    let n = c.xy / c.w;
+    return vec2<f32>((n.x * 0.5 + 0.5) * size.x, (0.5 - n.y * 0.5) * size.y);
+}
+
+fn rotate2(v: vec2<f32>, a: f32) -> vec2<f32> {
+    let c = cos(a);
+    let s = sin(a);
+    return vec2<f32>(c * v.x + s * v.y, -s * v.x + c * v.y);
+}
+
+fn hash2(p: vec2<f32>) -> f32 {
+    return fract(sin(dot(p, vec2<f32>(127.1, 311.7))) * 43758.5453);
+}
+
+fn tip_shape(l: vec2<f32>, hardness: f32, seed: f32, texel: vec2<f32>) -> f32 {
+    let kind = stamps.tip.x;
+    var d = length(l);
+    if (kind > 0.5 && kind < 1.5) { d = max(abs(l.x), abs(l.y)); }
+    if (d >= 1.0) { return 0.0; }
+    if (kind > 2.5) {
+        return textureSampleLevel(alpha_tex, clamp_samp, l * 0.5 + 0.5, 0.0).r;
+    }
+    var c = 1.0;
+    if (d > hardness && hardness < 1.0) {
+        let t = (1.0 - d) / (1.0 - hardness);
+        c = t * t * (3.0 - 2.0 * t);
+    }
+    if (kind > 1.5) {
+        c = c * step(1.0 - stamps.tip.y, hash2(floor(texel) + vec2<f32>(seed * 17.0, seed * 31.0)));
+    }
+    return c;
 }
 
 @fragment
@@ -138,32 +182,71 @@ fn fs(i: VOut) -> @location(0) vec4<f32> {
     let hardness = stamps.brush.x;
     let flow = stamps.brush.y;
     let cull = stamps.brush.z;
+    let align = stamps.brush.w;
     let clip = cam.view_proj * vec4<f32>(i.world, 1.0);
     let ndc = clip.xyz / clip.w;
     let size = vec2<f32>(textureDimensions(depth_tex));
-    let px = vec2<i32>(i32((ndc.x * 0.5 + 0.5) * size.x), i32((0.5 - ndc.y * 0.5) * size.y));
+    let frag_px = vec2<f32>((ndc.x * 0.5 + 0.5) * size.x, (0.5 - ndc.y * 0.5) * size.y);
+    let px = vec2<i32>(frag_px);
     var visible = false;
     if (px.x >= 0 && px.y >= 0 && px.x < i32(size.x) && px.y < i32(size.y) && clip.w > 0.0) {
         let stored = textureLoad(depth_tex, px, 0);
         visible = ndc.z <= stored + 0.0015;
     }
     let facing = dot(n, normalize(cam.eye.xyz - i.world)) > 0.0;
+    var stencil = 1.0;
+    if (stamps.tip.z > 0.5) {
+        let suv = rotate2(frag_px / size - 0.5 - stamps.stencil.zw, stamps.stencil.y) / max(stamps.stencil.x, 0.01) + 0.5;
+        if (any(suv < vec2<f32>(0.0)) || any(suv > vec2<f32>(1.0))) { stencil = 0.0; } else {
+            stencil = textureSampleLevel(stencil_tex, clamp_samp, suv, 0.0).r;
+        }
+        if (stencil <= 0.0) { discard; }
+    }
+    let texel = i.clip.xy;
     var keep = 1.0;
     for (var k = 0u; k < stamps.count.x; k = k + 1u) {
         let s = stamps.items[k];
         let mirrored = s.normal.w > 0.5;
         if (!mirrored && !visible) { continue; }
         if (!mirrored && cull > 0.5 && !facing) { continue; }
-        if (dot(n, s.normal.xyz) < 0.15) { continue; }
-        let d = distance(i.world, s.center.xyz) / s.center.w;
-        if (d >= 1.0) { continue; }
-        var c = 1.0;
-        if (d > hardness && hardness < 1.0) {
-            let t = (1.0 - d) / (1.0 - hardness);
-            c = t * t * (3.0 - 2.0 * t);
+        if (align < 2.5 && dot(n, s.normal.xyz) < 0.15) { continue; }
+        let r = s.center.w;
+        let off = i.world - s.center.xyz;
+        let t = s.tangent.xyz;
+        let b = cross(s.normal.xyz, t);
+        var l = vec2<f32>(0.0);
+        if (align < 0.5) {
+            if (mirrored) {
+                l = vec2<f32>(dot(off, t), dot(off, b)) / r;
+            } else {
+                let center_px = to_pixels(s.center.xyz, size);
+                let edge_px = to_pixels(s.center.xyz + t * r, size);
+                let r_px = max(distance(center_px, edge_px), 0.5);
+                if (abs(dot(off, s.normal.xyz)) > r * 2.0) { continue; }
+                l = (frag_px - center_px) / r_px;
+                l = vec2<f32>(l.x, -l.y);
+            }
+        } else if (align < 1.5) {
+            let flat_l = vec2<f32>(dot(off, t), dot(off, b));
+            let d3 = length(off) / r;
+            let fl = length(flat_l);
+            if (fl > 1e-6) { l = flat_l / fl * d3; } else { l = vec2<f32>(d3, 0.0); }
+        } else if (align < 2.5) {
+            if (abs(dot(off, s.normal.xyz)) > r) { continue; }
+            l = vec2<f32>(dot(off, t), dot(off, b)) / r;
+        } else if (mirrored) {
+            if (abs(dot(off, s.normal.xyz)) > r) { continue; }
+            l = vec2<f32>(dot(off, t), dot(off, b)) / r;
+        } else {
+            l = (i.uv - s.uv.xy) / max(s.uv.z, 1e-6);
+            l = vec2<f32>(l.x, -l.y);
         }
-        keep = keep * (1.0 - c * flow * stamps.brush.w);
+        l = rotate2(l, s.tangent.w);
+        let c = tip_shape(l, hardness, f32(k) + s.uv.w * 7.0, texel);
+        if (c <= 0.0) { continue; }
+        keep = keep * (1.0 - clamp(c * flow * s.uv.w, 0.0, 1.0));
     }
+    keep = 1.0 - (1.0 - keep) * stencil;
     let a = 1.0 - keep;
     if (a <= 0.0) { discard; }
     return vec4<f32>(a, 0.0, 0.0, a);

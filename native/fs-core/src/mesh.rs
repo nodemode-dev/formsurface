@@ -42,6 +42,15 @@ impl Mesh {
         Ok(Mesh { positions, normals, uvs, indices, center, radius })
     }
 
+    pub fn uv_per_world(&self, triangle: u32) -> f32 {
+        let i = &self.indices[triangle as usize * 3..triangle as usize * 3 + 3];
+        let (a, b, c) = (i[0] as usize, i[1] as usize, i[2] as usize);
+        let world = crate::length(cross(sub(self.positions[b], self.positions[a]), sub(self.positions[c], self.positions[a])));
+        let (ua, ub, uc) = (self.uvs[a], self.uvs[b], self.uvs[c]);
+        let uv = ((ub[0] - ua[0]) * (uc[1] - ua[1]) - (uc[0] - ua[0]) * (ub[1] - ua[1])).abs();
+        if world > 1e-12 && uv > 1e-12 { (uv / world).sqrt() } else { 1.0 / (self.radius * 2.0) }
+    }
+
     pub fn triangle_count(&self) -> usize {
         self.indices.len() / 3
     }

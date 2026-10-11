@@ -1,7 +1,7 @@
 mod gpu;
 mod shaders;
 
-use fs_core::{add, cross, dot, normalize, scale, sub, BlendMode, BrushSettings, Bvh, ChannelValues, Hit, LayerInfo, Mesh, Vec3};
+use fs_core::{add, cross, dot, normalize, scale, sub, BlendMode, BrushSettings, Bvh, ChannelValues, Hit, LayerInfo, Mesh, SizeSpace, Symmetry, Vec3};
 use gpu::Gpu;
 use wasm_bindgen::prelude::*;
 
@@ -22,7 +22,9 @@ pub struct Engine {
     active: u32,
     next_id: u32,
     last_stamp: Option<Hit>,
-    pending: Vec<[f32; 8]>,
+    pending: Vec<[f32; 16]>,
+    seed: u64,
+    lazy: Option<(f32, f32)>,
     stroking: bool,
     cursor: Option<Hit>,
     dirty: bool,
@@ -53,6 +55,8 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         next_id: 1,
         last_stamp: None,
         pending: Vec::new(),
+        seed: 0x9e37_79b9_7f4a_7c15,
+        lazy: None,
         stroking: false,
         cursor: None,
         dirty: true,
@@ -150,9 +154,10 @@ impl Engine {
         let index = self.layer_index(self.active);
         self.gpu.begin_stroke(index);
         self.stroking = true;
+        self.lazy = Some((x, y));
         self.last_stamp = self.pick(x, y);
         if let Some(hit) = self.last_stamp {
-            self.push_stamp(&hit, pressure);
+            self.push_stamp(&hit, pressure, None);
         }
         true
     }
@@ -161,6 +166,23 @@ impl Engine {
         if !self.stroking {
             return;
         }
+        let (x, y) = match self.lazy {
+            Some((lx, ly)) if self.brush.lazy_px > 0.0 => {
+                let (dx, dy) = (x - lx, y - ly);
+                let d = (dx * dx + dy * dy).sqrt();
+                if d <= self.brush.lazy_px {
+                    return;
+                }
+                let k = (d - self.brush.lazy_px) / d;
+                let next = (lx + dx * k, ly + dy * k);
+                self.lazy = Some(next);
+                next
+            }
+            _ => {
+                self.lazy = Some((x, y));
+                (x, y)
+            }
+        };
         let hit = self.pick(x, y);
         self.cursor = hit;
         let Some(hit) = hit else {
@@ -169,7 +191,7 @@ impl Engine {
         };
         let Some(last) = self.last_stamp else {
             self.last_stamp = Some(hit);
-            self.push_stamp(&hit, pressure);
+            self.push_stamp(&hit, pressure, None);
             return;
         };
         let radius = self.world_radius(&hit, pressure);
@@ -183,8 +205,9 @@ impl Engine {
             let t = (k as f32 * step) / span;
             let p = add(last.position, scale(sub(hit.position, last.position), t));
             let n = normalize(add(scale(last.normal, 1.0 - t), scale(hit.normal, t)));
-            let stamp = Hit { position: p, normal: n, t: last.t + (hit.t - last.t) * t, ..hit };
-            self.push_stamp(&stamp, pressure);
+            let uv = [last.uv[0] + (hit.uv[0] - last.uv[0]) * t, last.uv[1] + (hit.uv[1] - last.uv[1]) * t];
+            let stamp = Hit { position: p, normal: n, t: last.t + (hit.t - last.t) * t, uv, ..hit };
+            self.push_stamp(&stamp, pressure, Some(sub(hit.position, last.position)));
             self.last_stamp = Some(stamp);
         }
     }
@@ -196,6 +219,14 @@ impl Engine {
         }
         self.stroking = false;
         self.last_stamp = None;
+    }
+
+    pub fn set_alpha(&mut self, width: u32, height: u32, rgba: &[u8]) -> Result<(), JsValue> {
+        self.gpu.set_image(false, width, height, rgba).map_err(|e| JsValue::from_str(&e))
+    }
+
+    pub fn set_stencil(&mut self, width: u32, height: u32, rgba: &[u8]) -> Result<(), JsValue> {
+        self.gpu.set_image(true, width, height, rgba).map_err(|e| JsValue::from_str(&e))
     }
 
     pub fn fill_layer(&mut self) -> bool {
@@ -359,19 +390,86 @@ impl Engine {
 
     fn world_radius(&self, hit: &Hit, pressure: f32) -> f32 {
         let p = if self.brush.pressure_size { pressure.clamp(0.05, 1.0) } else { 1.0 };
+        if self.brush.size_space == SizeSpace::Object {
+            let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
+            return self.brush.size_px / 1000.0 * r * p;
+        }
         let world_per_px = 2.0 * hit.t * (self.fov * 0.5).tan() / self.height as f32;
         self.brush.size_px * 0.5 * world_per_px * p
     }
 
-    fn push_stamp(&mut self, hit: &Hit, pressure: f32) {
-        let r = self.world_radius(hit, pressure);
-        let p = hit.position;
+    fn random(&mut self) -> f32 {
+        self.seed ^= self.seed << 13;
+        self.seed ^= self.seed >> 7;
+        self.seed ^= self.seed << 17;
+        (self.seed >> 40) as f32 / (1u64 << 24) as f32
+    }
+
+    fn push_stamp(&mut self, hit: &Hit, pressure: f32, direction: Option<Vec3>) {
+        let Some((mesh, _)) = &self.mesh else { return };
+        let center = mesh.center;
+        let uv_scale = mesh.uv_per_world(hit.triangle);
+        let b = self.brush;
+        let mut r = self.world_radius(hit, pressure) * (1.0 - b.jitter_size.clamp(0.0, 1.0) * self.random());
+        r = r.max(1e-6);
         let n = hit.normal;
-        self.pending.push([p[0], p[1], p[2], r, n[0], n[1], n[2], 0.0]);
-        if self.brush.mirror_x {
-            if let Some((mesh, _)) = &self.mesh {
-                let cx = mesh.center[0];
-                self.pending.push([2.0 * cx - p[0], p[1], p[2], r, -n[0], n[1], n[2], 1.0]);
+        let (_, right, up, _) = self.basis();
+        let mut t = sub(right, scale(n, dot(right, n)));
+        if fs_core::length(t) < 1e-4 {
+            t = sub(up, scale(n, dot(up, n)));
+        }
+        let t = normalize(t);
+        let bt = cross(n, t);
+        let mut angle = b.angle.to_radians();
+        if b.follow_path {
+            if let Some(d) = direction {
+                angle += dot(d, bt).atan2(dot(d, t));
+            }
+        }
+        angle += (self.random() * 2.0 - 1.0) * b.jitter_angle.clamp(0.0, 1.0) * std::f32::consts::PI;
+        let jp = b.jitter_position.clamp(0.0, 4.0) * r;
+        let (jx, jy) = ((self.random() * 2.0 - 1.0) * jp, (self.random() * 2.0 - 1.0) * jp);
+        let p = add(hit.position, add(scale(t, jx), scale(bt, jy)));
+        let flow_scale = (if b.pressure_flow { pressure.clamp(0.0, 1.0) } else { 1.0 }) * (1.0 - b.jitter_flow.clamp(0.0, 1.0) * self.random());
+        let uv = [hit.uv[0] + (jx * uv_scale), hit.uv[1] - (jy * uv_scale)];
+        let stamp = |p: Vec3, n: Vec3, t: Vec3, mirrored: f32| -> [f32; 16] {
+            [p[0], p[1], p[2], r, n[0], n[1], n[2], mirrored, t[0], t[1], t[2], angle, uv[0], uv[1], r * uv_scale, flow_scale]
+        };
+        self.pending.push(stamp(p, n, t, 0.0));
+        let symmetry = if b.mirror_x && b.symmetry == Symmetry::Off { Symmetry::Mirror } else { b.symmetry };
+        let axis = (b.symmetry_axis as usize).min(2);
+        match symmetry {
+            Symmetry::Off => {}
+            Symmetry::Mirror => {
+                let flip = |mut v: Vec3, about: f32| {
+                    v[axis] = 2.0 * about - v[axis];
+                    v
+                };
+                let flipn = |mut v: Vec3| {
+                    v[axis] = -v[axis];
+                    v
+                };
+                self.pending.push(stamp(flip(p, center[axis]), flipn(n), flipn(t), 1.0));
+            }
+            Symmetry::Radial => {
+                let count = b.radial_count.clamp(2, 32);
+                for k in 1..count {
+                    let a = std::f32::consts::TAU * k as f32 / count as f32;
+                    let rot = |v: Vec3| -> Vec3 {
+                        let (s, c) = a.sin_cos();
+                        let (i, j) = match axis {
+                            0 => (1, 2),
+                            1 => (2, 0),
+                            _ => (0, 1),
+                        };
+                        let mut o = v;
+                        o[i] = v[i] * c - v[j] * s;
+                        o[j] = v[i] * s + v[j] * c;
+                        o
+                    };
+                    let q = add(rot(sub(p, center)), center);
+                    self.pending.push(stamp(q, rot(n), rot(t), 1.0));
+                }
             }
         }
         if self.pending.len() >= 256 {
