@@ -231,6 +231,59 @@ async def save_template(name: str, request: Request):
     return {"file": str(path)}
 
 
+MASK_KEYS = {"generator", "generator_level", "generator_softness", "generator_invert", "generator_noise", "noise_scale", "generator_direction", "builder_ao", "builder_curvature", "builder_noise"}
+GENERATORS = {"cavity", "edges", "thin", "top", "light", "position", "noise", "mask_builder", "dirt", "metal_edge_wear"}
+
+
+@app.get("/api/smart-masks")
+def list_smart_masks():
+    root = DATA / "smart_masks"
+    masks = []
+    for path in sorted(root.glob("*.json")) if root.exists() else []:
+        try:
+            masks.append(json.loads(path.read_text()))
+        except json.JSONDecodeError:
+            continue
+    return {"masks": masks}
+
+
+@app.post("/api/smart-masks/{name}")
+async def save_smart_mask(name: str, request: Request):
+    if not SAFE.match(name) or name.startswith("."):
+        raise HTTPException(400, "Names may use letters, digits, spaces, dot, dash and underscore")
+    body = await request.json()
+    settings = body.get("settings") if isinstance(body, dict) else None
+    if not isinstance(settings, dict) or settings.get("generator") not in GENERATORS:
+        raise HTTPException(400, f"A smart mask needs a generator: {', '.join(sorted(GENERATORS))}")
+    clean = {}
+    for key, value in settings.items():
+        if key not in MASK_KEYS:
+            continue
+        if key == "generator_direction":
+            if not isinstance(value, list) or len(value) != 3 or not all(isinstance(v, (int, float)) for v in value):
+                raise HTTPException(400, "generator_direction is three numbers")
+        elif key == "generator":
+            pass
+        elif key == "generator_invert":
+            value = bool(value)
+        elif not isinstance(value, (int, float)):
+            raise HTTPException(400, f"{key} must be a number")
+        clean[key] = value
+    root = DATA / "smart_masks"
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f"{name}.json"
+    path.write_text(json.dumps({"name": name, "settings": clean}, indent=2))
+    return {"file": str(path)}
+
+
+@app.get("/api/environments/{name}")
+def read_environment(name: str):
+    path = DATA / "environments" / name
+    if not SAFE.match(name) or name.startswith(".") or path.suffix.lower() != ".hdr" or not path.is_file():
+        raise HTTPException(404, "Put the environment in the workspace environments folder as a Radiance .hdr file")
+    return FileResponse(path)
+
+
 @app.get("/api/meshes/{name}")
 def read_mesh(name: str):
     path = DATA / "meshes" / name
