@@ -41,6 +41,10 @@ A stamp is 16 floats: center and world radius, normal and a mirrored flag, tange
 
 `bake_maps` is rasterized, not ray traced: for each Fibonacci direction it renders an orthographic depth map of the mesh, then BAKE_ACCUM adds, per UV texel, visibility (AO, front-facing texels) or distance to the facing surface (thickness, back-facing texels); BAKE_FINAL divides and derives curvature from neighbouring geometry texels (scale 0.05 times the mesh radius). The result lives in `bake` (AO, curvature, thickness); position and world normal export straight from the geometry maps. Fill generators read `bake` per texel. Filter layers are evaluated inside the composite (mode.z) on the stack below them.
 
+## High-to-low baking (v0.6.0)
+
+`fs_core::bake::bake_high` runs on the CPU in wasm: it rasterizes the low mesh in UV space (position, normal, per-vertex tangent frame from `Mesh::tangents`), casts one ray per texel from the cage inward through the high-poly BVH, writes the high normal in the low tangent frame (B points along increasing V as stored, which is down in texture space) and an ID color per high-poly part, then dilates. The viewport and the normal export combine it with height; the OpenGL export flips the green channel. It blocks the tab for a few seconds at 2048 px; moving it to a Worker is part of the Scale milestone. Smart materials are frontend data (`frontend/src/ui/smart.ts`) applied through the same fill and filter calls; saved ones live in the service's workspace library.
+
 ## Next capabilities, in plan order
 
-High-to-low baking with a cage (tangent-space normal, ID) by ray casting a high-poly BVH; blur and sharpen filters and folders; smart material and mask presets; engine in a Worker; tile paging for 4K and 8K; texture sets per material.
+Folders and blur or sharpen filters; match-by-name and bent normal baking; engine and bakes in a Worker; tile paging for 4K and 8K; texture sets per material; UDIM; color management.

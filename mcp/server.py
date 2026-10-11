@@ -192,6 +192,41 @@ def formsurface_bake_maps(directions: Annotated[int, Field(ge=8, le=256)] = 64) 
 
 
 @server.tool()
+def formsurface_bake_high_poly(
+    mesh_file: str | None = None,
+    use_sample: bool = False,
+    cage_front: Annotated[float, Field(ge=0, le=0.5)] = 0.05,
+    cage_rear: Annotated[float, Field(ge=0, le=0.5)] = 0.05,
+) -> dict:
+    """Bake a tangent-space normal map and an ID map (one color per high-poly part) from a high-poly mesh onto the painted mesh. mesh_file is a glb, gltf, obj or fbx the person put in the workspace meshes folder; use_sample loads a low sphere with a bumpy two-part high-poly sphere for a demonstration. Cage distances are fractions of the mesh radius in front of and behind the low surface; raise them if parts of the high-poly are missed."""
+    return call("bake_high", drop_none(file=mesh_file, sample=use_sample or None, front=cage_front, rear=cage_rear), timeout=300)
+
+
+@server.tool()
+def formsurface_list_smart_materials() -> dict:
+    """List smart materials (built in and saved) with their layers, and the smart mask presets."""
+    return call("smart_list")
+
+
+@server.tool()
+def formsurface_apply_smart_material(name: str) -> dict:
+    """Add a smart material's layers above the active layer in one step. Its generators need baked mesh maps (formsurface_bake_maps) to place wear and dirt."""
+    return call("smart_apply", {"name": name})
+
+
+@server.tool()
+def formsurface_save_smart_material(name: str) -> dict:
+    """Save the current fill and filter layers as a smart material in the workspace library."""
+    return call("smart_save", {"name": name})
+
+
+@server.tool()
+def formsurface_apply_smart_mask(layer_id: int, name: Literal["Edge wear", "Cavity dirt", "Dust from top", "Thin parts", "Protect edges"]) -> dict:
+    """Apply a smart mask preset (a generator setup) to a fill layer."""
+    return call("smart_mask", {"id": layer_id, "name": name})
+
+
+@server.tool()
 def formsurface_set_generator(
     layer_id: int,
     generator: Literal["none", "cavity", "edges", "thin", "top"],

@@ -1,4 +1,4 @@
-# FormSurface MCP tools (server 0.5.0)
+# FormSurface MCP tools (server 0.6.0)
 
 When this table and the server disagree, the server wins and this file is stale.
 
@@ -14,6 +14,11 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_add_fill_layer` | name, projection (uv, triplanar, planar, spherical, cylindrical), pattern (solid, checker, stripes, noise), base_color, roughness, metallic, height, scale, rotation_degrees, planar_axis, sharpness, fill_color, fill_roughness, fill_metallic, fill_height | id and settings |
 | `formsurface_set_fill` | layer_id, projection, pattern, base_color, roughness, metallic, height, scale, rotation_degrees, offset_u, offset_v, planar_axis, sharpness, amount | settings |
 | `formsurface_bake_maps` | directions 8 to 256 | baked flag and map names |
+| `formsurface_bake_high_poly` | mesh_file (in workspace/meshes), use_sample, cage_front, cage_rear (fractions of mesh radius) | hit count and map names |
+| `formsurface_list_smart_materials` | none | materials with layer names, smart mask names |
+| `formsurface_apply_smart_material` | name | new layer ids, baked flag |
+| `formsurface_save_smart_material` | name | saved file |
+| `formsurface_apply_smart_mask` | layer_id, name (Edge wear, Cavity dirt, Dust from top, Thin parts, Protect edges) | fill settings |
 | `formsurface_set_generator` | layer_id, generator (none, cavity, edges, thin, top), level, softness, invert | fill settings |
 | `formsurface_add_filter_layer` | name, brightness, contrast, hue_degrees, saturation, gamma, roughness_offset, metallic_offset | id and settings |
 | `formsurface_layer_mask` | layer_id, action (add_white, add_black, remove, keep), paint_target (layer, mask) | layers and whether strokes paint the mask |
