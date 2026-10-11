@@ -33,7 +33,7 @@ FormSurface ships an MCP server with 43 `formsurface_*` tools that drive the edi
 
 ## Parity
 
-Measured against Substance 3D Painter 12.1.5 on 50 documented capabilities, v0.13.0 scores 26 of 50 (52 percent): the painting core, brush engine, polygon fill, clone, quick mask, fill layers, masks, folders, baking from the mesh and from a high-poly mesh with match by name, generators, filter layers, smart materials, texture sets per material, UDIM tiles with one shared stack, engine export presets and OBJ mesh export are real; layer instancing (fill and filter layers) and the batch runner are partial; per-tile resolution, stacked mask effects, color management, EXR and 32-bit export, headless automation and a full asset library are not built yet. The full page is in the planning sidecar.
+Measured against Substance 3D Painter 12.1.5 on 50 documented capabilities, v0.13.0 scores 26.5 of 50 (53 percent): the painting core, brush engine, polygon fill, clone, quick mask, fill layers, masks, folders, baking from the mesh and from a high-poly mesh with match by name, generators, filter layers, smart materials, texture sets per material, UDIM tiles with one shared stack, engine export presets and OBJ mesh export are real; layer instancing (fill and filter layers) and the batch runner are partial; per-tile resolution, stacked mask effects, color management, EXR and 32-bit export, headless automation and a full asset library are not built yet. The full page is in the planning sidecar.
 
 ## Quick start
 
