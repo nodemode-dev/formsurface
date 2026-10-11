@@ -132,6 +132,35 @@ async def save_project(name: str, document: str = Form(...), maps: list[UploadFi
     return {"folder": str(path), "files": await write_maps(path, maps)}
 
 
+@app.get("/api/library")
+def list_library():
+    root = DATA / "library"
+    if not root.exists():
+        return {"materials": []}
+    materials = []
+    for path in sorted(root.glob("*.json")):
+        try:
+            materials.append(json.loads(path.read_text()))
+        except json.JSONDecodeError:
+            continue
+    return {"materials": materials}
+
+
+@app.post("/api/library/{name}")
+async def save_library(name: str, request: Request):
+    if not SAFE.match(name) or name.startswith("."):
+        raise HTTPException(400, "Names may use letters, digits, spaces, dot, dash and underscore")
+    body = await request.json()
+    layers = body.get("layers") if isinstance(body, dict) else None
+    if not isinstance(layers, list) or not layers or len(layers) > 64:
+        raise HTTPException(400, "A smart material needs 1 to 64 layers")
+    root = DATA / "library"
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f"{name}.json"
+    path.write_text(json.dumps({"name": name, "layers": layers}, indent=2))
+    return {"file": str(path)}
+
+
 @app.get("/api/meshes/{name}")
 def read_mesh(name: str):
     path = DATA / "meshes" / name
