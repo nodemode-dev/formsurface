@@ -1,9 +1,10 @@
 import init, { create_engine, type Engine } from './engine/pkg/fs_engine.js';
 import { loadHighPoly, loadMeshFile, sampleHighPoly, sampleMesh, type FlatMesh } from './engine/meshes';
+import type { BakeJob } from './engine/bake-worker';
 import { VERSION } from './version';
 import { LayerList, type LayerInfo } from './ui/layers';
 import { TextureSetList, type TextureSetInfo } from './ui/sets';
-import { TEMPLATES, encodePng, pack, sourcesOf, validateMaps, type MapSpec } from './ui/export-templates';
+import { TEMPLATES, encodePng, halfToUnit16, pack, sourcesOf, validateMaps, type MapSpec, type Pixels } from './ui/export-templates';
 import { api } from './ui/api';
 import { AgentLink } from './ui/agent-link';
 import { BUILT_IN_MATERIALS, SMART_MASKS, saveMaterial, savedMaterials, type SmartMaterial } from './ui/smart';
@@ -15,7 +16,7 @@ const statusEl = $('status');
 let engine: Engine | undefined;
 let mesh: FlatMesh | undefined;
 let meshName = 'sphere';
-let tool: 'paint' | 'erase' = 'paint';
+let tool: 'paint' | 'erase' | 'polyfill' = 'paint';
 let mirror = false;
 let painting = false;
 let nav: 'orbit' | 'pan' | undefined;
@@ -47,7 +48,7 @@ function hex(id: string): [number, number, number] {
 function syncBrush(): void {
   engine?.set_brush(JSON.stringify({
     size_px: num('b-size'), hardness: num('b-hardness'), flow: num('b-flow'), opacity: num('b-opacity'), spacing: num('b-spacing'),
-    mode: tool, mirror_x: false, backface_culling: checked('b-cull'), pressure_size: checked('b-psize'), pressure_flow: checked('b-pflow'),
+    mode: tool === 'erase' ? 'erase' : 'paint', mirror_x: false, backface_culling: checked('b-cull'), pressure_size: checked('b-psize'), pressure_flow: checked('b-pflow'),
     alignment: sel('b-align'), size_space: sel('b-space'), angle: num('b-angle'), follow_path: checked('b-follow'),
     jitter_size: num('b-jsize'), jitter_angle: num('b-jangle'), jitter_position: num('b-jpos'), jitter_flow: num('b-jflow'),
     lazy_px: num('b-lazy') * Math.min(window.devicePixelRatio || 1, 2), tip: sel('b-tip'), spray_density: num('b-density'),
@@ -249,10 +250,11 @@ function updateActiveLayer(patch: Partial<LayerInfo>): void {
   refreshLayers();
 }
 
-function setTool(next: 'paint' | 'erase'): void {
+function setTool(next: 'paint' | 'erase' | 'polyfill'): void {
   tool = next;
   $('tool-paint').setAttribute('aria-pressed', String(next === 'paint'));
   $('tool-erase').setAttribute('aria-pressed', String(next === 'erase'));
+  $('tool-polyfill').setAttribute('aria-pressed', String(next === 'polyfill'));
   syncBrush();
 }
 
@@ -277,8 +279,11 @@ function pressure(event: PointerEvent): number {
   return event.pointerType === 'mouse' ? 1 : Math.max(0.05, event.pressure || 1);
 }
 
+let meshGeneration = 0;
+
 function applyMesh(next: FlatMesh, name: string): void {
   if (!engine) return;
+  meshGeneration++;
   mesh = next;
   meshName = name;
   const info = engine.set_mesh(next.positions, next.normals, next.uvs, next.indices, next.materials, JSON.stringify(next.materialNames));
@@ -320,6 +325,15 @@ canvas.addEventListener('pointerdown', (event) => {
   if (event.button === 2 || (event.altKey && event.button === 0)) { nav = 'orbit'; return; }
   if (event.button !== 0) return;
   const [x, y] = local(event);
+  if (tool === 'polyfill') {
+    try {
+      const count = engine.polygon_fill(x, y, Number(sel('pf-mode')));
+      status(`Filled ${count} triangle${count === 1 ? '' : 's'} with the paint material (Ctrl+Z undoes it)`);
+    } catch (error) {
+      status(error instanceof Error ? error.message : String(error), true);
+    }
+    return;
+  }
   painting = engine.stroke_begin(x, y, pressure(event));
   const activeKind = layers().find((l) => l.id === engine!.active_layer())?.kind;
   if (!painting && (activeKind === 'fill' || activeKind === 'filter' || activeKind === 'folder')) status(`A ${activeKind} is painted through its mask: choose a mask in the layer properties first.`, true);
@@ -359,6 +373,7 @@ window.addEventListener('keydown', (event) => {
   if ((event.ctrlKey || event.metaKey) && key === 'z') { event.preventDefault(); if (event.shiftKey) engine.redo(); else engine.undo(); return; }
   if ((event.ctrlKey || event.metaKey) && key === 'y') { event.preventDefault(); engine.redo(); return; }
   if (key === 'b') setTool('paint');
+  else if (key === 'p') setTool('polyfill');
   else if (key === 'e') setTool('erase');
   else if (key === 'm') $('tool-mirror').click();
   else if (key === 'f') engine.frame_mesh();
@@ -381,6 +396,7 @@ $('l-blend').addEventListener('change', () => updateActiveLayer({ blend: $<HTMLS
 
 $('tool-paint').addEventListener('click', () => setTool('paint'));
 $('tool-erase').addEventListener('click', () => setTool('erase'));
+$('tool-polyfill').addEventListener('click', () => setTool('polyfill'));
 $('tool-mirror').addEventListener('click', () => {
   $<HTMLSelectElement>('b-sym').value = mirror ? 'off' : 'mirror';
   syncBrush();
@@ -561,15 +577,59 @@ $('sm-mask-apply').addEventListener('click', () => {
   try { if (engine) applySmartMask(engine.active_layer(), sel('sm-mask')); status(`Applied smart mask ${sel('sm-mask')}`); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
 });
 
+let highMesh: FlatMesh | undefined;
+let baking = false;
+
 function setHigh(next: FlatMesh, name: string): string {
   const info = requireEngine().set_high_mesh(next.positions, next.normals, next.indices, next.parts);
+  highMesh = next;
   $('k-high-state').textContent = `High-poly ${name}: ${info}`;
   return info;
 }
-function bakeHigh(): string {
-  const result = requireEngine().bake_high(num('k-front'), num('k-rear'));
-  $('k-high-state').textContent = `Baked normal and ID: ${result}`;
-  return result;
+
+function bakeInWorker(job: BakeJob): Promise<{ normal: Uint8Array; id: Uint8Array; hits: number; texels: number; size: number }> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./engine/bake-worker.ts', import.meta.url), { type: 'module' });
+    worker.onmessage = (event) => {
+      worker.terminate();
+      if (event.data.ok) resolve(event.data); else reject(new Error(event.data.error));
+    };
+    worker.onerror = (event) => { worker.terminate(); reject(new Error(event.message || 'The bake worker failed to start')); };
+    worker.postMessage(job);
+  });
+}
+
+async function bakeHigh(): Promise<string> {
+  const e = requireEngine();
+  if (!highMesh) throw new Error('Load a high-poly mesh first');
+  if (baking) throw new Error('A high-poly bake is already running');
+  baking = true;
+  const button = $<HTMLButtonElement>('k-bake-high');
+  button.disabled = true;
+  const generation = meshGeneration;
+  const sets = textureSets();
+  let hits = 0;
+  let texels = 0;
+  const started = performance.now();
+  try {
+    for (const set of sets) {
+      const [positions, normals, uvs, indices, size] = e.texture_set_mesh(set.index) as [Float32Array, Float32Array, Float32Array, Uint32Array, number];
+      $('k-high-state').textContent = `Baking ${set.name} in the background (${sets.indexOf(set) + 1} of ${sets.length}); you can keep working`;
+      const high = { positions: highMesh.positions.slice(), normals: highMesh.normals.slice(), indices: highMesh.indices.slice(), parts: highMesh.parts.slice() };
+      const result = await bakeInWorker({ low: [positions, normals, uvs, indices], high, size, front: num('k-front'), rear: num('k-rear') });
+      if (generation !== meshGeneration || engine !== e) throw new Error('The mesh changed during the bake; bake again');
+      e.apply_high_bake(set.index, result.size, result.normal, result.id);
+      hits += result.hits;
+      texels += result.texels;
+    }
+  } finally {
+    baking = false;
+    button.disabled = false;
+    refreshLayers();
+  }
+  const text = `${hits} of ${texels} texels hit the high-poly mesh across ${sets.length} texture set${sets.length === 1 ? '' : 's'} in ${((performance.now() - started) / 1000).toFixed(1)} s, baked in a worker`;
+  $('k-high-state').textContent = `Baked normal and ID: ${text}`;
+  return text;
 }
 for (const id of ['k-front', 'k-rear']) $(id).addEventListener('input', () => setOutput(id));
 const highInput = $<HTMLInputElement>('high-file');
@@ -587,7 +647,7 @@ $('k-high-sample').addEventListener('click', () => {
   status('Low-poly sphere loaded with a bumpy two-part high-poly sphere; press Bake normal and ID');
 });
 $('k-bake-high').addEventListener('click', () => {
-  try { status(bakeHigh()); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+  bakeHigh().then((text) => status(text), (error) => status(error instanceof Error ? error.message : String(error), true));
 });
 $('k-bake').addEventListener('click', () => {
   if (!engine) return;
@@ -651,7 +711,12 @@ async function pngOf(bytes: Uint8Array, size: number): Promise<Blob> {
   return surface.convertToBlob({ type: 'image/png' });
 }
 
-async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[]): Promise<Map<string, Blob>> {
+async function channelPixels(e: Engine, channel: number, wide: boolean): Promise<Pixels> {
+  return wide ? halfToUnit16(await e.export_channel_wide(channel) as Uint8Array) : await e.export_channel(channel) as Uint8Array;
+}
+
+async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], depth = Number(sel('x-depth'))): Promise<Map<string, Blob>> {
+  const wide = depth === 16;
   const maps = new Map<string, Blob>();
   if (!engine) return maps;
   const e = engine;
@@ -666,18 +731,18 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[]):
       const prefix = sets.length > 1 ? `${set.material.replace(/[^A-Za-z0-9_-]/g, '_')}_` : '';
       const suffix = set.tiled ? `.${set.udim}` : '';
       if (template.maps.length) {
-        const channels = new Map<number, Uint8Array>();
+        const channels = new Map<number, Pixels>();
         for (const c of sourcesOf(template.maps)) {
           if (c >= 5 && !e.is_baked()) continue;
-          channels.set(c, await e.export_channel(c) as Uint8Array);
+          channels.set(c, await channelPixels(e, c, wide));
         }
-        for (const map of template.maps) maps.set(`${prefix}${map.suffix}${suffix}`, await encodePng(pack(map, channels, size), size, size, !!map.a));
+        for (const map of template.maps) maps.set(`${prefix}${map.suffix}${suffix}`, await encodePng(pack(map, channels, size, wide ? 65535 : 255), size, size, !!map.a));
         continue;
       }
       const wanted = [0, 1, 2, 3, 4, ...(e.is_baked() ? [5, 6, 7, 8, 9] : []), ...(e.is_high_baked() ? [10, 11] : [])];
       for (const i of wanted) {
-        const bytes = await e.export_channel(i) as Uint8Array;
-        maps.set(`${prefix}${CHANNELS[i]}${suffix}`, await pngOf(bytes, size));
+        const pixels = await channelPixels(e, i, wide);
+        maps.set(`${prefix}${CHANNELS[i]}${suffix}`, wide ? await encodePng(pixels, size, size, false) : await pngOf(pixels as Uint8Array, size));
       }
     }
   } finally {
@@ -856,7 +921,7 @@ const agentLink = new AgentLink({
     }
     if (front !== undefined) setControl('k-front', front);
     if (rear !== undefined) setControl('k-rear', rear);
-    return { result: bakeHigh(), maps: ['id', 'normal_baked'] };
+    return { result: await bakeHigh(), maps: ['id', 'normal_baked'] };
   },
   bake: ({ directions }) => {
     const e = requireEngine();
@@ -889,6 +954,15 @@ const agentLink = new AgentLink({
     if (paint_target === 'mask' || paint_target === 'layer') e.set_paint_target(paint_target === 'mask');
     refreshLayers();
     return { layers: layers(), paints_mask: e.paint_target_is_mask() };
+  },
+  polygon_fill: ({ x, y, mode }) => {
+    const e = requireEngine();
+    const modes = ['triangle', 'polygon', 'mesh', 'uv_chunk'];
+    const code = modes.indexOf(String(mode ?? 'mesh'));
+    if (code < 0) throw new Error(`mode is one of ${modes.join(', ')}`);
+    const [w, h] = e.viewport_size();
+    const filled = e.polygon_fill(Number(x) * w, Number(y) * h, code);
+    return { filled_triangles: filled, mode: modes[code], layer: e.active_layer() };
   },
   texture_sets: () => ({ texture_sets: textureSets(), active_texture_set: requireEngine().active_texture_set() }),
   select_texture_set: ({ index, name }) => {
@@ -938,10 +1012,12 @@ const agentLink = new AgentLink({
   undo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().undo()) n++; return { undone: n }; },
   redo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().redo()) n++; return { redone: n }; },
   screenshot: async () => ({ png_base64: await blobBase64(await viewportPng()) }),
-  export: async ({ name, template, maps: custom }) => {
-    const maps = await renderMaps(template ? String(template) : sel('x-template'), custom ? validateMaps(custom) : undefined);
+  export: async ({ name, template, maps: custom, bit_depth }) => {
+    const depth = bit_depth === undefined || bit_depth === null ? Number(sel('x-depth')) : Number(bit_depth);
+    if (depth !== 8 && depth !== 16) throw new Error('bit_depth is 8 or 16');
+    const maps = await renderMaps(template ? String(template) : sel('x-template'), custom ? validateMaps(custom) : undefined, depth);
     const folder = await api.saveMaps(String(name || meshName.replace(/\.[^.]+$/, '')), maps);
-    return { folder, template: custom ? 'custom' : template ?? sel('x-template'), maps: [...maps.keys()] };
+    return { folder, template: custom ? 'custom' : template ?? sel('x-template'), bit_depth: depth, maps: [...maps.keys()] };
   },
   export_templates: () => ({ templates: TEMPLATES.map((t) => ({ name: t.name, label: t.label, maps: t.maps })) }),
 }, (state) => {

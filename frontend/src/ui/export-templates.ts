@@ -71,21 +71,44 @@ export function validateMaps(value: unknown): MapSpec[] {
   });
 }
 
-export function pack(map: MapSpec, channels: Map<number, Uint8Array>, size: number): Uint8Array {
-  const out = new Uint8Array(size * size * 4);
+export type Pixels = Uint8Array | Uint16Array;
+
+const HALF = (() => {
+  const table = new Float32Array(65536);
+  for (let h = 0; h < 65536; h++) {
+    const s = h & 0x8000 ? -1 : 1;
+    const e = (h >> 10) & 0x1f;
+    const f = h & 0x3ff;
+    table[h] = e === 0 ? s * f * 2 ** -24 : e === 31 ? (f ? NaN : s * Infinity) : s * (1 + f / 1024) * 2 ** (e - 15);
+  }
+  return table;
+})();
+
+export function halfToUnit16(bytes: Uint8Array): Uint16Array {
+  const halves = new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
+  const out = new Uint16Array(halves.length);
+  for (let i = 0; i < halves.length; i++) {
+    const v = HALF[halves[i]];
+    out[i] = v > 0 ? Math.round(Math.min(v, 1) * 65535) : 0;
+  }
+  return out;
+}
+
+export function pack(map: MapSpec, channels: Map<number, Pixels>, size: number, max = 255): Pixels {
+  const out = max === 255 ? new Uint8Array(size * size * 4) : new Uint16Array(size * size * 4);
   const read = (source: Source | undefined, i: number, fallback: number): number => {
     if (!source) return fallback;
-    if (source === 'one') return 255;
+    if (source === 'one') return max;
     if (source === 'zero') return 0;
     const data = channels.get(SOURCE_CHANNEL[source]);
-    if (!data) return source === 'ao' ? 255 : fallback;
-    return source === 'smoothness' ? 255 - data[i] : data[i];
+    if (!data) return source === 'ao' ? max : fallback;
+    return source === 'smoothness' ? max - data[i] : data[i];
   };
   for (let i = 0; i < size * size * 4; i += 4) {
     if (map.rgb) {
       const data = channels.get(SOURCE_CHANNEL[map.rgb])!;
       out[i] = data[i];
-      out[i + 1] = map.rgb === 'normal_dx' ? 255 - data[i + 1] : data[i + 1];
+      out[i + 1] = map.rgb === 'normal_dx' ? max - data[i + 1] : data[i + 1];
       out[i + 2] = data[i + 2];
     } else {
       const r = read(map.r, i, 0);
@@ -93,7 +116,7 @@ export function pack(map: MapSpec, channels: Map<number, Uint8Array>, size: numb
       out[i + 1] = map.g ? read(map.g, i, 0) : r;
       out[i + 2] = map.b ? read(map.b, i, 0) : r;
     }
-    out[i + 3] = read(map.a, i, 255);
+    out[i + 3] = read(map.a, i, max);
   }
   return out;
 }
@@ -124,27 +147,32 @@ function chunk(type: string, data: Uint8Array): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-export async function encodePng(rgba: Uint8Array, width: number, height: number, alpha: boolean): Promise<Blob> {
-  const bpp = alpha ? 4 : 3;
+export async function encodePng(rgba: Pixels, width: number, height: number, alpha: boolean): Promise<Blob> {
+  const channels = alpha ? 4 : 3;
+  const depth = rgba instanceof Uint16Array ? 16 : 8;
+  const bytesPer = depth / 8;
+  const bpp = channels * bytesPer;
   const row = width * bpp;
   const raw = new Uint8Array((row + 1) * height);
+  const line = new Uint8Array(row);
   for (let y = 0; y < height; y++) {
-    const base = y * (row + 1);
-    raw[base] = 1;
     for (let x = 0; x < width; x++) {
-      for (let c = 0; c < bpp; c++) {
+      for (let c = 0; c < channels; c++) {
         const value = rgba[(y * width + x) * 4 + c];
-        const left = x > 0 ? rgba[(y * width + x - 1) * 4 + c] : 0;
-        raw[base + 1 + x * bpp + c] = (value - left) & 0xff;
+        const at = x * bpp + c * bytesPer;
+        if (depth === 16) { line[at] = value >> 8; line[at + 1] = value & 0xff; } else line[at] = value;
       }
     }
+    const base = y * (row + 1);
+    raw[base] = 1;
+    for (let i = 0; i < row; i++) raw[base + 1 + i] = (line[i] - (i >= bpp ? line[i - bpp] : 0)) & 0xff;
   }
   const compressed = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer());
   const header = new Uint8Array(13);
   const view = new DataView(header.buffer);
   view.setUint32(0, width);
   view.setUint32(4, height);
-  header[8] = 8;
+  header[8] = depth;
   header[9] = alpha ? 6 : 2;
   const signature = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
   return new Blob([signature, chunk('IHDR', header), chunk('IDAT', compressed), chunk('IEND', new Uint8Array())], { type: 'image/png' });
