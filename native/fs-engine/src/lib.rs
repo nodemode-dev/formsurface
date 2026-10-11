@@ -265,7 +265,7 @@ impl Engine {
             return false;
         }
         let index = self.layer_index(self.active);
-        if self.layers[index].kind != LayerKind::Paint && !self.layers[index].mask {
+        if self.layers[index].kind != LayerKind::Paint && !self.layers[index].mask && self.gpu.quick_mode != 1 {
             return false;
         }
         self.gpu.begin_stroke(index);
@@ -567,7 +567,7 @@ impl Engine {
             return Err(JsValue::from_str("That part belongs to another texture set; select it first"));
         }
         let index = self.layer_index(self.active);
-        if self.layers[index].kind != LayerKind::Paint && !self.layers[index].mask {
+        if self.layers[index].kind != LayerKind::Paint && !self.layers[index].mask && self.gpu.quick_mode != 1 {
             return Err(JsValue::from_str("Fill, filter and folder layers are filled through their mask: choose a mask first"));
         }
         let (mesh, _) = self.mesh.as_ref().unwrap();
@@ -630,6 +630,26 @@ impl Engine {
         .map_err(|e| JsValue::from_str(&e))?;
         let sets = self.sets.len();
         Ok(format!("{hits} of {texels} texels hit the high-poly mesh across {sets} texture set{}", if sets == 1 { "" } else { "s" }))
+    }
+
+    pub fn set_quick_mask(&mut self, mode: u32) -> bool {
+        if self.stroking {
+            return false;
+        }
+        self.gpu.quick_mode = mode.min(2);
+        true
+    }
+
+    pub fn quick_mask_mode(&self) -> u32 {
+        self.gpu.quick_mode
+    }
+
+    pub fn quick_mask_fill(&mut self, white: bool) {
+        self.gpu.quick_fill(if white { 1.0 } else { 0.0 });
+    }
+
+    pub fn quick_mask_invert(&mut self) {
+        self.gpu.quick_invert();
     }
 
     pub fn texture_set_mesh(&self, index: u32) -> Result<js_sys::Array, JsValue> {

@@ -327,11 +327,13 @@ pub struct FilterSettings {
     pub gamma: f32,
     pub roughness_offset: f32,
     pub metallic_offset: f32,
+    pub blur: f32,
+    pub sharpen: f32,
 }
 
 impl Default for FilterSettings {
     fn default() -> Self {
-        FilterSettings { brightness: 0.0, contrast: 0.0, hue: 0.0, saturation: 1.0, gamma: 1.0, roughness_offset: 0.0, metallic_offset: 0.0 }
+        FilterSettings { brightness: 0.0, contrast: 0.0, hue: 0.0, saturation: 1.0, gamma: 1.0, roughness_offset: 0.0, metallic_offset: 0.0, blur: 0.0, sharpen: 0.0 }
     }
 }
 

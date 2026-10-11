@@ -11,6 +11,7 @@ struct Camera {
 @group(0) @binding(2) var mat_tex: texture_2d<f32>;
 @group(0) @binding(3) var samp: sampler;
 @group(0) @binding(4) var baked_normal: texture_2d<f32>;
+@group(0) @binding(5) var quick_tex: texture_2d<f32>;
 
 struct VOut {
     @builtin(position) clip: vec4<f32>,
@@ -94,6 +95,8 @@ fn fs(i: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
         let ring = smoothstep(0.90, 0.95, d) * (1.0 - smoothstep(0.98, 1.03, d));
         color = mix(color, vec3<f32>(1.0), ring * 0.8 * step(0.0, dot(normalize(i.normal), cam.cursor_normal.xyz) + 0.3));
     }
+    let quick = textureSampleLevel(quick_tex, samp, i.uv, 0.0).r;
+    color = mix(color, vec3<f32>(0.75, 0.08, 0.06), (1.0 - clamp(quick, 0.0, 1.0)) * 0.5 * cam.params.z);
     return vec4<f32>(pow(clamp(color, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / 2.2)), 1.0);
 }
 "#;
@@ -326,6 +329,7 @@ struct Layer {
 @group(0) @binding(4) var l_val: texture_2d<f32>;
 @group(0) @binding(5) var l_cov: texture_2d<f32>;
 @group(0) @binding(6) var l_mask: texture_2d<f32>;
+@group(0) @binding(7) var uv_cover: texture_2d<f32>;
 
 struct Out { @location(0) color: vec4<f32>, @location(1) mat: vec4<f32>, };
 
@@ -359,7 +363,40 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     var op = layer.opacity.x;
     if (layer.opacity.y > 0.5) { op = op * clamp(textureLoad(l_mask, p, 0).r, 0.0, 1.0); }
     if (layer.mode.z == 1u) {
-        var c = pow(max(pc.rgb, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.2));
+        var pcb = pc.rgb;
+        var pmb = pm.rgb;
+        let radius = layer.opacity.z;
+        let sharpen = layer.opacity.w;
+        if (radius > 0.5 || sharpen > 0.0) {
+            let r = max(radius, 1.0);
+            let dims = vec2<i32>(textureDimensions(prev_color));
+            var sc = vec3<f32>(0.0);
+            var sm = vec3<f32>(0.0);
+            var w = 0.0;
+            for (var y = -3; y <= 3; y = y + 1) {
+                for (var x = -3; x <= 3; x = x + 1) {
+                    let off = vec2<f32>(f32(x), f32(y)) * (r / 3.0);
+                    let q = clamp(p + vec2<i32>(round(off)), vec2<i32>(0), dims - vec2<i32>(1));
+                    let k = exp(-dot(off, off) / (0.5 * r * r)) * textureLoad(uv_cover, q, 0).r;
+                    sc = sc + textureLoad(prev_color, q, 0).rgb * k;
+                    sm = sm + textureLoad(prev_mat, q, 0).rgb * k;
+                    w = w + k;
+                }
+            }
+            if (w > 1e-4) {
+                let bc = sc / w;
+                let bm = sm / w;
+                if (radius > 0.5) {
+                    pcb = bc;
+                    pmb = bm;
+                }
+                if (sharpen > 0.0) {
+                    pcb = max(pcb + (pc.rgb - bc) * sharpen, vec3<f32>(0.0));
+                    pmb = clamp(pmb + (pm.rgb - bm) * sharpen, vec3<f32>(0.0), vec3<f32>(1.0));
+                }
+            }
+        }
+        var c = pow(max(pcb, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.2));
         c = (c - 0.5) * (1.0 + layer.base_color.y) + 0.5 + layer.base_color.x;
         let l = dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
         c = mix(vec3<f32>(l), c, layer.base_color.w);
@@ -368,7 +405,7 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
         c = c * cos(a) + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - cos(a));
         c = pow(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(2.2 * layer.base_values.x));
         o.color = vec4<f32>(mix(pc.rgb, c, op), 1.0);
-        let v = clamp(pm.rgb + vec3<f32>(layer.base_values.y, layer.base_values.z, 0.0), vec3<f32>(0.0), vec3<f32>(1.0));
+        let v = clamp(pmb + vec3<f32>(layer.base_values.y, layer.base_values.z, 0.0), vec3<f32>(0.0), vec3<f32>(1.0));
         o.mat = vec4<f32>(mix(pm.rgb, v, op), 1.0);
         return o;
     }
@@ -551,6 +588,13 @@ fn fs(@builtin(position) frag: vec4<f32>) -> Out {
         o.cov = vec4<f32>(0.0);
     }
     return o;
+}
+"#;
+
+pub const WHITE: &str = r#"
+@fragment
+fn fs() -> @location(0) vec4<f32> {
+    return vec4<f32>(1.0);
 }
 "#;
 
