@@ -45,6 +45,10 @@ A stamp is 16 floats: center and world radius, normal and a mirrored flag, tange
 
 `fs_core::bake::bake_high` runs on the CPU in wasm: it rasterizes the low mesh in UV space (position, normal, per-vertex tangent frame from `Mesh::tangents`), casts one ray per texel from the cage inward through the high-poly BVH, writes the high normal in the low tangent frame (B points along increasing V as stored, which is down in texture space) and an ID color per high-poly part, then dilates. The viewport and the normal export combine it with height; the OpenGL export flips the green channel. It blocks the tab for a few seconds at 2048 px; moving it to a Worker is part of the Scale milestone. Smart materials are frontend data (`frontend/src/ui/smart.ts`) applied through the same fill and filter calls; saved ones live in the service's workspace library.
 
+## Texture sets and UDIM (v0.7.0)
+
+`fs_core::sets::split` groups triangles by material and by the UDIM tile of their UV centroid (V is stored flipped, so the row is `floor(1 - v)`), duplicates vertices per set and moves UVs into 0 to 1. Sets are contiguous index ranges. `Gpu` holds the active set's state in its own fields (layers, undo, final maps, coverage, geometry, bakes, base) and parks the others in `parked`; `select_set` swaps them with `mem::swap`, never copies. `draw_mesh` draws the active range, `draw_all` the whole mesh (bake depth, so occlusion crosses sets), and the view draws every range with its own final maps. `Engine::each_set` runs bakes and fill refreshes on every set and composites each before moving on, because only the active set composites per frame. Never switch sets during a stroke.
+
 ## Next capabilities, in plan order
 
-Folders and blur or sharpen filters; match-by-name and bent normal baking; engine and bakes in a Worker; tile paging for 4K and 8K; texture sets per material; UDIM; color management.
+Engine and bakes in a Worker; folders and blur or sharpen filters; a shared layer stack across UDIM tiles (Painter's UV tiles workflow); match-by-name and bent normal baking; tile paging for 4K and 8K; color management.

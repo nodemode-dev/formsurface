@@ -44,14 +44,26 @@ Unit = Annotated[float, Field(ge=0.0, le=1.0)]
 
 @server.tool()
 def formsurface_status() -> dict:
-    """Read the open document: mesh, texture size, layers with ids, active layer, brush, paint material and camera."""
+    """Read the open document: mesh, texture size, texture sets and the active one, layers of the active set with ids, active layer, brush, paint material and camera."""
     return call("status")
 
 
 @server.tool()
-def formsurface_load_sample(kind: Literal["sphere", "torus", "capsule", "knot"]) -> dict:
-    """Replace the mesh with a built-in sample. Layers are kept."""
+def formsurface_load_sample(kind: Literal["sphere", "torus", "capsule", "knot", "sets"]) -> dict:
+    """Replace the mesh with a built-in sample. The first texture set keeps its layers. "sets" is a figure with two materials (body and trim) where the body spans UDIM tiles 1001 and 1002, giving three texture sets."""
     return call("load_sample", {"kind": kind})
+
+
+@server.tool()
+def formsurface_list_texture_sets() -> dict:
+    """List texture sets: one per material, split per UDIM tile when a material's UVs leave 0 to 1. Each has its own layer stack, base material, bakes and exported maps."""
+    return call("texture_sets")
+
+
+@server.tool()
+def formsurface_select_texture_set(name: str | None = None, index: int | None = None) -> dict:
+    """Make a texture set active by name (for example body.1002 or trim) or index. Strokes, layers, fills, masks, smart materials and the base material then apply to it only; the viewport keeps showing every set."""
+    return call("select_texture_set", drop_none(name=name, index=index))
 
 
 @server.tool()
@@ -324,7 +336,7 @@ def formsurface_screenshot() -> Image:
 
 @server.tool()
 def formsurface_export_maps(name: str | None = None) -> dict:
-    """Export base color, roughness, metallic, height and normal PNG maps into the FormSurface workspace and return the folder."""
+    """Export base color, roughness, metallic, height and normal PNG maps (plus baked maps) for every texture set into the FormSurface workspace and return the folder. With several sets, files are named name_material_channel, with .udim appended for tiled materials."""
     return call("export", drop_none(name=name), timeout=180)
 
 

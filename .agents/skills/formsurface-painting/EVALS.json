@@ -14,6 +14,10 @@
       "expected": "Calls formsurface_export_maps and reports the returned folder and five map names."
     },
     {
+      "request": "In FormSurface, make the robot's body matte blue and its trim gold.",
+      "expected": "Reads texture_sets from formsurface_status, calls formsurface_select_texture_set for the body set and sets its base material, then selects the trim set and sets gold there, and reports which set got which material."
+    },
+    {
       "request": "Change how the FormSurface brush shader computes falloff.",
       "expected": "Does not trigger; source changes belong to formsurface-harness."
     }

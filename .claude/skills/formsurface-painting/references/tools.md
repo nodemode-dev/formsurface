@@ -1,11 +1,13 @@
-# FormSurface MCP tools (server 0.6.0)
+# FormSurface MCP tools (server 0.7.0)
 
 When this table and the server disagree, the server wins and this file is stale.
 
 | Tool | Parameters | Returns |
 | --- | --- | --- |
-| `formsurface_status` | none | mesh, texture size, layers, active layer, brush, paint material, camera, viewport |
-| `formsurface_load_sample` | kind: sphere, torus, capsule, knot | status |
+| `formsurface_status` | none | mesh, texture size, texture sets, active texture set, layers of the active set, active layer, brush, paint material, camera, viewport |
+| `formsurface_load_sample` | kind: sphere, torus, capsule, knot, sets (figure with body on UDIM 1001 and 1002 plus trim) | status |
+| `formsurface_list_texture_sets` | none | texture sets (index, name, material, udim, tiled, triangles, layers) and the active index |
+| `formsurface_select_texture_set` | name (for example body.1002, trim) or index | the set, its layers and active layer |
 | `formsurface_set_camera` | yaw_degrees, pitch_degrees, zoom (1 frames the mesh) | camera |
 | `formsurface_set_brush` | size_px 1 to 400, hardness, flow, stroke_opacity, spacing, eraser, mirror_x, backface_culling, alignment (camera, tangent_wrap, tangent_planar, uv), size_space (screen, object), angle_degrees, follow_path, tip (round, square, spray), spray_density, lazy_px, jitter_size, jitter_angle, jitter_position, jitter_flow, symmetry (off, mirror, radial), symmetry_axis (x, y, z), radial_count | brush |
 | `formsurface_set_paint_material` | base_color hex, roughness, metallic, height, paint_color, paint_roughness, paint_metallic, paint_height | paint material |
@@ -30,6 +32,6 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_undo` | steps 1 to 24 | undone count |
 | `formsurface_redo` | steps 1 to 24 | redone count |
 | `formsurface_screenshot` | none | PNG image of the viewport |
-| `formsurface_export_maps` | name | folder and map names |
+| `formsurface_export_maps` | name | folder and map names; every texture set is exported, as name_material_channel (plus .udim for tiled materials) when there is more than one |
 
 Errors arrive as text naming the fix: no editor linked (turn on Agent link), service not running (run ./formsurface), or a timeout.
