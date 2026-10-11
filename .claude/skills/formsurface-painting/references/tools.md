@@ -22,11 +22,13 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_text_resource` | text, target (alpha, stencil, fill), font (sans-serif, serif, monospace or a loaded font), bold | image size, brush |
 | `formsurface_load_mesh` | file (glb, gltf, obj, fbx in workspace/meshes) | status; bakes reset, first set keeps its layers |
 | `formsurface_instance_layer` | layer_id (fill or filter on the active set), texture_set (name or index) | new layer id in the target set; edits to any copy update all copies |
-| `formsurface_list_smart_materials` | none | materials with layer names, smart mask names |
+| `formsurface_list_smart_materials` | none | materials with layer names, smart mask names, saved smart mask names |
 | `formsurface_apply_smart_material` | name | new layer ids, baked flag |
 | `formsurface_save_smart_material` | name | saved file |
-| `formsurface_apply_smart_mask` | layer_id, name (Edge wear, Cavity dirt, Dust from top, Thin parts, Protect edges) | fill settings |
-| `formsurface_set_generator` | layer_id, generator (none, cavity, edges, thin, top), level, softness, invert | fill settings |
+| `formsurface_apply_smart_mask` | layer_id, name (Edge wear, Cavity dirt, Dust from top, Thin parts, Protect edges, Grunge dirt, Metal edge wear, Sun bleached or a saved name) | applied_as (fill generator or layer mask) and settings |
+| `formsurface_save_smart_mask` | layer_id, name | file and the saved generator settings |
+| `formsurface_set_generator` | layer_id, generator (none, cavity, edges, thin, top, light, position, noise, mask_builder, dirt, metal_edge_wear), level, softness, invert, noise, noise_scale, direction [x, y, z], builder_ao, builder_curvature, builder_noise | fill settings |
+| `formsurface_set_environment` | file (.hdr in workspace/environments), studio, rotation_degrees, blur, background, exposure | environment, rotation, blur, background, exposure |
 | `formsurface_add_filter_layer` | name, brightness, contrast, hue_degrees, saturation, gamma, roughness_offset, metallic_offset, blur, sharpen | id and settings |
 | `formsurface_layer_mask` | layer_id, action (add_white, add_black, remove, keep), paint_target (layer, mask) | layers and whether strokes paint the mask |
 | `formsurface_update_layer` | layer_id, name, visible, opacity, blend (normal, multiply, screen, overlay, add, subtract, darken, lighten), make_active | layers and active layer |
