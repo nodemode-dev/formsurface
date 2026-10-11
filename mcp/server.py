@@ -366,6 +366,39 @@ def formsurface_clone_source(x: Annotated[float, Field(ge=0, le=1)], y: Annotate
 
 
 @server.tool()
+def formsurface_view_2d(
+    on: bool | None = None,
+    center_u: Annotated[float, Field(ge=-1, le=2)] | None = None,
+    center_v: Annotated[float, Field(ge=-1, le=2)] | None = None,
+    zoom: Annotated[float, Field(ge=0.25, le=32)] | None = None,
+) -> dict:
+    """Switch the viewport to the 2D view (the active texture set's UV layout, base color) or back to 3D. In the 2D view, formsurface_paint_stroke points paint straight into the texture where they fall on the layout (u right, v down, the 0 to 1 square framed at zoom 1), reaching faces the 3D camera cannot see; brush size is in screen pixels of that view. center_u, center_v and zoom frame part of the layout. Polygon fill, ID picking and the path tool need the 3D view; symmetry and the stencil do not apply in 2D."""
+    return call("view_2d", drop_none(on=on, center_u=center_u, center_v=center_v, zoom=zoom))
+
+
+@server.tool()
+def formsurface_paint_path(
+    points: Annotated[list[tuple[float, float]], Field(min_length=2, max_length=64)],
+    closed: bool = False,
+    smooth: bool = True,
+    erase: bool = False,
+) -> dict:
+    """Painter's path tool: place control points on the surface at normalized viewport points (0,0 top left) and paint one stroke along a smooth curve through them (smooth false joins them with straight segments; closed loops back to the first point), with the current brush and paint material. The points are kept on the surface, so the curve follows the model rather than the screen. erase removes paint along the path instead. One undo step."""
+    return call("paint_path", {"points": [list(p) for p in points], "closed": closed, "smooth": smooth, "erase": erase}, timeout=120)
+
+
+@server.tool()
+def formsurface_text_resource(
+    text: Annotated[str, Field(min_length=1, max_length=120)],
+    target: Literal["alpha", "stencil", "fill"] = "alpha",
+    font: str = "sans-serif",
+    bold: bool = True,
+) -> dict:
+    """Render text with a font and use it as a resource: alpha makes it the brush tip (each stamp prints the text; set_brush angle or follow_path turns it), stencil lays it over the screen so strokes paint the letters, fill puts it in the active fill layer's image pattern in that layer's color (project it with formsurface_set_fill, for example planar). font is sans-serif, serif, monospace, or a font file the person loaded in the Text section."""
+    return call("text_resource", {"text": text, "target": target, "font": font, "bold": bold})
+
+
+@server.tool()
 def formsurface_uv_tiles(on: bool | None = None) -> dict:
     """Painter's UV tiles workflow. When on, the UDIM tiles of a material share one layer stack: adding, changing or removing layers, fills, filters and masks on one tile applies to all of them, and a stroke paints across tile borders in one go. Turning it on copies the active tile's stack to the material's other tiles and clears their previous paint. Without on, reports the current state."""
     return call("uv_tiles", drop_none(on=on))
