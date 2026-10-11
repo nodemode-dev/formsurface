@@ -27,6 +27,7 @@ pub struct Engine {
     lazy: Option<(f32, f32)>,
     fills: std::collections::HashMap<u32, FillSettings>,
     filters: std::collections::HashMap<u32, FilterSettings>,
+    high: Option<(Mesh, Bvh, Vec<u32>)>,
     mask_target: bool,
     stroking: bool,
     cursor: Option<Hit>,
@@ -62,6 +63,7 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         lazy: None,
         fills: std::collections::HashMap::new(),
         filters: std::collections::HashMap::new(),
+        high: None,
         mask_target: false,
         stroking: false,
         cursor: None,
@@ -424,6 +426,34 @@ impl Engine {
             self.render_fill(id);
         }
         Ok(())
+    }
+
+    pub fn set_high_mesh(&mut self, positions: &[f32], normals: &[f32], indices: &[u32], parts: &[u32]) -> Result<String, JsValue> {
+        let mesh = Mesh::geometry_only(positions, normals, indices).map_err(|e| JsValue::from_str(&e))?;
+        let bvh = Bvh::build(&mesh);
+        let tris = mesh.triangle_count();
+        let parts = if parts.len() == tris { parts.to_vec() } else { vec![0; tris] };
+        let count = parts.iter().copied().collect::<std::collections::BTreeSet<u32>>().len();
+        self.high = Some((mesh, bvh, parts));
+        Ok(format!("{tris} triangles, {count} parts"))
+    }
+
+    pub fn clear_high_mesh(&mut self) {
+        self.high = None;
+    }
+
+    pub fn bake_high(&mut self, front: f32, rear: f32) -> Result<String, JsValue> {
+        let (low, _) = self.mesh.as_ref().ok_or_else(|| JsValue::from_str("Load the low-poly mesh first"))?;
+        let (high, bvh, parts) = self.high.as_ref().ok_or_else(|| JsValue::from_str("Load a high-poly mesh first"))?;
+        let size = self.gpu.size.min(2048) as usize;
+        let r = low.radius;
+        let result = fs_core::bake::bake_high(low, high, bvh, parts, size, front.max(0.0) * r, rear.max(0.0) * r);
+        self.gpu.set_high_bake(size as u32, &result.normal, &result.id);
+        Ok(format!("{} of {} texels hit the high-poly mesh", result.hits, result.texels))
+    }
+
+    pub fn is_high_baked(&self) -> bool {
+        self.gpu.high_baked
     }
 
     pub fn is_baked(&self) -> bool {

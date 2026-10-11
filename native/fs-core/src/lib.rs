@@ -1,3 +1,4 @@
+pub mod bake;
 pub mod bvh;
 pub mod document;
 pub mod mesh;

@@ -10,6 +10,7 @@ struct Camera {
 @group(0) @binding(1) var color_tex: texture_2d<f32>;
 @group(0) @binding(2) var mat_tex: texture_2d<f32>;
 @group(0) @binding(3) var samp: sampler;
+@group(0) @binding(4) var baked_normal: texture_2d<f32>;
 
 struct VOut {
     @builtin(position) clip: vec4<f32>,
@@ -59,7 +60,8 @@ fn fs(i: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
     let b = dp2perp * duv1.y + dp1perp * duv2.y;
     let invmax = inverseSqrt(max(dot(t, t), dot(b, b)) + 1e-20);
     let strength = cam.params.y * dims.x / 256.0;
-    let nt = normalize(vec3<f32>(-hx * strength, hy * strength, 1.0));
+    let bn = textureSample(baked_normal, samp, i.uv).xyz * 2.0 - 1.0;
+    let nt = normalize(vec3<f32>(bn.x - hx * strength, bn.y - hy * strength, max(bn.z, 0.05)));
     n = normalize(t * invmax * nt.x + b * invmax * nt.y + n * nt.z);
     let v = normalize(cam.eye.xyz - i.world);
     let rough = clamp(m.r, 0.04, 1.0);
@@ -686,6 +688,9 @@ struct Sel { channel: vec4<u32>, params: vec4<f32>, };
 @group(0) @binding(3) var bake_tex: texture_2d<f32>;
 @group(0) @binding(4) var pos_map: texture_2d<f32>;
 @group(0) @binding(5) var normal_map: texture_2d<f32>;
+@group(0) @binding(6) var baked_normal: texture_2d<f32>;
+@group(0) @binding(7) var baked_id: texture_2d<f32>;
+@group(0) @binding(8) var lin: sampler;
 
 @fragment
 fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
@@ -693,7 +698,11 @@ fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     let size = vec2<i32>(textureDimensions(mat_tex));
     let m = textureLoad(mat_tex, p, 0);
     let b = textureLoad(bake_tex, p, 0);
+    let uv = (vec2<f32>(p) + 0.5) / vec2<f32>(size);
+    let bn = textureSampleLevel(baked_normal, lin, uv, 0.0).xyz * 2.0 - 1.0;
     switch sel.channel.x {
+        case 10u: { return vec4<f32>(textureSampleLevel(baked_id, lin, uv, 0.0).rgb, 1.0); }
+        case 11u: { return vec4<f32>(normalize(vec3<f32>(bn.x, -bn.y, max(bn.z, 0.05))) * 0.5 + 0.5, 1.0); }
         case 5u: { return vec4<f32>(vec3<f32>(b.r), 1.0); }
         case 6u: { return vec4<f32>(vec3<f32>(b.g), 1.0); }
         case 7u: { return vec4<f32>(vec3<f32>(b.b), 1.0); }
@@ -707,7 +716,7 @@ fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
             let hx = textureLoad(mat_tex, clamp(p + vec2<i32>(1, 0), vec2<i32>(0), size - 1), 0).b - textureLoad(mat_tex, clamp(p - vec2<i32>(1, 0), vec2<i32>(0), size - 1), 0).b;
             let hy = textureLoad(mat_tex, clamp(p + vec2<i32>(0, 1), vec2<i32>(0), size - 1), 0).b - textureLoad(mat_tex, clamp(p - vec2<i32>(0, 1), vec2<i32>(0), size - 1), 0).b;
             let s = sel.params.x * f32(size.x) / 256.0;
-            let n = normalize(vec3<f32>(-hx * s, hy * s, 1.0));
+            let n = normalize(vec3<f32>(bn.x - hx * s, -bn.y + hy * s, max(bn.z, 0.05)));
             return vec4<f32>(n * 0.5 + 0.5, 1.0);
         }
     }

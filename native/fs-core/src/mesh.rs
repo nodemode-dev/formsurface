@@ -42,6 +42,35 @@ impl Mesh {
         Ok(Mesh { positions, normals, uvs, indices, center, radius })
     }
 
+    pub fn geometry_only(positions: &[f32], normals: &[f32], indices: &[u32]) -> Result<Mesh, String> {
+        let count = positions.len() / 3;
+        Mesh::from_flat(positions, normals, &vec![0.0; count * 2], indices)
+    }
+
+    pub fn tangents(&self) -> (Vec<Vec3>, Vec<Vec3>) {
+        let mut t = vec![[0.0f32; 3]; self.positions.len()];
+        let mut b = vec![[0.0f32; 3]; self.positions.len()];
+        for tri in self.indices.chunks_exact(3) {
+            let (i0, i1, i2) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
+            let e1 = sub(self.positions[i1], self.positions[i0]);
+            let e2 = sub(self.positions[i2], self.positions[i0]);
+            let (du1, dv1) = (self.uvs[i1][0] - self.uvs[i0][0], self.uvs[i1][1] - self.uvs[i0][1]);
+            let (du2, dv2) = (self.uvs[i2][0] - self.uvs[i0][0], self.uvs[i2][1] - self.uvs[i0][1]);
+            let det = du1 * dv2 - du2 * dv1;
+            if det.abs() < 1e-12 {
+                continue;
+            }
+            let r = 1.0 / det;
+            let tt = scale(sub(scale(e1, dv2), scale(e2, dv1)), r);
+            let bb = scale(sub(scale(e2, du1), scale(e1, du2)), r);
+            for &i in &[i0, i1, i2] {
+                t[i] = add(t[i], tt);
+                b[i] = add(b[i], bb);
+            }
+        }
+        (t, b)
+    }
+
     pub fn uv_per_world(&self, triangle: u32) -> f32 {
         let i = &self.indices[triangle as usize * 3..triangle as usize * 3 + 3];
         let (a, b, c) = (i[0] as usize, i[1] as usize, i[2] as usize);

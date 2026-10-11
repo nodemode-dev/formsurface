@@ -45,6 +45,9 @@ pub struct Gpu {
     fill_uniform: wgpu::Buffer,
     bake: wgpu::Texture,
     pub baked: bool,
+    baked_normal: wgpu::Texture,
+    baked_id: wgpu::Texture,
+    pub high_baked: bool,
     light_uniform: wgpu::Buffer,
     bake_depth_pipe: wgpu::RenderPipeline,
     bake_accum_pipe: wgpu::RenderPipeline,
@@ -112,6 +115,21 @@ fn new_set(device: &wgpu::Device, size: u32) -> Set {
 
 fn new_pair(device: &wgpu::Device, size: u32) -> Pair {
     Pair { color: texture(device, size, LAYER_FORMAT, "composite color"), mat: texture(device, size, LAYER_FORMAT, "composite material") }
+}
+
+fn rgba_texture(device: &wgpu::Device, queue: &wgpu::Queue, width: u32, height: u32, bytes: &[u8]) -> wgpu::Texture {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("baked image"),
+        size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(texture.as_image_copy(), bytes, wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(width * 4), rows_per_image: Some(height) }, wgpu::Extent3d { width, height, depth_or_array_layers: 1 });
+    texture
 }
 
 fn depth_only_pipeline(device: &wgpu::Device) -> wgpu::RenderPipeline {
@@ -338,6 +356,9 @@ impl Gpu {
             fill_uniform: uniform("fill", 112),
             bake: texture(&device, size, LAYER_FORMAT, "baked maps"),
             baked: false,
+            baked_normal: rgba_texture(&device, &queue, 1, 1, &[128, 128, 255, 255]),
+            baked_id: rgba_texture(&device, &queue, 1, 1, &[128, 128, 128, 255]),
+            high_baked: false,
             light_uniform: uniform("bake light", 96),
             bake_depth_pipe: depth_only_pipeline(&device),
             bake_accum_pipe: pipeline(&device, "bake accumulate", shaders::BAKE_ACCUM, false, &[LAYER_FORMAT], Some(wgpu::BlendState {
@@ -430,6 +451,15 @@ impl Gpu {
         self.queue.submit([encoder.finish()]);
         self.geometry = Some((pos, normal));
         self.baked = false;
+        self.baked_normal = rgba_texture(&self.device, &self.queue, 1, 1, &[128, 128, 255, 255]);
+        self.baked_id = rgba_texture(&self.device, &self.queue, 1, 1, &[128, 128, 128, 255]);
+        self.high_baked = false;
+    }
+
+    pub fn set_high_bake(&mut self, size: u32, normal: &[u8], id: &[u8]) {
+        self.baked_normal = rgba_texture(&self.device, &self.queue, size, size, normal);
+        self.baked_id = rgba_texture(&self.device, &self.queue, size, size, id);
+        self.high_baked = true;
     }
 
     fn draw_mesh(&self, pass: &mut wgpu::RenderPass) {
@@ -895,7 +925,14 @@ impl Gpu {
     fn encode_view(&self, encoder: &mut wgpu::CommandEncoder, target: &wgpu::Texture, view_proj: [f32; 16], eye: Vec3, cursor: Option<(Vec3, Vec3, f32)>, exposure: f32, normal_strength: f32) {
         self.queue.write_buffer(&self.camera, 0, bytemuck::cast_slice(&camera_bytes(view_proj, eye, cursor, exposure, normal_strength)));
         let (fc, fm) = (view_of(&self.final_set.color), view_of(&self.final_set.mat));
-        let group = bind(&self.device, &self.view_pipe, &[self.camera.as_entire_binding(), wgpu::BindingResource::TextureView(&fc), wgpu::BindingResource::TextureView(&fm), wgpu::BindingResource::Sampler(&self.sampler)]);
+        let bn = view_of(&self.baked_normal);
+        let group = bind(&self.device, &self.view_pipe, &[
+            self.camera.as_entire_binding(),
+            wgpu::BindingResource::TextureView(&fc),
+            wgpu::BindingResource::TextureView(&fm),
+            wgpu::BindingResource::Sampler(&self.sampler),
+            wgpu::BindingResource::TextureView(&bn),
+        ]);
         let view = view_of(target);
         let depth = view_of(&self.depth);
         {
@@ -941,6 +978,9 @@ impl Gpu {
             wgpu::BindingResource::TextureView(&bake),
             wgpu::BindingResource::TextureView(&pv),
             wgpu::BindingResource::TextureView(&nv),
+            wgpu::BindingResource::TextureView(&view_of(&self.baked_normal)),
+            wgpu::BindingResource::TextureView(&view_of(&self.baked_id)),
+            wgpu::BindingResource::Sampler(&self.clamp_sampler),
         ]);
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("readback"), size: (size * size * 4) as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
         let tv = view_of(&target);
