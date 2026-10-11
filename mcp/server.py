@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 import httpx
 from mcp.server.mcpserver import Image, MCPServer
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 SERVICE = os.environ.get("FORMSURFACE_SERVICE", "http://127.0.0.1:8766").rstrip("/")
 if httpx.URL(SERVICE).host not in ("127.0.0.1", "localhost", "::1"):
@@ -222,7 +222,7 @@ def formsurface_list_smart_materials() -> dict:
 
 @server.tool()
 def formsurface_apply_smart_material(name: str) -> dict:
-    """Add a smart material's layers above the active layer in one step. Its generators need baked mesh maps (formsurface_bake_maps) to place wear and dirt."""
+    """Add a smart material above the active layer in one step, as a folder named after it holding its layers (hide or fade the whole material through the folder). Its generators need baked mesh maps (formsurface_bake_maps) to place wear and dirt."""
     return call("smart_apply", {"name": name})
 
 
@@ -290,13 +290,13 @@ def formsurface_update_layer(
 
 @server.tool()
 def formsurface_move_layer(layer_id: int, offset: int) -> dict:
-    """Move a layer up (positive) or down (negative) in the stack."""
+    """Move a layer up (positive) or down (negative) among the layers in the same folder; a folder moves with its contents."""
     return call("move_layer", {"id": layer_id, "offset": offset})
 
 
 @server.tool()
 def formsurface_remove_layer(layer_id: int) -> dict:
-    """Delete a layer. The last remaining layer cannot be deleted."""
+    """Delete a layer, or a folder with everything inside it. The texture set must keep at least one layer."""
     return call("remove_layer", {"id": layer_id})
 
 
@@ -334,10 +334,45 @@ def formsurface_screenshot() -> Image:
     return Image(data=base64.b64decode(result["png_base64"]), format="png")
 
 
+Source = Literal["basecolor", "normal_gl", "normal_dx", "roughness", "smoothness", "metallic", "height", "ao", "curvature", "thickness", "one", "zero"]
+
+
+class MapSpec(BaseModel):
+    suffix: Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,40}$")]
+    rgb: Literal["basecolor", "normal_gl", "normal_dx"] | None = None
+    r: Source | None = None
+    g: Source | None = None
+    b: Source | None = None
+    a: Source | None = None
+
+
 @server.tool()
-def formsurface_export_maps(name: str | None = None) -> dict:
-    """Export base color, roughness, metallic, height and normal PNG maps (plus baked maps) for every texture set into the FormSurface workspace and return the folder. With several sets, files are named name_material_channel, with .udim appended for tiled materials."""
-    return call("export", drop_none(name=name), timeout=180)
+def formsurface_list_export_templates() -> dict:
+    """List export templates (pbr, gltf, unreal, unity_hdrp, unity_urp) with the maps each writes and how channels are packed."""
+    return call("export_templates")
+
+
+@server.tool()
+def formsurface_export_maps(
+    name: str | None = None,
+    template: Literal["pbr", "gltf", "unreal", "unity_hdrp", "unity_urp"] | None = None,
+    custom_maps: Annotated[list[MapSpec] | None, Field(max_length=16)] = None,
+) -> dict:
+    """Export maps for every texture set into the FormSurface workspace and return the folder. template pbr writes base color, roughness, metallic, height and normal (OpenGL) plus baked maps; gltf, unreal, unity_hdrp and unity_urp pack channels for those engines (unreal flips the normal to DirectX). custom_maps defines your own files: each has a suffix and either rgb (basecolor, normal_gl, normal_dx) or r, g, b, a sources; smoothness is 1 minus roughness and ao is white until baked. With several sets, files are named name_material_suffix, with .udim appended for tiled materials. Without template, the editor's Export template choice is used."""
+    maps = [m.model_dump(exclude_none=True) for m in custom_maps] if custom_maps else None
+    return call("export", drop_none(name=name, template=template, maps=maps), timeout=240)
+
+
+@server.tool()
+def formsurface_add_folder(name: str = "Folder", layer_ids: list[int] | None = None) -> dict:
+    """Add a layer folder above the active layer and move the given layers into it. A folder's visibility, opacity and mask apply to everything inside (children blend straight onto the layers below, like Painter's passthrough). While a folder is the active layer, new layers are created inside it."""
+    return call("add_folder", drop_none(name=name, layer_ids=layer_ids))
+
+
+@server.tool()
+def formsurface_set_layer_folder(layer_id: int, folder_id: int = 0) -> dict:
+    """Move a layer or folder into a folder (it becomes the top item there), or to the top level with folder_id 0."""
+    return call("set_parent", {"id": layer_id, "folder_id": folder_id})
 
 
 if __name__ == "__main__":
