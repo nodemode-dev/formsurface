@@ -1,7 +1,7 @@
 mod gpu;
 mod shaders;
 
-use fs_core::{add, cross, dot, normalize, scale, sub, BlendMode, BrushSettings, Bvh, ChannelValues, FillSettings, FilterSettings, Hit, LayerInfo, LayerKind, Mesh, SizeSpace, Symmetry, Vec3};
+use fs_core::{add, cross, dot, normalize, scale, sub, BlendMode, BrushSettings, Bvh, ChannelValues, FillSettings, FilterSettings, Hit, LayerInfo, LayerKind, Mesh, SizeSpace, StrokeMode, Symmetry, Vec3};
 use fs_core::sets::TextureSet;
 use gpu::Gpu;
 use std::collections::HashMap;
@@ -53,6 +53,7 @@ pub struct Engine {
     normal_strength: f32,
     uv_tiles: bool,
     relaying: bool,
+    clone_source: Option<[f32; 2]>,
     mask_gens: HashMap<u32, FillSettings>,
     id_maps: HashMap<usize, (u32, Vec<u8>)>,
 }
@@ -95,6 +96,7 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         normal_strength: 1.0,
         uv_tiles: false,
         relaying: false,
+        clone_source: None,
         mask_gens: HashMap::new(),
         id_maps: HashMap::new(),
     };
@@ -159,6 +161,92 @@ impl Engine {
             self.set_uv_tiles(true);
         }
         Ok(info)
+    }
+
+    pub fn set_clone_source(&mut self, x: f32, y: f32) -> Result<(), JsValue> {
+        let hit = self.pick(x, y).ok_or_else(|| JsValue::from_str("Click on the mesh to set the clone source"))?;
+        let info = &self.sets[self.set_index].info;
+        if hit.triangle < info.start / 3 || hit.triangle >= (info.start + info.count) / 3 {
+            return Err(JsValue::from_str("The clone source must be on the active texture set"));
+        }
+        self.clone_source = Some(hit.uv);
+        self.gpu.clone_offset = None;
+        Ok(())
+    }
+
+    pub fn has_clone_source(&self) -> bool {
+        self.clone_source.is_some()
+    }
+
+    pub fn flatten_stack(&mut self, name: String) -> u32 {
+        if self.stroking {
+            return 0;
+        }
+        if let Some(r) = self.relay_new(|e| e.flatten_stack(name.clone())) {
+            return r;
+        }
+        self.flush();
+        self.gpu.composite(&self.layers, &self.filters);
+        let id = self.next_id;
+        self.next_id += 1;
+        let at = self.layers.len();
+        self.layers.push(LayerInfo { id, name, visible: true, opacity: 1.0, blend: BlendMode::Normal, kind: LayerKind::Paint, mask: false, parent: 0 });
+        self.gpu.insert_layer(at, id);
+        self.gpu.flatten_into(at);
+        while self.layers.len() > 1 {
+            let old = self.layers.remove(0);
+            self.gpu.remove_layer(0, old.id);
+        }
+        self.fills.clear();
+        self.filters.clear();
+        self.mask_gens.clear();
+        self.active = id;
+        self.normalize();
+        id
+    }
+
+    pub fn export_layer_mask(&mut self, id: u32) -> Result<js_sys::Promise, JsValue> {
+        let index = self.layers.iter().position(|l| l.id == id).ok_or_else(|| JsValue::from_str("No layer with that id"))?;
+        if !self.layers[index].mask {
+            return Err(JsValue::from_str("That layer has no mask"));
+        }
+        Ok(self.gpu.export_mask(index))
+    }
+
+    pub fn mesh_obj(&self) -> Result<String, JsValue> {
+        use std::fmt::Write;
+        let (mesh, _) = self.mesh.as_ref().ok_or_else(|| JsValue::from_str("Load a mesh first"))?;
+        let mut uvs = mesh.uvs.clone();
+        let mut done = vec![false; uvs.len()];
+        for set in &self.sets {
+            let (col, row) = ((set.info.udim - 1001) % 10, (set.info.udim - 1001) / 10);
+            for &v in &mesh.indices[set.info.start as usize..(set.info.start + set.info.count) as usize] {
+                if !done[v as usize] {
+                    done[v as usize] = true;
+                    let uv = mesh.uvs[v as usize];
+                    uvs[v as usize] = [uv[0] + col as f32, 1.0 - (uv[1] - row as f32)];
+                }
+            }
+        }
+        let mut out = String::with_capacity(mesh.positions.len() * 96);
+        let _ = writeln!(out, "# FormSurface {} OBJ: {} vertices, {} triangles, {} texture sets", env!("CARGO_PKG_VERSION"), mesh.positions.len(), mesh.triangle_count(), self.sets.len());
+        for p in &mesh.positions {
+            let _ = writeln!(out, "v {} {} {}", p[0], p[1], p[2]);
+        }
+        for uv in &uvs {
+            let _ = writeln!(out, "vt {} {}", uv[0], uv[1]);
+        }
+        for n in &mesh.normals {
+            let _ = writeln!(out, "vn {} {} {}", n[0], n[1], n[2]);
+        }
+        for set in &self.sets {
+            let _ = writeln!(out, "g {}\nusemtl {}", set.info.name(), set.info.material);
+            for tri in mesh.indices[set.info.start as usize..(set.info.start + set.info.count) as usize].chunks_exact(3) {
+                let (a, b, c) = (tri[0] + 1, tri[1] + 1, tri[2] + 1);
+                let _ = writeln!(out, "f {a}/{a}/{a} {b}/{b}/{b} {c}/{c}/{c}");
+            }
+        }
+        Ok(out)
     }
 
     pub fn texture_sets_json(&self) -> String {
@@ -454,7 +542,7 @@ impl Engine {
     }
 
     pub fn stroke_begin(&mut self, x: f32, y: f32, pressure: f32) -> bool {
-        if self.mesh.is_none() {
+        if self.mesh.is_none() || (self.brush.mode == StrokeMode::Clone && self.clone_source.is_none()) {
             return false;
         }
         let index = self.layer_index(self.active);
@@ -1031,6 +1119,10 @@ impl Engine {
     }
 
     fn push_stamp(&mut self, hit: &Hit, pressure: f32, direction: Option<Vec3>) {
+        if let (StrokeMode::Clone, None, Some(source)) = (self.brush.mode, self.gpu.clone_offset, self.clone_source) {
+            let size = self.gpu.size as f32;
+            self.gpu.clone_offset = Some([((source[0] - hit.uv[0]) * size).round() as i32, ((source[1] - hit.uv[1]) * size).round() as i32]);
+        }
         let Some((mesh, _)) = &self.mesh else { return };
         let center = mesh.center;
         let uv_scale = mesh.uv_per_world(hit.triangle);

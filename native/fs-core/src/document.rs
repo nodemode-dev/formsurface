@@ -35,6 +35,7 @@ impl BlendMode {
 pub enum StrokeMode {
     Paint,
     Erase,
+    Clone,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]

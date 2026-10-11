@@ -283,6 +283,8 @@ struct Paint {
 @group(0) @binding(2) var snap_val: texture_2d<f32>;
 @group(0) @binding(3) var snap_cov: texture_2d<f32>;
 @group(0) @binding(4) var mask: texture_2d<f32>;
+@group(0) @binding(5) var clone_color: texture_2d<f32>;
+@group(0) @binding(6) var clone_mat: texture_2d<f32>;
 
 struct Out {
     @location(0) color: vec4<f32>,
@@ -306,10 +308,18 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
         o.cov = vec4<f32>(sk.rgb * ks, 0.0);
         return o;
     }
+    var src_color = paint.color.rgb;
+    var src_values = paint.values.rgb;
+    if (paint.mode.z > 0.5) {
+        let dims = vec2<i32>(textureDimensions(clone_color));
+        let q = clamp(p + vec2<i32>(i32(paint.color.w), i32(paint.values.w)), vec2<i32>(0), dims - vec2<i32>(1));
+        src_color = textureLoad(clone_color, q, 0).rgb;
+        src_values = textureLoad(clone_mat, q, 0).rgb;
+    }
     let ac = a * paint.flags.x;
-    o.color = vec4<f32>(paint.color.rgb * ac + sc.rgb * (1.0 - ac), ac + sc.a * (1.0 - ac));
+    o.color = vec4<f32>(src_color * ac + sc.rgb * (1.0 - ac), ac + sc.a * (1.0 - ac));
     let am = a * paint.flags.yzw;
-    o.val = vec4<f32>(paint.values.rgb * am + sv.rgb * (1.0 - am), 0.0);
+    o.val = vec4<f32>(src_values * am + sv.rgb * (1.0 - am), 0.0);
     o.cov = vec4<f32>(am + sk.rgb * (1.0 - am), 0.0);
     return o;
 }
@@ -587,6 +597,23 @@ fn fs(@builtin(position) frag: vec4<f32>) -> Out {
         o.val = vec4<f32>(0.0);
         o.cov = vec4<f32>(0.0);
     }
+    return o;
+}
+"#;
+
+pub const PAIR_TO_SET: &str = r#"
+@group(0) @binding(0) var final_color: texture_2d<f32>;
+@group(0) @binding(1) var final_mat: texture_2d<f32>;
+
+struct Out { @location(0) color: vec4<f32>, @location(1) val: vec4<f32>, @location(2) cov: vec4<f32>, };
+
+@fragment
+fn fs(@builtin(position) pos: vec4<f32>) -> Out {
+    let p = vec2<i32>(pos.xy);
+    var o: Out;
+    o.color = vec4<f32>(textureLoad(final_color, p, 0).rgb, 1.0);
+    o.val = vec4<f32>(textureLoad(final_mat, p, 0).rgb, 0.0);
+    o.cov = vec4<f32>(1.0, 1.0, 1.0, 0.0);
     return o;
 }
 "#;

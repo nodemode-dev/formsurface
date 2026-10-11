@@ -77,9 +77,12 @@ pub struct Gpu {
     invert_pipe: wgpu::RenderPipeline,
     mask_image_pipe: wgpu::RenderPipeline,
     mask_id_pipe: wgpu::RenderPipeline,
+    flatten_pipe: wgpu::RenderPipeline,
+    mask_export_pipe: wgpu::RenderPipeline,
     group_mask: wgpu::Texture,
     quick: wgpu::Texture,
     pub quick_mode: u32,
+    pub clone_offset: Option<[i32; 2]>,
     geometry_pipe: wgpu::RenderPipeline,
     geometry: Option<(wgpu::Texture, wgpu::Texture)>,
     patterns: std::collections::HashMap<u32, wgpu::Texture>,
@@ -411,9 +414,12 @@ impl Gpu {
             }), false),
             mask_image_pipe: pipeline(&device, "mask from image", shaders::MASK_IMAGE, false, &[LAYER_FORMAT], None, false),
             mask_id_pipe: pipeline(&device, "mask from id", shaders::MASK_ID, false, &[LAYER_FORMAT], None, false),
+            flatten_pipe: pipeline(&device, "flatten", shaders::PAIR_TO_SET, false, &[LAYER_FORMAT; 3], None, false),
+            mask_export_pipe: pipeline(&device, "mask export", shaders::MASK_MUL, false, &[wgpu::TextureFormat::Rgba8Unorm], None, false),
             group_mask: texture(&device, size, LAYER_FORMAT, "folder mask"),
             quick: texture(&device, size, LAYER_FORMAT, "quick mask"),
             quick_mode: 0,
+            clone_offset: None,
             geometry_pipe: pipeline(&device, "geometry", shaders::GEOMETRY, true, &[wgpu::TextureFormat::Rgba32Float, LAYER_FORMAT], None, false),
             geometry: None,
             patterns: std::collections::HashMap::new(),
@@ -686,6 +692,54 @@ impl Gpu {
         let group = bind(&self.device, &self.mask_id_pipe, &[self.export_uniform.as_entire_binding(), wgpu::BindingResource::TextureView(&view)]);
         self.mask_pass(index, &self.mask_id_pipe, &group);
         Ok(())
+    }
+
+    pub fn flatten_into(&mut self, index: usize) {
+        let (fc, fm) = (view_of(&self.final_set.color), view_of(&self.final_set.mat));
+        let group = bind(&self.device, &self.flatten_pipe, &[wgpu::BindingResource::TextureView(&fc), wgpu::BindingResource::TextureView(&fm)]);
+        let set = &self.layers[index].set;
+        let (c, v, k) = (view_of(&set.color), view_of(&set.val), view_of(&set.cov));
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let clear = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&c, clear), attach(&v, clear), attach(&k, clear)], ..Default::default() });
+            pass.set_pipeline(&self.flatten_pipe);
+            pass.set_bind_group(0, &group, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        self.queue.submit([encoder.finish()]);
+    }
+
+    pub fn export_mask(&mut self, index: usize) -> js_sys::Promise {
+        let size = self.size;
+        let target = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("mask export"),
+            size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let source = view_of(&self.layers[index].set.mask);
+        let group = bind(&self.device, &self.mask_export_pipe, &[wgpu::BindingResource::TextureView(&source)]);
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("mask readback"), size: (size * size * 4) as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+        let tv = view_of(&target);
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&tv, wgpu::LoadOp::Clear(wgpu::Color::BLACK))], ..Default::default() });
+            pass.set_pipeline(&self.mask_export_pipe);
+            pass.set_bind_group(0, &group, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        encoder.copy_texture_to_buffer(
+            target.as_image_copy(),
+            wgpu::TexelCopyBufferInfo { buffer: &buffer, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(size * 4), rows_per_image: Some(size) } },
+            wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
+        );
+        self.queue.submit([encoder.finish()]);
+        read_rgba(buffer, size, size, size * 4, false)
     }
 
     fn fill_target(&self, id: u32, set: &Set, uniform: &[f32; 28]) {
@@ -1031,6 +1085,11 @@ impl Gpu {
         if to_mask {
             paint[0] = if quick_edit { 1.0 } else { (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]).max(0.0).powf(1.0 / 2.2) };
         }
+        if let (Some([dx, dy]), StrokeMode::Clone, false) = (self.clone_offset, brush.mode, to_mask) {
+            paint[3] = dx as f32;
+            paint[7] = dy as f32;
+            paint[14] = 1.0;
+        }
         self.queue.write_buffer(&self.paint_uniform, 0, bytemuck::cast_slice(&paint));
         let (_, snap) = self.stroke.as_ref().unwrap();
         if to_mask {
@@ -1048,12 +1107,15 @@ impl Gpu {
             return;
         }
         let (sc, sv, sk, mk) = (view_of(&snap.set.color), view_of(&snap.set.val), view_of(&snap.set.cov), view_of(stroke_tex));
+        let (cc, cm) = (view_of(&self.final_set.color), view_of(&self.final_set.mat));
         let group = bind(&self.device, &self.apply_pipe, &[
             self.paint_uniform.as_entire_binding(),
             wgpu::BindingResource::TextureView(&sc),
             wgpu::BindingResource::TextureView(&sv),
             wgpu::BindingResource::TextureView(&sk),
             wgpu::BindingResource::TextureView(&mk),
+            wgpu::BindingResource::TextureView(&cc),
+            wgpu::BindingResource::TextureView(&cm),
         ]);
         let target = &self.layers[index].set;
         let (tc, tv, tk) = (view_of(&target.color), view_of(&target.val), view_of(&target.cov));
