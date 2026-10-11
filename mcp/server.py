@@ -261,9 +261,11 @@ def formsurface_add_filter_layer(
     gamma: Annotated[float, Field(ge=0.2, le=3)] = 1.0,
     roughness_offset: Annotated[float, Field(ge=-1, le=1)] = 0.0,
     metallic_offset: Annotated[float, Field(ge=-1, le=1)] = 0.0,
+    blur: Annotated[float, Field(ge=0, le=32)] = 0.0,
+    sharpen: Annotated[float, Field(ge=0, le=4)] = 0.0,
 ) -> dict:
-    """Add a filter layer that adjusts every layer below it: brightness, contrast, hue, saturation and gamma of base color, and offsets for roughness and metallic. Limit it with a mask like any layer."""
-    return call("add_filter_layer", {"name": name, "settings": {"brightness": brightness, "contrast": contrast, "hue": hue_degrees, "saturation": saturation, "gamma": gamma, "roughness_offset": roughness_offset, "metallic_offset": metallic_offset}})
+    """Add a filter layer that adjusts every layer below it: blur (radius in texels at 1024 px, scaled with texture size) and sharpen of every channel including height, then brightness, contrast, hue, saturation and gamma of base color, and offsets for roughness and metallic. Blur stays inside UV islands. Limit it with a mask like any layer."""
+    return call("add_filter_layer", {"name": name, "settings": {"brightness": brightness, "contrast": contrast, "hue": hue_degrees, "saturation": saturation, "gamma": gamma, "roughness_offset": roughness_offset, "metallic_offset": metallic_offset, "blur": blur, "sharpen": sharpen}})
 
 
 @server.tool()
@@ -305,6 +307,29 @@ def formsurface_remove_layer(layer_id: int) -> dict:
 def formsurface_fill_layer() -> dict:
     """Fill the whole active layer with the current paint material (only the channels that are switched on)."""
     return call("fill")
+
+
+@server.tool()
+def formsurface_set_filter(
+    layer_id: int,
+    brightness: Annotated[float | None, Field(ge=-0.5, le=0.5)] = None,
+    contrast: Annotated[float | None, Field(ge=-1, le=1)] = None,
+    hue_degrees: Annotated[float | None, Field(ge=-180, le=180)] = None,
+    saturation: Annotated[float | None, Field(ge=0, le=2)] = None,
+    gamma: Annotated[float | None, Field(ge=0.2, le=3)] = None,
+    roughness_offset: Annotated[float | None, Field(ge=-1, le=1)] = None,
+    metallic_offset: Annotated[float | None, Field(ge=-1, le=1)] = None,
+    blur: Annotated[float | None, Field(ge=0, le=32)] = None,
+    sharpen: Annotated[float | None, Field(ge=0, le=4)] = None,
+) -> dict:
+    """Change an existing filter layer's settings; only the values given change."""
+    return call("set_filter", {"id": layer_id, "settings": drop_none(brightness=brightness, contrast=contrast, hue=hue_degrees, saturation=saturation, gamma=gamma, roughness_offset=roughness_offset, metallic_offset=metallic_offset, blur=blur, sharpen=sharpen)})
+
+
+@server.tool()
+def formsurface_quick_mask(mode: Literal["off", "edit", "on"] | None = None, action: Literal["clear", "allow_all", "invert"] | None = None) -> dict:
+    """Painter's quick mask for the active texture set, a temporary mask that is not a layer. edit: strokes and fills mark where paint may land (the eraser protects), shown in red where protected; on: every stroke, fill and polygon fill only lands where it was marked; off: no limit. clear protects everything, allow_all allows everything, invert swaps them. Not undoable."""
+    return call("quick_mask", drop_none(mode=mode, action=action))
 
 
 @server.tool()
