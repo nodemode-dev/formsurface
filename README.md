@@ -15,7 +15,13 @@ Paint directly on 3D models, layer by layer, the way Substance 3D Painter works.
 - **Meshes:** glTF, GLB, OBJ, FBX, plus built-in samples (sphere, torus, capsule, torus knot).
 - **Export:** base color, roughness, metallic, height and normal (OpenGL) PNG maps, and a viewport screenshot.
 
-The parity matrix in the planning sidecar lists exactly what is still missing against Painter.
+## Agents (MCP)
+
+FormSurface ships an MCP server with 16 `formsurface_*` tools that drive the editor you have open: layers, brush, paint and base material, camera, strokes, fill, undo, screenshot and map export. Claude Code picks it up from `.mcp.json`; other clients run `./formsurface mcp` (stdio). Press **Agent link** in the editor's top bar to let agents in; it is off by default. The `formsurface-painting` skill (`.claude/skills`, mirrored in `.agents/skills`) teaches agents the order of work.
+
+## Parity
+
+Measured against Substance 3D Painter 12.1.5 on 50 documented capabilities, v0.2.0 scores 10.5 of 50 (21 percent): the painting core is real, texturing features (fill projections, masks, generators, smart materials, baking, texture sets, UDIMs, color management) are not built yet. The full page is in the planning sidecar.
 
 ## Quick start
 
