@@ -63,7 +63,7 @@ def formsurface_instance_layer(layer_id: int, texture_set: str) -> dict:
 
 @server.tool()
 def formsurface_load_mesh(file: str) -> dict:
-    """Replace the mesh with a glb, gltf, obj or fbx from the workspace meshes folder (the mesh update step of a batch). The first texture set keeps its layers in UV space; bakes are reset."""
+    """Replace the mesh with a glb, gltf, obj, fbx, usd, usda, usdc, usdz, ply or dae from the workspace meshes folder (the mesh update step of a batch). The first texture set keeps its layers in UV space; bakes are reset."""
     return call("load_mesh", {"file": file}, timeout=180)
 
 
@@ -228,9 +228,28 @@ def formsurface_bake_high_poly(
     cage_file: str | None = None,
     distance_cage: bool = False,
 ) -> dict:
-    """Bake from a high-poly mesh onto the painted mesh: a tangent-space normal map, an ID map (one color per high-poly part), height (high surface above or below the low one, mid gray is level, cage range maps to 0 to 1), opacity (white where the high mesh was found) and, with ao_rays above 0 (default 16, more is smoother and slower), ambient occlusion and a bent normal map from the high-poly detail. The extra maps export as ambient_occlusion_high, height_high, opacity and bent_normal, and ao_high, height_high and opacity are template sources. mesh_file is a glb, gltf, obj or fbx the person put in the workspace meshes folder; use_sample (or sample sphere) loads a low sphere with a bumpy two-part high-poly sphere, and sample pair loads two touching low spheres named left_low and right_low with high-poly left_high and right_high. Cage distances are fractions of the mesh radius in front of and behind the low surface; raise them if parts of the high-poly are missed. match_by_name pairs low and high parts whose mesh names match once _low and _high (or _lo and _hi) are removed, so close parts never bake onto each other; unmatched parts bake only against unmatched high-poly parts. cage_file is a custom cage in the workspace meshes folder: the low-poly mesh with its vertices moved (same triangles in the same order); rays then run from the cage to the low surface and cage_rear still reaches behind it. It stays set for later bakes until distance_cage is true or another mesh is loaded."""
+    """Bake from a high-poly mesh onto the painted mesh: a tangent-space normal map, an ID map (one color per high-poly part), height (high surface above or below the low one, mid gray is level, cage range maps to 0 to 1), opacity (white where the high mesh was found) and, with ao_rays above 0 (default 16, more is smoother and slower), ambient occlusion and a bent normal map from the high-poly detail. The extra maps export as ambient_occlusion_high, height_high, opacity and bent_normal, and ao_high, height_high and opacity are template sources. mesh_file is a glb, gltf, obj, fbx, usd, usda, usdc, usdz, ply or dae the person put in the workspace meshes folder; use_sample (or sample sphere) loads a low sphere with a bumpy two-part high-poly sphere, and sample pair loads two touching low spheres named left_low and right_low with high-poly left_high and right_high. Cage distances are fractions of the mesh radius in front of and behind the low surface; raise them if parts of the high-poly are missed. match_by_name pairs low and high parts whose mesh names match once _low and _high (or _lo and _hi) are removed, so close parts never bake onto each other; unmatched parts bake only against unmatched high-poly parts. cage_file is a custom cage in the workspace meshes folder: the low-poly mesh with its vertices moved (same triangles in the same order); rays then run from the cage to the low surface and cage_rear still reaches behind it. It stays set for later bakes until distance_cage is true or another mesh is loaded."""
     chosen = sample or ("sphere" if use_sample else None)
     return call("bake_high", drop_none(file=mesh_file, sample=chosen, front=cage_front, rear=cage_rear, match_by_name=match_by_name, ao_rays=ao_rays, cage_file=cage_file, distance_cage=distance_cage or None), timeout=600)
+
+
+@server.tool()
+def formsurface_load_image(
+    file: str,
+    target: Literal["fill", "alpha", "stencil", "mask"] = "fill",
+    layer_id: int | None = None,
+    color_space: Literal["srgb", "linear", "raw"] | None = None,
+) -> dict:
+    """Import a png, jpg or webp from the workspace images folder as a fill layer image, brush alpha, stencil or layer mask (mask over the UV layout). layer_id picks the fill layer or masked layer (otherwise the active one). color_space says how the file's values are read: srgb (gamma encoded color), linear (linear values, for example a linear albedo or a data map saved as linear) or raw (numbers used exactly, the default for alphas, stencils and masks); fill images default to srgb. Change it later with formsurface_set_color_space."""
+    return call("load_image", drop_none(file=file, target=target, layer_id=layer_id, color_space=color_space), timeout=120)
+
+
+@server.tool()
+def formsurface_set_color_space(resource: str | int | None = None, color_space: Literal["srgb", "linear", "raw"] | None = None) -> dict:
+    """Per-resource color space override, like Painter's: list imported images and HDR environments with their index and color space (no arguments), or set one by name or index (the index is needed when one file was imported for two targets). Images are re-read and re-applied at once: a fill image marked linear is encoded to sRGB before use; an alpha, stencil or mask marked srgb is decoded to linear values; raw uses the stored numbers. An environment marked srgb has its values decoded from gamma before lighting (Radiance files are linear by default)."""
+    if resource is None or color_space is None:
+        return call("resources")
+    return call("resource_color_space", {"resource": resource, "color_space": color_space})
 
 
 @server.tool()

@@ -16,6 +16,8 @@ usage: ./formsurface [command]
   batch FILE      run a JSON batch script of formsurface_* tool calls against the linked editor
                   (--wait SECONDS for the Agent link, --out DIR for screenshots, --pause SECONDS
                   between steps, --keep-going)
+  script FILE     run a Python script that imports formsurface_api (project, textureset,
+                  layerstack, baking, export, resource, display) against the linked editor
   help            this text
 EOF2
 }
@@ -28,6 +30,7 @@ case "$cmd" in
   frontend) cd frontend && exec ./boot_frontend ;;
   mcp) exec mcp/launch ;;
   batch) shift; [ -x backend/venv/bin/python ] || { echo "Run ./formsurface install first" >&2; exit 1; }; exec backend/venv/bin/python -I mcp/batch.py "$@" ;;
+  script) shift; [ -x backend/venv/bin/python ] || { echo "Run ./formsurface install first" >&2; exit 1; }; exec backend/venv/bin/python -I mcp/run_script.py "$@" ;;
   help|-h|--help) usage ;;
   *) usage; exit 2 ;;
 esac
