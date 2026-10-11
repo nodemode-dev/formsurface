@@ -308,6 +308,12 @@ pub struct FillSettings {
     pub generator_level: f32,
     pub generator_softness: f32,
     pub generator_invert: bool,
+    pub generator_direction: [f32; 3],
+    pub generator_noise: f32,
+    pub noise_scale: f32,
+    pub builder_ao: f32,
+    pub builder_curvature: f32,
+    pub builder_noise: f32,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -318,6 +324,12 @@ pub enum Generator {
     Edges,
     Thin,
     Top,
+    Light,
+    Position,
+    Noise,
+    MaskBuilder,
+    Dirt,
+    MetalEdgeWear,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -365,19 +377,33 @@ impl Default for FillSettings {
             generator_level: 0.5,
             generator_softness: 0.1,
             generator_invert: false,
+            generator_direction: [0.5, 0.8, 0.3],
+            generator_noise: 0.0,
+            noise_scale: 4.0,
+            builder_ao: 1.0,
+            builder_curvature: 0.0,
+            builder_noise: 0.0,
         }
     }
 }
 
 impl FillSettings {
-    pub fn uniform(&self, center: [f32; 3], radius: f32) -> [f32; 28] {
+    pub fn uniform(&self, center: [f32; 3], radius: f32) -> [f32; 36] {
         let generator = match self.generator {
             Generator::None => 0.0,
             Generator::Cavity => 1.0,
             Generator::Edges => 2.0,
             Generator::Thin => 3.0,
             Generator::Top => 4.0,
+            Generator::Light => 5.0,
+            Generator::Position => 6.0,
+            Generator::Noise => 7.0,
+            Generator::MaskBuilder => 8.0,
+            Generator::Dirt => 9.0,
+            Generator::MetalEdgeWear => 10.0,
         };
+        let d = self.generator_direction;
+        let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt().max(1e-6);
         let flag = |b: bool| if b { 1.0 } else { 0.0 };
         let projection = match self.projection {
             Projection::Uv => 0.0,
@@ -402,6 +428,8 @@ impl FillSettings {
             self.offset_x, self.offset_y, self.sharpness.clamp(1.0, 32.0), self.axis.min(2) as f32,
             center[0], center[1], center[2], radius,
             generator, self.generator_level.clamp(0.0, 1.0), self.generator_softness.clamp(0.001, 0.5), flag(self.generator_invert),
+            self.builder_ao.clamp(0.0, 1.0), self.builder_curvature.clamp(0.0, 1.0), self.builder_noise.clamp(0.0, 1.0), self.noise_scale.clamp(0.1, 64.0),
+            d[0] / len, d[1] / len, d[2] / len, self.generator_noise.clamp(0.0, 1.0),
         ]
     }
 }

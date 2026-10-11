@@ -63,6 +63,8 @@ pub struct Engine {
     flat: Option<[f32; 3]>,
     flat_cursor: Option<[f32; 2]>,
     last_uv: Option<[f32; 2]>,
+    environment: Option<String>,
+    env_view: [f32; 3],
 }
 
 #[wasm_bindgen]
@@ -113,6 +115,8 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         flat: None,
         flat_cursor: None,
         last_uv: None,
+        environment: None,
+        env_view: [0.0, 0.0, 1.0],
     };
     engine.add_layer("Layer 1".into());
     Ok(engine)
@@ -601,6 +605,44 @@ impl Engine {
         self.distance = (self.distance * (1.0 + delta * 0.001)).clamp(r * 0.05, r * 50.0);
     }
 
+    pub fn set_environment(&mut self, name: String, width: u32, height: u32, rgb: &[f32]) -> Result<(), JsValue> {
+        self.gpu.set_environment(width, height, rgb).map_err(|e| JsValue::from_str(&e))?;
+        self.environment = Some(name);
+        Ok(())
+    }
+
+    pub fn clear_environment(&mut self) {
+        self.environment = None;
+    }
+
+    pub fn set_environment_view(&mut self, rotation_degrees: f32, blur: f32, background: bool) {
+        self.env_view = [rotation_degrees.to_radians(), blur.clamp(0.0, 1.0), if background { 1.0 } else { 0.0 }];
+    }
+
+    pub fn environment_json(&self) -> String {
+        serde_json::json!({
+            "environment": self.environment.clone().unwrap_or_else(|| "studio".into()),
+            "rotation_degrees": self.env_view[0].to_degrees(),
+            "blur": self.env_view[1],
+            "background": self.env_view[2] > 0.5,
+            "exposure": self.exposure,
+        })
+        .to_string()
+    }
+
+    fn push_env_params(&mut self) {
+        let (forward, right, up, _) = self.basis();
+        let t = (self.fov * 0.5).tan();
+        let aspect = self.width as f32 / self.height as f32;
+        let on = if self.environment.is_some() { 1.0 } else { 0.0 };
+        self.gpu.env_params = [
+            on, self.env_view[0], self.env_view[1], self.env_view[2],
+            right[0], right[1], right[2], t * aspect,
+            up[0], up[1], up[2], t,
+            forward[0], forward[1], forward[2], self.exposure,
+        ];
+    }
+
     pub fn set_view_2d(&mut self, on: bool) -> bool {
         if self.stroking {
             return false;
@@ -1055,6 +1097,7 @@ impl Engine {
         let aspect = self.width as f32 / self.height as f32;
         let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
         let view_proj = gpu::view_projection(eye, forward, right, up, self.fov, aspect, (self.distance - r * 2.0).max(r * 0.01), self.distance + r * 3.0);
+        self.push_env_params();
         if self.flat.is_some() {
             let cursor = self.flat_cursor.map(|uv| ([uv[0], uv[1], 0.0], [0.0, 0.0, 1.0], self.flat_radius(1.0)));
             self.gpu.render(self.flat_matrix(), eye, cursor, self.exposure, self.normal_strength);
@@ -1302,6 +1345,7 @@ impl Engine {
         let (forward, right, up, eye) = self.basis();
         let aspect = self.width as f32 / self.height as f32;
         let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
+        self.push_env_params();
         let view_proj = if self.flat.is_some() { self.flat_matrix() } else { gpu::view_projection(eye, forward, right, up, self.fov, aspect, (self.distance - r * 2.0).max(r * 0.01), self.distance + r * 3.0) };
         self.gpu.snapshot(view_proj, eye, self.exposure, self.normal_strength)
     }

@@ -95,6 +95,10 @@ pub struct Gpu {
     layer_uniform: wgpu::Buffer,
     export_uniform: wgpu::Buffer,
     view_pipe: wgpu::RenderPipeline,
+    background_pipe: wgpu::RenderPipeline,
+    env_uniform: wgpu::Buffer,
+    env_textures: [wgpu::Texture; 3],
+    pub env_params: [f32; 16],
     paint_pipe: wgpu::RenderPipeline,
     apply_pipe: wgpu::RenderPipeline,
     composite_pipe: wgpu::RenderPipeline,
@@ -165,6 +169,95 @@ fn rgba_texture(device: &wgpu::Device, queue: &wgpu::Queue, width: u32, height: 
     });
     queue.write_texture(texture.as_image_copy(), bytes, wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(width * 4), rows_per_image: Some(height) }, wgpu::Extent3d { width, height, depth_or_array_layers: 1 });
     texture
+}
+
+fn half_bits(value: f32) -> u16 {
+    let x = value.max(0.0).min(65000.0).to_bits();
+    let exp = ((x >> 23) & 0xff) as i32 - 127 + 15;
+    let mant = x & 0x7f_ffff;
+    if exp <= 0 {
+        if exp < -10 {
+            return 0;
+        }
+        let m = mant | 0x80_0000;
+        return (m >> (14 - exp)) as u16;
+    }
+    ((exp as u32) << 10 | (mant >> 13)) as u16
+}
+
+fn half_texture(device: &wgpu::Device, queue: &wgpu::Queue, width: u32, height: u32, rgb: &[f32]) -> wgpu::Texture {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("environment"),
+        size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: LAYER_FORMAT,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    let mut halves = Vec::with_capacity((width * height * 4) as usize);
+    for p in rgb.chunks_exact(3) {
+        halves.extend_from_slice(&[half_bits(p[0]), half_bits(p[1]), half_bits(p[2]), half_bits(1.0)]);
+    }
+    queue.write_texture(texture.as_image_copy(), bytemuck::cast_slice(&halves), wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(width * 8), rows_per_image: Some(height) }, wgpu::Extent3d { width, height, depth_or_array_layers: 1 });
+    texture
+}
+
+fn shrink(rgb: &[f32], width: usize, height: usize, to_w: usize, to_h: usize) -> Vec<f32> {
+    let mut out = vec![0.0f32; to_w * to_h * 3];
+    for y in 0..to_h {
+        let (y0, y1) = (y * height / to_h, ((y + 1) * height / to_h).max(y * height / to_h + 1));
+        for x in 0..to_w {
+            let (x0, x1) = (x * width / to_w, ((x + 1) * width / to_w).max(x * width / to_w + 1));
+            let mut sum = [0.0f32; 3];
+            for sy in y0..y1.min(height) {
+                for sx in x0..x1.min(width) {
+                    let i = (sy * width + sx) * 3;
+                    for c in 0..3 {
+                        sum[c] += rgb[i + c];
+                    }
+                }
+            }
+            let n = ((y1.min(height) - y0) * (x1.min(width) - x0)).max(1) as f32;
+            for c in 0..3 {
+                out[(y * to_w + x) * 3 + c] = sum[c] / n;
+            }
+        }
+    }
+    out
+}
+
+fn blur_wrap(rgb: &[f32], width: usize, height: usize, passes: usize) -> Vec<f32> {
+    let mut cur = rgb.to_vec();
+    for _ in 0..passes {
+        let mut next = vec![0.0f32; cur.len()];
+        for y in 0..height {
+            for x in 0..width {
+                let mut sum = [0.0f32; 3];
+                let mut n = 0.0;
+                for dy in -1i32..=1 {
+                    let yy = y as i32 + dy;
+                    if yy < 0 || yy >= height as i32 {
+                        continue;
+                    }
+                    for dx in -1i32..=1 {
+                        let xx = (x as i32 + dx).rem_euclid(width as i32) as usize;
+                        let i = (yy as usize * width + xx) * 3;
+                        for c in 0..3 {
+                            sum[c] += cur[i + c];
+                        }
+                        n += 1.0;
+                    }
+                }
+                for c in 0..3 {
+                    next[(y * width + x) * 3 + c] = sum[c] / n;
+                }
+            }
+        }
+        cur = next;
+    }
+    cur
 }
 
 fn depth_only_pipeline(device: &wgpu::Device) -> wgpu::RenderPipeline {
@@ -371,7 +464,11 @@ impl Gpu {
             backend,
             size,
             base: [0.5, 0.5, 0.5, 0.6, 0.0],
-            view_pipe: pipeline(&device, "view", shaders::VIEW, true, &[format], None, true),
+            view_pipe: pipeline(&device, "view", &format!("{}{}", shaders::ENV_COMMON, shaders::VIEW), true, &[format], None, true),
+            background_pipe: pipeline(&device, "background", &format!("{}{}", shaders::ENV_COMMON, shaders::BACKGROUND), false, &[format], None, true),
+            env_uniform: uniform("environment", 64),
+            env_textures: [half_texture(&device, &queue, 1, 1, &[0.0; 3]), half_texture(&device, &queue, 1, 1, &[0.0; 3]), half_texture(&device, &queue, 1, 1, &[0.0; 3])],
+            env_params: [0.0; 16],
             paint_pipe: pipeline(&device, "paint", shaders::PAINT, true, &[LAYER_FORMAT], Some(union), false),
             apply_pipe: pipeline(&device, "apply", shaders::APPLY, false, &[LAYER_FORMAT; 3], None, false),
             composite_pipe: pipeline(&device, "composite", shaders::COMPOSITE, false, &[LAYER_FORMAT; 2], None, false),
@@ -390,7 +487,7 @@ impl Gpu {
             }),
             camera: uniform("camera", 128),
             stamp_buffer: uniform("stamps", 64 + 32 * 64),
-            fill_uniform: uniform("fill", 112),
+            fill_uniform: uniform("fill", 144),
             bake: texture(&device, size, LAYER_FORMAT, "baked maps"),
             baked: false,
             baked_normal: rgba_texture(&device, &queue, 1, 1, &[128, 128, 255, 255]),
@@ -650,11 +747,11 @@ impl Gpu {
         self.queue.submit([encoder.finish()]);
     }
 
-    pub fn fill_layer_content(&mut self, index: usize, uniform: &[f32; 28]) {
+    pub fn fill_layer_content(&mut self, index: usize, uniform: &[f32; 36]) {
         self.fill_target(self.layers[index].id, &self.layers[index].set, uniform);
     }
 
-    pub fn mask_from_fill(&mut self, index: usize, uniform: &[f32; 28]) {
+    pub fn mask_from_fill(&mut self, index: usize, uniform: &[f32; 36]) {
         self.fill_target(self.layers[index].id, &self.scratch, uniform);
         let extent = wgpu::Extent3d { width: self.size, height: self.size, depth_or_array_layers: 1 };
         let mut encoder = self.device.create_command_encoder(&Default::default());
@@ -744,7 +841,7 @@ impl Gpu {
         read_rgba(buffer, size, size, size * 4, false)
     }
 
-    fn fill_target(&self, id: u32, set: &Set, uniform: &[f32; 28]) {
+    fn fill_target(&self, id: u32, set: &Set, uniform: &[f32; 36]) {
         let Some(geometry) = &self.geometry else { return };
         self.queue.write_buffer(&self.fill_uniform, 0, bytemuck::cast_slice(uniform));
         let (pv, nv) = (view_of(&geometry.0), view_of(&geometry.1));
@@ -1007,6 +1104,24 @@ impl Gpu {
         ok
     }
 
+    pub fn set_environment(&mut self, width: u32, height: u32, rgb: &[f32]) -> Result<(), String> {
+        let (w, h) = (width as usize, height as usize);
+        if w < 8 || h < 4 || w > 16384 || h > 8192 || rgb.len() != w * h * 3 {
+            return Err("An environment is an equirectangular RGB float image, 8 to 16384 pixels wide".into());
+        }
+        let sw = w.min(2048);
+        let sh = (sw / 2).max(1);
+        let sharp = shrink(rgb, w, h, sw, sh);
+        let mid = blur_wrap(&shrink(&sharp, sw, sh, 128, 64), 128, 64, 2);
+        let small = blur_wrap(&shrink(&mid, 128, 64, 32, 16), 32, 16, 4);
+        self.env_textures = [
+            half_texture(&self.device, &self.queue, sw as u32, sh as u32, &sharp),
+            half_texture(&self.device, &self.queue, 128, 64, &mid),
+            half_texture(&self.device, &self.queue, 32, 16, &small),
+        ];
+        Ok(())
+    }
+
     pub fn set_image(&mut self, stencil: bool, width: u32, height: u32, rgba: &[u8]) -> Result<(), String> {
         if width == 0 || height == 0 || width > 4096 || height > 4096 || rgba.len() != (width * height * 4) as usize {
             return Err("Brush images must be RGBA, 1 to 4096 pixels per side".into());
@@ -1255,6 +1370,8 @@ impl Gpu {
             *last = if self.flat { 1.0 } else { 0.0 };
         }
         self.queue.write_buffer(&self.camera, 0, bytemuck::cast_slice(&bytes));
+        self.queue.write_buffer(&self.env_uniform, 0, bytemuck::cast_slice(&self.env_params));
+        let (e0, e1, e2) = (view_of(&self.env_textures[0]), view_of(&self.env_textures[1]), view_of(&self.env_textures[2]));
         let set_group = |final_set: &Pair, baked_normal: &wgpu::Texture, quick: &wgpu::Texture| {
             let (fc, fm, bn, qm) = (view_of(&final_set.color), view_of(&final_set.mat), view_of(baked_normal), view_of(quick));
             bind(&self.device, &self.view_pipe, &[
@@ -1264,8 +1381,19 @@ impl Gpu {
                 wgpu::BindingResource::Sampler(&self.sampler),
                 wgpu::BindingResource::TextureView(&bn),
                 wgpu::BindingResource::TextureView(&qm),
+                self.env_uniform.as_entire_binding(),
+                wgpu::BindingResource::TextureView(&e0),
+                wgpu::BindingResource::TextureView(&e1),
+                wgpu::BindingResource::TextureView(&e2),
             ])
         };
+        let background = bind(&self.device, &self.background_pipe, &[
+            self.env_uniform.as_entire_binding(),
+            wgpu::BindingResource::TextureView(&e0),
+            wgpu::BindingResource::TextureView(&e1),
+            wgpu::BindingResource::TextureView(&e2),
+            wgpu::BindingResource::Sampler(&self.sampler),
+        ]);
         let mut draws = vec![(set_group(&self.final_set, &self.baked_normal, &self.quick), self.range)];
         for state in self.parked.iter().flatten().filter(|_| !self.flat) {
             draws.push((set_group(&state.final_set, &state.baked_normal, &self.white), state.range));
@@ -1290,6 +1418,11 @@ impl Gpu {
                     pass.set_bind_group(0, group, &[]);
                     pass.draw_indexed(*start..*start + *count, 0, 0..1);
                 }
+            }
+            if !self.flat && self.env_params[0] > 0.5 && self.env_params[3] > 0.5 {
+                pass.set_pipeline(&self.background_pipe);
+                pass.set_bind_group(0, &background, &[]);
+                pass.draw(0..3, 0..1);
             }
         }
     }

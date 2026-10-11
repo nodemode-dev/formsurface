@@ -1,3 +1,54 @@
+pub const ENV_COMMON: &str = r#"
+struct Env {
+    a: vec4<f32>,
+    right: vec4<f32>,
+    up: vec4<f32>,
+    forward: vec4<f32>,
+};
+
+fn env_uv(d: vec3<f32>) -> vec2<f32> {
+    let c = cos(env.a.y);
+    let s = sin(env.a.y);
+    let r = vec3<f32>(c * d.x - s * d.z, d.y, s * d.x + c * d.z);
+    return vec2<f32>(atan2(r.x, -r.z) / 6.2831853 + 0.5, acos(clamp(r.y, -1.0, 1.0)) / 3.1415927);
+}
+
+fn env_sample(d: vec3<f32>, level: f32) -> vec3<f32> {
+    let uv = env_uv(d);
+    let s0 = textureSampleLevel(env_sharp, samp, uv, 0.0).rgb;
+    let s1 = textureSampleLevel(env_mid, samp, uv, 0.0).rgb;
+    let s2 = textureSampleLevel(env_small, samp, uv, 0.0).rgb;
+    if (level < 1.0) { return mix(s0, s1, clamp(level, 0.0, 1.0)); }
+    return mix(s1, s2, clamp(level - 1.0, 0.0, 1.0));
+}
+"#;
+
+pub const BACKGROUND: &str = r#"
+@group(0) @binding(0) var<uniform> env: Env;
+@group(0) @binding(1) var env_sharp: texture_2d<f32>;
+@group(0) @binding(2) var env_mid: texture_2d<f32>;
+@group(0) @binding(3) var env_small: texture_2d<f32>;
+@group(0) @binding(4) var samp: sampler;
+
+struct BOut {
+    @location(0) color: vec4<f32>,
+    @builtin(frag_depth) depth: f32,
+};
+
+@fragment
+fn fs(i: FOut) -> BOut {
+    if (env.a.x < 0.5 || env.a.w < 0.5) { discard; }
+    let ndc = vec2<f32>(i.uv.x * 2.0 - 1.0, 1.0 - i.uv.y * 2.0);
+    let d = normalize(env.forward.xyz + env.right.xyz * ndc.x * env.right.w + env.up.xyz * ndc.y * env.up.w);
+    var color = env_sample(d, env.a.z * 2.0) * env.forward.w;
+    color = (color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14);
+    var o: BOut;
+    o.color = vec4<f32>(pow(clamp(color, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / 2.2)), 1.0);
+    o.depth = 0.99999;
+    return o;
+}
+"#;
+
 pub const VIEW: &str = r#"
 struct Camera {
     view_proj: mat4x4<f32>,
@@ -12,6 +63,10 @@ struct Camera {
 @group(0) @binding(3) var samp: sampler;
 @group(0) @binding(4) var baked_normal: texture_2d<f32>;
 @group(0) @binding(5) var quick_tex: texture_2d<f32>;
+@group(0) @binding(6) var<uniform> env: Env;
+@group(0) @binding(7) var env_sharp: texture_2d<f32>;
+@group(0) @binding(8) var env_mid: texture_2d<f32>;
+@group(0) @binding(9) var env_small: texture_2d<f32>;
 
 struct VOut {
     @builtin(position) clip: vec4<f32>,
@@ -93,12 +148,16 @@ fn fs(i: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
         let g = (nl / (nl * (1.0 - k2) + k2)) * (nv / (nv * (1.0 - k2) + k2));
         let spec = ggx(max(dot(n, h), 0.0), a) * g * f / (4.0 * nl * nv + 1e-4);
         let diff = (1.0 - f) * (1.0 - metal) * base / 3.14159265;
-        color = color + (diff + spec) * nl * power[k];
+        color = color + (diff + spec) * nl * power[k] * (1.0 - env.a.x);
     }
     let r = reflect(-v, n);
     let fe = f0 + (max(vec3<f32>(1.0 - rough), f0) - f0) * pow(1.0 - max(dot(n, v), 0.0), 5.0);
-    let env_spec = mix(sky(r), sky(n) * 0.6, rough * rough);
-    color = color + (1.0 - metal) * base * sky(n) * 0.35 + env_spec * fe * 0.9;
+    if (env.a.x > 0.5) {
+        color = color + (1.0 - metal) * base * env_sample(n, 2.0) + env_sample(r, clamp(rough * 2.5, 0.0, 2.0)) * fe;
+    } else {
+        let env_spec = mix(sky(r), sky(n) * 0.6, rough * rough);
+        color = color + (1.0 - metal) * base * sky(n) * 0.35 + env_spec * fe * 0.9;
+    }
     color = color * cam.params.x;
     color = (color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14);
     if (cam.cursor.w > 0.0) {
@@ -503,8 +562,35 @@ struct Fill {
     proj2: vec4<f32>,
     mesh: vec4<f32>,
     generator: vec4<f32>,
+    builder: vec4<f32>,
+    direction: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> fill: Fill;
+
+fn hash3(p: vec3<f32>) -> f32 {
+    return fract(sin(dot(p, vec3<f32>(127.1, 311.7, 74.7))) * 43758.5453);
+}
+
+fn vnoise3(p: vec3<f32>) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    let a = mix(mix(hash3(i), hash3(i + vec3<f32>(1.0, 0.0, 0.0)), u.x), mix(hash3(i + vec3<f32>(0.0, 1.0, 0.0)), hash3(i + vec3<f32>(1.0, 1.0, 0.0)), u.x), u.y);
+    let b = mix(mix(hash3(i + vec3<f32>(0.0, 0.0, 1.0)), hash3(i + vec3<f32>(1.0, 0.0, 1.0)), u.x), mix(hash3(i + vec3<f32>(0.0, 1.0, 1.0)), hash3(i + vec3<f32>(1.0, 1.0, 1.0)), u.x), u.y);
+    return mix(a, b, u.z);
+}
+
+fn fbm3(p: vec3<f32>) -> f32 {
+    var v = 0.0;
+    var amp = 0.5;
+    var q = p;
+    for (var k = 0; k < 5; k = k + 1) {
+        v = v + amp * vnoise3(q);
+        q = q * 2.03 + vec3<f32>(17.0, 3.0, 11.0);
+        amp = amp * 0.5;
+    }
+    return v / 0.96875;
+}
 @group(0) @binding(5) var bake_tex: texture_2d<f32>;
 @group(0) @binding(1) var pos_map: texture_2d<f32>;
 @group(0) @binding(2) var normal_map: texture_2d<f32>;
@@ -592,7 +678,24 @@ fn fs(@builtin(position) frag: vec4<f32>) -> Out {
         if (gk < 1.5) { v = 1.0 - baked.r; }
         else if (gk < 2.5) { v = clamp((baked.g - 0.5) * 2.0, 0.0, 1.0); }
         else if (gk < 3.5) { v = 1.0 - baked.b; }
-        else { v = clamp(local.y * 0.5 + 0.5, 0.0, 1.0); }
+        else if (gk < 4.5) { v = clamp(local.y * 0.5 + 0.5, 0.0, 1.0); }
+        else if (gk < 5.5) { v = clamp(dot(n, fill.direction.xyz) * 0.5 + 0.5, 0.0, 1.0); }
+        else if (gk < 6.5) { v = clamp(dot(local, fill.direction.xyz) * 0.5 + 0.5, 0.0, 1.0); }
+        else {
+            let noise = fbm3(local * fill.builder.w);
+            let cavity = 1.0 - baked.r;
+            let edge = clamp((baked.g - 0.5) * 2.0, 0.0, 1.0);
+            if (gk < 7.5) { v = noise; }
+            else if (gk < 8.5) {
+                let w = fill.builder.x + fill.builder.y + fill.builder.z;
+                v = (cavity * fill.builder.x + edge * fill.builder.y + noise * fill.builder.z) / max(w, 1e-4);
+            }
+            else if (gk < 9.5) { v = clamp(cavity * 1.4 - (1.0 - noise) * 0.45, 0.0, 1.0); }
+            else { v = clamp(edge * 1.6 - (1.0 - noise) * 0.6, 0.0, 1.0); }
+        }
+        if (fill.direction.w > 0.0 && gk < 6.5) {
+            v = clamp(v - (1.0 - fbm3(local * fill.builder.w)) * fill.direction.w, 0.0, 1.0);
+        }
         let soft = max(fill.generator.z, 0.001);
         var g = smoothstep(fill.generator.y - soft, fill.generator.y + soft, v);
         if (fill.generator.w > 0.5) { g = 1.0 - g; }
