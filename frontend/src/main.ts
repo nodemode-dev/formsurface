@@ -4,6 +4,7 @@ import { VERSION } from './version';
 import { LayerList, type LayerInfo } from './ui/layers';
 import { api } from './ui/api';
 import { AgentLink } from './ui/agent-link';
+import { BUILT_IN_MATERIALS, SMART_MASKS, saveMaterial, savedMaterials, type SmartMaterial } from './ui/smart';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>('canvas');
@@ -407,6 +408,86 @@ $('layer-add-filter').addEventListener('click', () => {
   engine.add_filter_layer(`Filter ${layers().length + 1}`);
   refreshLayers();
 });
+let library: SmartMaterial[] = [...BUILT_IN_MATERIALS];
+
+function fillOption(select: HTMLSelectElement, names: string[]): void {
+  const existing = [...select.options].map((o) => o.value);
+  for (const name of names) {
+    if (existing.includes(name)) continue;
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
+  }
+}
+
+async function refreshLibrary(): Promise<void> {
+  const saved = await savedMaterials();
+  library = [...BUILT_IN_MATERIALS, ...saved.filter((m) => !BUILT_IN_MATERIALS.some((b) => b.name === m.name))];
+  fillOption($<HTMLSelectElement>('sm-list'), library.map((m) => m.name));
+}
+fillOption($<HTMLSelectElement>('sm-mask'), Object.keys(SMART_MASKS));
+void refreshLibrary();
+
+function applySmartMaterial(name: string): number[] {
+  const e = requireEngine();
+  const material = library.find((m) => m.name === name);
+  if (!material) throw new Error(`No smart material named ${name}`);
+  const ids: number[] = [];
+  for (const layer of material.layers) {
+    const id = layer.kind === 'filter' ? e.add_filter_layer(layer.name) : e.add_fill_layer(layer.name);
+    const current = JSON.parse(layer.kind === 'filter' ? e.filter_settings(id) : e.fill_settings(id)) as Record<string, unknown>;
+    const merged = JSON.stringify({ ...current, ...layer.settings });
+    if (layer.kind === 'filter') e.set_filter(id, merged); else e.set_fill(id, merged);
+    if (layer.mask) e.fill_mask(id, layer.mask === 'white');
+    const info = layers().find((l) => l.id === id);
+    if (info && (layer.opacity !== undefined || layer.blend)) e.update_layer(JSON.stringify({ ...info, opacity: layer.opacity ?? info.opacity, blend: layer.blend ?? info.blend }));
+    ids.push(id);
+  }
+  refreshLayers();
+  return ids;
+}
+
+function captureSmartMaterial(name: string): SmartMaterial {
+  const e = requireEngine();
+  const captured = layers().filter((l) => l.kind === 'fill' || l.kind === 'filter').map((l) => ({
+    kind: l.kind as 'fill' | 'filter',
+    name: l.name,
+    settings: JSON.parse(l.kind === 'filter' ? e.filter_settings(l.id) : e.fill_settings(l.id)) as Record<string, unknown>,
+    opacity: l.opacity,
+    blend: l.blend,
+  }));
+  if (!captured.length) throw new Error('Add fill or filter layers before saving a smart material');
+  return { name, layers: captured };
+}
+
+function applySmartMask(id: number, name: string): Record<string, unknown> {
+  const e = requireEngine();
+  const preset = SMART_MASKS[name];
+  if (!preset) throw new Error(`No smart mask named ${name}`);
+  const raw = e.fill_settings(id);
+  if (!raw) throw new Error('Smart masks apply to fill layers');
+  e.set_fill(id, JSON.stringify({ ...JSON.parse(raw), ...preset }));
+  refreshLayers();
+  return JSON.parse(e.fill_settings(id)) as Record<string, unknown>;
+}
+
+$('sm-apply').addEventListener('click', () => {
+  try { const ids = applySmartMaterial(sel('sm-list')); status(`Applied ${sel('sm-list')}: ${ids.length} layers${engine?.is_baked() ? '' : '. Bake mesh maps for its generators to take effect'}`); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+});
+$('sm-save').addEventListener('click', async () => {
+  try {
+    const name = $<HTMLInputElement>('sm-name').value.trim();
+    if (!name) throw new Error('Name the smart material first');
+    await saveMaterial(captureSmartMaterial(name));
+    await refreshLibrary();
+    status(`Saved smart material ${name}`);
+  } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+});
+$('sm-mask-apply').addEventListener('click', () => {
+  try { if (engine) applySmartMask(engine.active_layer(), sel('sm-mask')); status(`Applied smart mask ${sel('sm-mask')}`); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+});
+
 function setHigh(next: FlatMesh, name: string): string {
   const info = requireEngine().set_high_mesh(next.positions, next.normals, next.indices, next.parts);
   $('k-high-state').textContent = `High-poly ${name}: ${info}`;
@@ -662,6 +743,10 @@ const agentLink = new AgentLink({
     refreshLayers();
     return { id, settings: JSON.parse(e.fill_settings(id)) };
   },
+  smart_list: async () => { await refreshLibrary(); return { materials: library.map((m) => ({ name: m.name, built_in: !!m.builtIn, layers: m.layers.map((l) => l.name) })), masks: Object.keys(SMART_MASKS) }; },
+  smart_apply: async ({ name }) => { await refreshLibrary(); return { layer_ids: applySmartMaterial(String(name)), baked: requireEngine().is_baked(), layers: layers() }; },
+  smart_mask: ({ id, name }) => ({ settings: applySmartMask(Number(id), String(name)) }),
+  smart_save: async ({ name }) => { const file = await saveMaterial(captureSmartMaterial(String(name))); await refreshLibrary(); return { file }; },
   bake_high: async ({ file, sample, front, rear }) => {
     if (sample) {
       applyMesh(sampleMesh('sphere'), 'sphere');
