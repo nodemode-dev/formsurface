@@ -185,6 +185,7 @@ const FILL_FIELDS: [string, string][] = [
 
 const FILTER_FIELDS: [string, string][] = [
   ['x-bright', 'brightness'], ['x-contrast', 'contrast'], ['x-hue', 'hue'], ['x-sat', 'saturation'], ['x-gamma', 'gamma'], ['x-rough', 'roughness_offset'], ['x-metal', 'metallic_offset'],
+  ['x-blur', 'blur'], ['x-sharp', 'sharpen'],
 ];
 
 function syncFilter(): void {
@@ -374,6 +375,7 @@ window.addEventListener('keydown', (event) => {
   if ((event.ctrlKey || event.metaKey) && key === 'y') { event.preventDefault(); engine.redo(); return; }
   if (key === 'b') setTool('paint');
   else if (key === 'p') setTool('polyfill');
+  else if (key === 't') setQuickMask(engine.quick_mask_mode() === 1 ? 2 : 1);
   else if (key === 'e') setTool('erase');
   else if (key === 'm') $('tool-mirror').click();
   else if (key === 'f') engine.frame_mesh();
@@ -397,6 +399,25 @@ $('l-blend').addEventListener('change', () => updateActiveLayer({ blend: $<HTMLS
 $('tool-paint').addEventListener('click', () => setTool('paint'));
 $('tool-erase').addEventListener('click', () => setTool('erase'));
 $('tool-polyfill').addEventListener('click', () => setTool('polyfill'));
+
+const QUICK_STATUS = [
+  'Quick mask off: painting is not limited',
+  'Quick mask edit: strokes and fills mark where paint may land (red is protected); the eraser protects',
+  'Quick mask on: paint only lands outside the red areas; press T to edit it',
+];
+
+function setQuickMask(mode: number): number {
+  const e = requireEngine();
+  if (!e.set_quick_mask(mode)) throw new Error('Finish the stroke first');
+  $<HTMLSelectElement>('qm-mode').value = String(e.quick_mask_mode());
+  status(QUICK_STATUS[e.quick_mask_mode()]);
+  return e.quick_mask_mode();
+}
+
+$('qm-mode').addEventListener('change', () => { try { setQuickMask(Number(sel('qm-mode'))); } catch (error) { status(error instanceof Error ? error.message : String(error), true); } });
+$('qm-clear').addEventListener('click', () => { engine?.quick_mask_fill(false); status('Quick mask cleared: everything is protected until you paint it'); });
+$('qm-all').addEventListener('click', () => { engine?.quick_mask_fill(true); status('Quick mask allows painting everywhere'); });
+$('qm-invert').addEventListener('click', () => { engine?.quick_mask_invert(); status('Quick mask inverted'); });
 $('tool-mirror').addEventListener('click', () => {
   $<HTMLSelectElement>('b-sym').value = mirror ? 'off' : 'mirror';
   syncBrush();
@@ -830,6 +851,7 @@ function snapshotState(): Record<string, unknown> {
     texture_size: e.texture_size(),
     texture_sets: textureSets(),
     active_texture_set: e.active_texture_set(),
+    quick_mask: ['off', 'edit', 'on'][e.quick_mask_mode()],
     layers: layers(),
     active_layer: e.active_layer(),
     tool,
@@ -954,6 +976,20 @@ const agentLink = new AgentLink({
     if (paint_target === 'mask' || paint_target === 'layer') e.set_paint_target(paint_target === 'mask');
     refreshLayers();
     return { layers: layers(), paints_mask: e.paint_target_is_mask() };
+  },
+  quick_mask: ({ mode, action }) => {
+    const e = requireEngine();
+    if (action === 'clear') e.quick_mask_fill(false);
+    else if (action === 'allow_all') e.quick_mask_fill(true);
+    else if (action === 'invert') e.quick_mask_invert();
+    else if (action !== undefined && action !== null) throw new Error('action is clear, allow_all or invert');
+    const modes = ['off', 'edit', 'on'];
+    if (mode !== undefined && mode !== null) {
+      const code = modes.indexOf(String(mode));
+      if (code < 0) throw new Error('mode is off, edit or on');
+      setQuickMask(code);
+    }
+    return { mode: modes[e.quick_mask_mode()] };
   },
   polygon_fill: ({ x, y, mode }) => {
     const e = requireEngine();

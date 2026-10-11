@@ -82,6 +82,8 @@
     <section class="section">
       <h2>Brush</h2>
       <div class="row" style="grid-template-columns:84px 1fr"><label for="pf-mode">Polygon fill</label><select id="pf-mode"><option value="0">Triangle</option><option value="1">Polygon (flat faces)</option><option value="2">Mesh part</option><option value="3">UV chunk</option></select></div>
+      <div class="row" style="grid-template-columns:84px 1fr"><label for="qm-mode">Quick mask</label><select id="qm-mode" title="T toggles editing and using the quick mask"><option value="0">Off</option><option value="1">Edit (paint where paint may land)</option><option value="2">On (limits painting)</option></select></div>
+      <div class="row" style="grid-template-columns:1fr 1fr 1fr"><button class="btn" id="qm-clear" style="justify-content:center">Clear</button><button class="btn" id="qm-all" style="justify-content:center">Allow all</button><button class="btn" id="qm-invert" style="justify-content:center">Invert</button></div>
       <div class="row"><label for="b-size">Size</label><input id="b-size" type="range" min="2" max="400" value="40"><output for="b-size">40</output></div>
       <div class="row"><label for="b-hardness">Hardness</label><input id="b-hardness" type="range" min="0" max="1" step="0.01" value="0.6"><output for="b-hardness">0.60</output></div>
       <div class="row"><label for="b-flow">Flow</label><input id="b-flow" type="range" min="0.01" max="1" step="0.01" value="0.6"><output for="b-flow">0.60</output></div>
@@ -201,6 +203,8 @@
       <div class="row"><label for="x-gamma">Gamma</label><input id="x-gamma" type="range" min="0.2" max="3" step="0.01" value="1"><output for="x-gamma">1.00</output></div>
       <div class="row"><label for="x-rough">Roughness +</label><input id="x-rough" type="range" min="-1" max="1" step="0.01" value="0"><output for="x-rough">0.00</output></div>
       <div class="row"><label for="x-metal">Metallic +</label><input id="x-metal" type="range" min="-1" max="1" step="0.01" value="0"><output for="x-metal">0.00</output></div>
+      <div class="row"><label for="x-blur">Blur</label><input id="x-blur" type="range" min="0" max="32" step="0.5" value="0"><output for="x-blur">0.00</output></div>
+      <div class="row"><label for="x-sharp">Sharpen</label><input id="x-sharp" type="range" min="0" max="4" step="0.05" value="0"><output for="x-sharp">0.00</output></div>
     </section>
     <section class="section">
       <h2>Baking</h2>
