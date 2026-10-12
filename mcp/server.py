@@ -57,7 +57,7 @@ def formsurface_load_sample(kind: Literal["sphere", "torus", "capsule", "knot", 
 
 @server.tool()
 def formsurface_instance_layer(layer_id: int, texture_set: str) -> dict:
-    """Put a live instance of a fill or filter layer of the active texture set into another texture set (by name such as trim or body.1002, or index). Changing settings, mask generator, name, opacity, blend or visibility of any copy then updates every copy. Paint layers cannot be instanced because paint lives in each set's own UV space."""
+    """Put a live instance of a layer of the active texture set into another texture set (by name such as trim or body.1002, or index), as Painter's Instantiate across texture sets. Any layer kind can be instanced, folders with everything inside them. Changing settings, mask generator, name, opacity, blend or visibility of any copy then updates every copy, and a layer added to (or moved into) a source folder is replicated into each instance folder. As in Painter, paint actions (strokes, polygon fill, paths) stay on the source layer's texture set: an instanced paint layer carries its parameters but not its strokes, and painting an instance copy is refused. An instance copy cannot itself be instanced; instance its source."""
     return call("instance_layer", {"id": layer_id, "texture_set": texture_set})
 
 
