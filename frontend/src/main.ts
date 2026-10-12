@@ -107,7 +107,7 @@ function syncChannels(): void {
   }));
 }
 
-const EXTRA_ROLES = ['off', 'user', 'opacity', 'ambient_occlusion', 'emissive'];
+const EXTRA_ROLES = ['off', 'user', 'opacity', 'ambient_occlusion', 'emissive', 'transmission', 'scattering'];
 
 function extraLabel(index = engine?.active_texture_set() ?? 0): string {
   const role = engine?.extra_channel(index) ?? 'off';
@@ -905,6 +905,7 @@ function syncPath(): void {
     engine?.set_path_trace(checked('d-path'), num('d-path-bounces'), Number(sel('d-path-max')));
     engine?.set_path_denoise(checked('d-path-denoise'));
     engine?.set_path_lens(num('d-path-aperture'), num('d-path-focus'));
+    engine?.set_path_scatter(num('d-path-scatter'));
   } catch (error) {
     $<HTMLInputElement>('d-path').checked = false;
     status(error instanceof Error ? error.message : String(error), true);
@@ -927,6 +928,7 @@ $('d-path-bounces').addEventListener('input', syncPath);
 $('d-path-max').addEventListener('change', syncPath);
 $('d-path-denoise').addEventListener('change', () => engine?.set_path_denoise(checked('d-path-denoise')));
 for (const id of ['d-path-aperture', 'd-path-focus']) $(id).addEventListener('input', () => { setOutput(id); engine?.set_path_lens(num('d-path-aperture'), num('d-path-focus')); });
+$('d-path-scatter').addEventListener('input', () => { setOutput('d-path-scatter'); engine?.set_path_scatter(num('d-path-scatter')); });
 $('d-render').addEventListener('click', () => {
   if (!checked('d-path')) { status('Turn on path tracing first, then render', true); return; }
   renderPath(num('d-render-w'), num('d-render-h'), Number(sel('d-render-samples'))).then((r) => status(`Render written to ${r.folder} as ${r.file}`), (error) => status(error instanceof Error ? error.message : String(error), true));
@@ -2504,8 +2506,9 @@ const agentLink = new AgentLink({
     if (!JSON.parse(requireEngine().path_trace_json()).on) throw new Error('Turn path tracing on first (path_trace on true)');
     return { width: Number(width), height: Number(height), ...(await renderPath(Number(width), Number(height), Number(samples ?? 256), name ? String(name) : undefined)) };
   },
-  path_trace: async ({ on, bounces, max_samples, samples, denoise, aperture, focus }) => {
+  path_trace: async ({ on, bounces, max_samples, samples, denoise, aperture, focus, scatter_radius }) => {
     const e = requireEngine();
+    setControl('d-path-scatter', scatter_radius);
     setControl('d-path-denoise', denoise, 'change');
     setControl('d-path-aperture', aperture);
     setControl('d-path-focus', focus);
