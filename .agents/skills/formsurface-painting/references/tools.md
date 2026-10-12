@@ -1,4 +1,4 @@
-# FormSurface MCP tools (server 0.34.0)
+# FormSurface MCP tools (server 0.35.0)
 
 When this table and the server disagree, the server wins and this file is stale.
 
@@ -7,7 +7,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_status` | none | mesh, texture size, texture sets, active texture set, layers of the active set, active layer, brush, paint material, camera, viewport |
 | `formsurface_load_sample` | kind: sphere, torus, capsule, knot, sets (figure with body on UDIM 1001 and 1002 plus trim) | status |
 | `formsurface_list_texture_sets` | none | texture sets (index, name, material, udim, tiled, triangles, layers) and the active index |
-| `formsurface_select_texture_set` | name (for example body.1002, trim) or index, size (256 to 4096: that set's own resolution; layers resampled, undo cleared, bake again), extra_channel (off, user, opacity, ambient_occlusion, emissive), extra_name (user channel name) | the set, its size, its extra channel, its layers and active layer |
+| `formsurface_select_texture_set` | name (for example body.1002, trim) or index, size (256 to 4096: that set's own resolution; layers resampled, undo cleared, bake again), extra_channel (off, user, opacity, ambient_occlusion, emissive, transmission, scattering), extra_name (user channel name) | the set, its size, its extra channel, its layers and active layer |
 | `formsurface_set_camera` | yaw_degrees, pitch_degrees, zoom (1 frames the mesh) | camera |
 | `formsurface_set_brush` | size_px 1 to 400, hardness, flow, stroke_opacity, spacing, eraser, mirror_x, backface_culling, alignment (camera, tangent_wrap, tangent_planar, uv), size_space (screen, object), angle_degrees, follow_path, tip (round, square, spray), spray_density, lazy_px, jitter_size, jitter_angle, jitter_position, jitter_flow, symmetry (off, mirror, radial), symmetry_axis (x, y, z), radial_count | brush |
 | `formsurface_set_paint_material` | base_color hex, roughness, metallic, height, paint_color, paint_roughness, paint_metallic, paint_height, extra, paint_extra (the set's extra channel) | paint material |
@@ -29,7 +29,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_save_smart_mask` | layer_id, name | file and the saved generator settings |
 | `formsurface_set_generator` | layer_id, generator (none, cavity, edges, thin, top, light, position, noise, mask_builder, dirt, metal_edge_wear), level, softness, invert, noise, noise_scale, direction [x, y, z], builder_ao, builder_curvature, builder_noise | fill settings |
 | `formsurface_set_environment` | file (.hdr in workspace/environments), studio, rotation_degrees, blur, background, exposure, view_transform (aces, standard, agx, filmic) | environment, rotation, blur, background, exposure, view transform |
-| `formsurface_path_trace` | on, bounces (1 to 12), max_samples (64, 256, 1024, 4096), samples (render that many before returning), denoise, aperture (0 to 1), focus (-1 to 1 mesh radii) | on, denoise, aperture, focus, rendering, bounces, samples, max_samples, texture_side |
+| `formsurface_path_trace` | on, bounces (1 to 12), max_samples (64, 256, 1024, 4096), samples (render that many before returning), denoise, aperture (0 to 1), focus (-1 to 1 mesh radii), scatter_radius (0.005 to 0.5 mesh radii) | on, denoise, aperture, focus, rendering, bounces, samples, max_samples, texture_side |
 | `formsurface_path_render` | width, height (16 to 3840), samples (1 to 4096), name | folder, file, samples, width, height |
 | `formsurface_add_filter_layer` | name, brightness, contrast, hue_degrees, saturation, gamma, roughness_offset, metallic_offset, blur, sharpen | id and settings |
 | `formsurface_layer_mask` | layer_id, action (add_white, add_black, remove, keep), paint_target (layer, mask), effects (list replacing the mask's effect stack: kind fill, generator, levels, invert, blur, compare; blend, opacity, visible and the kind's values) | layers, whether strokes paint the mask, and the effect stack |
