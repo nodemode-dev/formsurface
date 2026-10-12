@@ -389,7 +389,57 @@ function syncFill(): void {
   if (!engine) return;
   const layer = layers().find((l) => l.id === engine!.active_layer());
   if (!layer || layer.kind !== 'fill') return;
-  engine.set_fill(layer.id, JSON.stringify(fillPayload()));
+  const current = JSON.parse(engine.fill_settings(layer.id)) as Record<string, unknown>;
+  engine.set_fill(layer.id, JSON.stringify({ ...fillPayload(), warp: current.warp }));
+}
+
+const WARP_REST = Array.from({ length: 16 }, (_, k) => [(k % 4) / 3, Math.floor(k / 4) / 3]).flat();
+let warpDrag = -1;
+
+function activeWarp(): { id: number; axis: number; grid: number[] } | undefined {
+  if (!engine || !checked('f-warp-edit')) return undefined;
+  const layer = layers().find((l) => l.id === engine!.active_layer());
+  if (!layer || layer.kind !== 'fill') return undefined;
+  const settings = JSON.parse(engine.fill_settings(layer.id)) as Record<string, unknown>;
+  if (settings.projection !== 'warp') return undefined;
+  return { id: layer.id, axis: Number(settings.axis ?? 2), grid: (settings.warp as number[]) ?? WARP_REST };
+}
+
+function setWarp(id: number, grid: number[]): void {
+  const e = requireEngine();
+  const current = JSON.parse(e.fill_settings(id)) as Record<string, unknown>;
+  e.set_fill(id, JSON.stringify({ ...current, warp: grid }));
+}
+
+function warpHandleAt(x: number, y: number): number {
+  const w = activeWarp();
+  if (!w || !engine) return -1;
+  const reach = 9 * Math.min(window.devicePixelRatio || 1, 2);
+  let best = -1;
+  let bestDistance = reach;
+  for (let k = 0; k < 16; k++) {
+    const s = engine.projection_plane_to_screen(w.grid[k * 2], w.grid[k * 2 + 1], w.axis);
+    if (s.length !== 2) continue;
+    const d = Math.hypot(s[0] - x, s[1] - y);
+    if (d < bestDistance) { best = k; bestDistance = d; }
+  }
+  return best;
+}
+
+function drawWarpOverlay(): boolean {
+  const w = activeWarp();
+  if (!w || !engine) return false;
+  const e = engine;
+  const ratio = pathOverlay.getBoundingClientRect().width ? pathOverlay.getBoundingClientRect().width / canvas.getBoundingClientRect().width : 1;
+  const point = (k: number): [number, number] | undefined => {
+    const s = e.projection_plane_to_screen(w.grid[k * 2], w.grid[k * 2 + 1], w.axis);
+    return s.length === 2 ? [s[0] * ratio, s[1] * ratio] : undefined;
+  };
+  const lines: ([number, number] | undefined)[] = [];
+  for (let j = 0; j < 4; j++) { for (let i = 0; i < 4; i++) lines.push(point(j * 4 + i)); lines.push(undefined); }
+  for (let i = 0; i < 4; i++) { for (let j = 0; j < 4; j++) lines.push(point(j * 4 + i)); lines.push(undefined); }
+  drawPath(pathOverlay, lines, Array.from({ length: 16 }, (_, k) => point(k)));
+  return true;
 }
 
 function setOutput(id: string): void {
@@ -609,6 +659,8 @@ canvas.addEventListener('pointerdown', (event) => {
     }
     return;
   }
+  warpDrag = warpHandleAt(x, y);
+  if (warpDrag >= 0) { status(`Warp: moving grid point ${warpDrag + 1} of 16`); return; }
   if (tool === 'path') {
     pathDrag = pathHandleAt(x, y);
     if (pathDrag >= 0) { status(`Path: moving point ${pathDrag + 1}`); return; }
@@ -639,6 +691,18 @@ canvas.addEventListener('pointermove', (event) => {
     if (nav === 'orbit') engine.orbit(dx, dy); else engine.pan(dx, dy);
     return;
   }
+  if (warpDrag >= 0) {
+    const w = activeWarp();
+    const [x, y] = local(event);
+    const q = w ? engine.projection_plane_at(x, y, w.axis) : [];
+    if (w && q.length === 2) {
+      const grid = w.grid.slice();
+      grid[warpDrag * 2] = q[0];
+      grid[warpDrag * 2 + 1] = q[1];
+      setWarp(w.id, grid);
+    }
+    return;
+  }
   if (pathDrag >= 0 && tool === 'path') {
     const [x, y] = local(event);
     const p = pathPointAt(x, y);
@@ -657,7 +721,9 @@ canvas.addEventListener('pointermove', (event) => {
 });
 const endPointer = () => {
   if (pathDrag >= 0) status(`Path: ${pathPoints.length} points; Enter strokes it`);
+  if (warpDrag >= 0) status('Warp grid point moved');
   pathDrag = -1;
+  warpDrag = -1;
   if (painting) engine?.stroke_end();
   painting = false;
   nav = undefined;
@@ -754,8 +820,25 @@ function runPathStroke(): void {
 }
 $('p-stroke').addEventListener('click', runPathStroke);
 $('p-clear').addEventListener('click', () => { pathPoints.length = 0; clearOverlay(pathOverlay); status('Path cleared'); });
+$('f-warp-edit').addEventListener('change', () => {
+  if (checked('f-warp-edit') && !activeWarp()) status('Select a fill layer with Warp projection to edit its grid', true);
+  else if (checked('f-warp-edit')) status('Warp: drag the grid points on the model');
+});
+$('f-warp-reset').addEventListener('click', () => {
+  const layer = layers().find((l) => l.id === engine?.active_layer());
+  if (!engine || layer?.kind !== 'fill') { status('Select a fill layer first', true); return; }
+  setWarp(layer.id, WARP_REST);
+  status('Warp grid reset');
+});
+
+let warpShown = false;
 
 function drawPathOverlay(): void {
+  if (engine && !pathPoints.length) {
+    const shown = drawWarpOverlay();
+    if (warpShown && !shown) clearOverlay(pathOverlay);
+    warpShown = shown;
+  }
   if (!engine || !pathPoints.length) return;
   const e = engine;
   const ratio = pathOverlay.getBoundingClientRect().width ? pathOverlay.getBoundingClientRect().width / canvas.getBoundingClientRect().width : 1;
