@@ -3,9 +3,9 @@
 from . import tool
 
 
-def bake_mesh_maps(directions: int = 64) -> dict:
-    """Ambient occlusion, curvature, thickness, position and world normal for every texture set."""
-    return tool("bake_maps", directions=directions)
+def bake_mesh_maps(directions: int = 64, method: str | None = None, rays: int | None = None) -> dict:
+    """Ambient occlusion, curvature, thickness, position and world normal for every texture set; method traced ray traces AO and thickness on the GPU."""
+    return tool("bake_maps", directions=directions, method=method, rays=rays)
 
 
 def bake_high_poly(mesh_file: str | None = None, **options) -> dict:

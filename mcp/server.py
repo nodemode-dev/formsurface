@@ -211,9 +211,13 @@ def formsurface_set_fill(
 
 
 @server.tool()
-def formsurface_bake_maps(directions: Annotated[int, Field(ge=8, le=256)] = 64) -> dict:
-    """Bake ambient occlusion, curvature, thickness, position and world normal from the current mesh on the GPU. Needed before fill generators cavity, edges and thin; more directions give smoother maps and take longer. Exported with formsurface_export_maps once baked."""
-    return call("bake", {"directions": directions}, timeout=300)
+def formsurface_bake_maps(
+    directions: Annotated[int, Field(ge=8, le=256)] = 64,
+    method: Literal["depth", "traced"] | None = None,
+    rays: Annotated[int, Field(ge=4, le=128)] | None = None,
+) -> dict:
+    """Bake ambient occlusion, curvature, thickness, position and world normal from the current mesh on the GPU. Needed before fill generators cavity, edges and thin; more directions give smoother maps and take longer. method depth rasterizes depth maps from the given directions; method traced then ray traces ambient occlusion and thickness per texel through the mesh's BVH on the GPU with rays per texel (more is smoother and slower), which sees concave detail the depth maps miss. Exported with formsurface_export_maps once baked."""
+    return call("bake", drop_none(directions=directions, method=method, rays=rays), timeout=600)
 
 
 @server.tool()
