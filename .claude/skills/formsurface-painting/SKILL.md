@@ -43,6 +43,7 @@ Group related layers with `formsurface_add_folder` (for example all the wear of 
 
 - Brush size is in screen pixels, so it shrinks on the model as the camera zooms out. Zoom in (`zoom` below 1) for detail.
 - Height 0.5 is flat; paint height only on its own layer so it can be removed.
+- Masks for a game shader (wear, dirt, wetness) belong in named user channels: add them with `user_channels` on the texture set, paint them with extra2 and extra3, and pack them into one file with a custom template (r user2, g user3).
 - Mirror X paints the opposite side through the mesh center; use it for symmetric models only. Radial symmetry repeats a mark around an axis (bolts on a wheel, panels on a can).
 - Alignment: tangent_wrap (default) hugs curved surfaces; tangent_planar gives crisp decal-like marks on flat areas; camera paints exactly the screen footprint, stretching on grazing faces; uv follows the texture layout and distorts where the UVs do.
 - For organic wear use the spray tip with size and position jitter; for seams and trims use follow_path with a square tip.
