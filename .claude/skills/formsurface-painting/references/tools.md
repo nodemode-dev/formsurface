@@ -22,7 +22,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_text_resource` | text, target (alpha, stencil, fill), font (sans-serif, serif, monospace or a loaded font), bold | image size, brush |
 | `formsurface_load_mesh` | file (glb, gltf, obj, fbx, usd, usda, usdc, usdz, ply, dae in workspace/meshes), reproject (carry every matched set's painting over by surface position; stays on until false) | status; bakes reset, sets keep their layers when material and tile match (reprojected when asked, undo cleared) |
 | `formsurface_instance_layer` | layer_id (any layer or folder on the active set, not itself an instance copy), texture_set (name or index) | new layer id in the target set; settings edits to any copy update all copies, layers added to a source folder follow; strokes stay on the source and painting a copy is refused |
-| `formsurface_list_smart_materials` | none | materials with layer names, smart mask names, saved smart mask names |
+| `formsurface_list_smart_materials` | none | materials with layer names and whether they have a thumbnail, smart mask names, saved smart mask names |
 | `formsurface_apply_smart_material` | name | new layer ids, baked flag |
 | `formsurface_save_smart_material` | name | saved file |
 | `formsurface_apply_smart_mask` | layer_id, name (Edge wear, Cavity dirt, Dust from top, Thin parts, Protect edges, Grunge dirt, Metal edge wear, Sun bleached or a saved name) | applied_as (fill generator or layer mask) and settings |
