@@ -21,7 +21,37 @@ impl Mode {
     }
 }
 
-fn welded(mesh: &Mesh) -> Vec<u64> {
+pub fn polygon_loop(mesh: &Mesh, keys: &[u64], tris: &[u32]) -> Option<Vec<u32>> {
+    let mut edges: HashMap<(u64, u64), u32> = HashMap::new();
+    for &t in tris {
+        let i = &mesh.indices[t as usize * 3..t as usize * 3 + 3];
+        for k in 0..3 {
+            edges.insert((keys[i[k] as usize], keys[i[(k + 1) % 3] as usize]), i[k]);
+        }
+    }
+    let mut next: HashMap<u64, (u64, u32)> = HashMap::new();
+    for (&(a, b), &v) in &edges {
+        if !edges.contains_key(&(b, a)) {
+            if next.insert(a, (b, v)).is_some() {
+                return None;
+            }
+        }
+    }
+    let (&start, _) = next.iter().min_by_key(|(k, _)| **k)?;
+    let mut out = Vec::with_capacity(next.len());
+    let mut at = start;
+    loop {
+        let (to, v) = *next.get(&at)?;
+        out.push(v);
+        at = to;
+        if at == start || out.len() > next.len() {
+            break;
+        }
+    }
+    (out.len() == next.len() && out.len() >= 3).then_some(out)
+}
+
+pub fn welded(mesh: &Mesh) -> Vec<u64> {
     let eps = (mesh.radius * 1e-5).max(1e-9);
     let mut keys: HashMap<(i64, i64, i64), u64> = HashMap::new();
     mesh.positions

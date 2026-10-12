@@ -72,6 +72,7 @@ pub struct Engine {
     reprojected: Option<(usize, usize)>,
     view_transform: u32,
     trace: Option<TraceRun>,
+    polygons: Option<Vec<u32>>,
     normal_strength: f32,
     uv_tiles: bool,
     relaying: bool,
@@ -132,6 +133,7 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         reprojected: None,
         view_transform: 0,
         trace: None,
+        polygons: None,
         normal_strength: 1.0,
         uv_tiles: false,
         relaying: false,
@@ -199,7 +201,7 @@ impl Engine {
         let mut old_sets = std::mem::take(&mut self.sets);
         let carry: Vec<Option<usize>> = split.sets.iter().enumerate().map(|(k, s)| {
             if k == 0 {
-                (!old_sets.is_empty()).then_some(0)
+                Some(0)
             } else {
                 old_sets.iter().enumerate().skip(1).find(|(_, o)| o.info.name() == s.name()).map(|(j, _)| j)
             }
@@ -218,6 +220,7 @@ impl Engine {
         let carried = carry.iter().filter(|c| c.is_some()).count();
         self.tri_order = split.order;
         self.match_keys = None;
+        self.polygons = None;
         self.cage = None;
         self.instance_groups.clear();
         self.set_index = 0;
@@ -492,9 +495,35 @@ impl Engine {
         Ok(self.gpu.export_mask(index))
     }
 
+    pub fn set_polygons(&mut self, ids: &[u32]) -> Result<String, JsValue> {
+        if ids.len() != self.tri_order.len() {
+            self.polygons = None;
+            return Err(JsValue::from_str(&format!("{} polygon ids for {} triangles; polygon data ignored", ids.len(), self.tri_order.len())));
+        }
+        let split: Vec<u32> = self.tri_order.iter().map(|&t| ids[t as usize]).collect();
+        let mut distinct = split.clone();
+        distinct.sort_unstable();
+        distinct.dedup();
+        let count = distinct.len();
+        self.polygons = Some(split);
+        Ok(format!("{count} polygons over {} triangles", self.tri_order.len()))
+    }
+
+    pub fn has_polygons(&self) -> bool {
+        self.polygons.is_some()
+    }
+
     pub fn mesh_obj(&self) -> Result<String, JsValue> {
+        self.mesh_obj_with(false, 0, 0.0, 0, &[])
+    }
+
+    pub fn mesh_obj_with(&self, ngons: bool, subdivide: u32, amount: f32, size: u32, heights: &[u8]) -> Result<String, JsValue> {
         use std::fmt::Write;
         let (mesh, _) = self.mesh.as_ref().ok_or_else(|| JsValue::from_str("Load a mesh first"))?;
+        let displace = subdivide > 0 || amount != 0.0;
+        if displace && (size == 0 || heights.len() != (size * size * 4) as usize * self.sets.len()) {
+            return Err(JsValue::from_str("Displacement needs one height map per texture set"));
+        }
         let mut uvs = mesh.uvs.clone();
         let mut done = vec![false; uvs.len()];
         for set in &self.sets {
@@ -509,6 +538,55 @@ impl Engine {
         }
         let mut out = String::with_capacity(mesh.positions.len() * 96);
         let _ = writeln!(out, "# FormSurface {} OBJ: {} vertices, {} triangles, {} texture sets", env!("CARGO_PKG_VERSION"), mesh.positions.len(), mesh.triangle_count(), self.sets.len());
+        if displace {
+            let levels = subdivide.min(4);
+            let m = 1u32 << levels;
+            let reach = amount * mesh.radius;
+            let mut next = 1u32;
+            for (s, set) in self.sets.iter().enumerate() {
+                let _ = writeln!(out, "g {}\nusemtl {}", set.info.name(), set.info.material);
+                let map = &heights[s * (size * size * 4) as usize..(s + 1) * (size * size * 4) as usize];
+                let height = |uv: [f32; 2]| -> f32 {
+                    let fx = (uv[0].clamp(0.0, 1.0) * size as f32 - 0.5).clamp(0.0, size as f32 - 1.0);
+                    let fy = (uv[1].clamp(0.0, 1.0) * size as f32 - 0.5).clamp(0.0, size as f32 - 1.0);
+                    let (x0, y0) = (fx.floor() as u32, fy.floor() as u32);
+                    let (x1, y1) = ((x0 + 1).min(size - 1), (y0 + 1).min(size - 1));
+                    let (tx, ty) = (fx - x0 as f32, fy - y0 as f32);
+                    let at = |x: u32, y: u32| map[((y * size + x) * 4) as usize] as f32 / 255.0;
+                    (at(x0, y0) * (1.0 - tx) + at(x1, y0) * tx) * (1.0 - ty) + (at(x0, y1) * (1.0 - tx) + at(x1, y1) * tx) * ty
+                };
+                for tri in mesh.indices[set.info.start as usize..(set.info.start + set.info.count) as usize].chunks_exact(3) {
+                    let v = [tri[0] as usize, tri[1] as usize, tri[2] as usize];
+                    let mut grid = std::collections::HashMap::new();
+                    for i in 0..=m {
+                        for j in 0..=(m - i) {
+                            let (wb, wc) = (i as f32 / m as f32, j as f32 / m as f32);
+                            let wa = 1.0 - wb - wc;
+                            let mix3 = |a: Vec3, b: Vec3, c: Vec3| add(add(scale(a, wa), scale(b, wb)), scale(c, wc));
+                            let mix2 = |a: [f32; 2], b: [f32; 2], c: [f32; 2]| [a[0] * wa + b[0] * wb + c[0] * wc, a[1] * wa + b[1] * wb + c[1] * wc];
+                            let n = normalize(mix3(mesh.normals[v[0]], mesh.normals[v[1]], mesh.normals[v[2]]));
+                            let local = mix2(mesh.uvs[v[0]], mesh.uvs[v[1]], mesh.uvs[v[2]]);
+                            let p = add(mix3(mesh.positions[v[0]], mesh.positions[v[1]], mesh.positions[v[2]]), scale(n, (height(local) - 0.5) * reach));
+                            let t = mix2(uvs[v[0]], uvs[v[1]], uvs[v[2]]);
+                            let _ = writeln!(out, "v {} {} {}\nvt {} {}\nvn {} {} {}", p[0], p[1], p[2], t[0], t[1], n[0], n[1], n[2]);
+                            grid.insert((i, j), next);
+                            next += 1;
+                        }
+                    }
+                    for i in 0..m {
+                        for j in 0..(m - i) {
+                            let (a, b, c) = (grid[&(i, j)], grid[&(i + 1, j)], grid[&(i, j + 1)]);
+                            let _ = writeln!(out, "f {a}/{a}/{a} {b}/{b}/{b} {c}/{c}/{c}");
+                            if i + j + 1 < m {
+                                let (d, e, f) = (grid[&(i + 1, j)], grid[&(i + 1, j + 1)], grid[&(i, j + 1)]);
+                                let _ = writeln!(out, "f {d}/{d}/{d} {e}/{e}/{e} {f}/{f}/{f}");
+                            }
+                        }
+                    }
+                }
+            }
+            return Ok(out);
+        }
         for p in &mesh.positions {
             let _ = writeln!(out, "v {} {} {}", p[0], p[1], p[2]);
         }
@@ -518,11 +596,35 @@ impl Engine {
         for n in &mesh.normals {
             let _ = writeln!(out, "vn {} {} {}", n[0], n[1], n[2]);
         }
+        let keys = if ngons && self.polygons.is_some() { fs_core::regions::welded(mesh) } else { Vec::new() };
         for set in &self.sets {
             let _ = writeln!(out, "g {}\nusemtl {}", set.info.name(), set.info.material);
-            for tri in mesh.indices[set.info.start as usize..(set.info.start + set.info.count) as usize].chunks_exact(3) {
+            let (first, last) = (set.info.start / 3, (set.info.start + set.info.count) / 3);
+            let triangle = |out: &mut String, t: u32| {
+                let tri = &mesh.indices[t as usize * 3..t as usize * 3 + 3];
                 let (a, b, c) = (tri[0] + 1, tri[1] + 1, tri[2] + 1);
                 let _ = writeln!(out, "f {a}/{a}/{a} {b}/{b}/{b} {c}/{c}/{c}");
+            };
+            match self.polygons.as_ref().filter(|_| ngons) {
+                Some(ids) => {
+                    let mut t = first;
+                    while t < last {
+                        let mut end = t + 1;
+                        while end < last && ids[end as usize] == ids[t as usize] {
+                            end += 1;
+                        }
+                        let run: Vec<u32> = (t..end).collect();
+                        match fs_core::regions::polygon_loop(mesh, &keys, &run).filter(|_| run.len() > 1) {
+                            Some(face) => {
+                                let parts: Vec<String> = face.iter().map(|v| format!("{0}/{0}/{0}", v + 1)).collect();
+                                let _ = writeln!(out, "f {}", parts.join(" "));
+                            }
+                            None => run.iter().for_each(|&r| triangle(&mut out, r)),
+                        }
+                        t = end;
+                    }
+                }
+                None => (first..last).for_each(|t| triangle(&mut out, t)),
             }
         }
         Ok(out)
@@ -1402,7 +1504,10 @@ impl Engine {
             return Err(JsValue::from_str("Fill, filter and folder layers are filled through their mask: choose a mask first"));
         }
         let (mesh, _) = self.mesh.as_ref().unwrap();
-        let region = fs_core::regions::select(mesh, triangle, first, last, fs_core::regions::Mode::from_code(mode));
+        let region = match (mode, self.polygons.as_ref()) {
+            (1, Some(ids)) => (first..last).filter(|&t| ids[t as usize] == ids[triangle as usize]).collect(),
+            _ => fs_core::regions::select(mesh, triangle, first, last, fs_core::regions::Mode::from_code(mode)),
+        };
         self.gpu.begin_stroke(index);
         self.gpu.mask_triangles(&mesh.indices, &region);
         let (forward, right, up, eye) = self.basis();
