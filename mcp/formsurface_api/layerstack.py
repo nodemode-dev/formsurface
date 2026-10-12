@@ -99,6 +99,11 @@ def paint_stroke(points: list[list[float]], pressure: list[float] | None = None)
     return tool("paint_stroke", points=points, pressure=pressure)
 
 
+def paint_path(points: list[list[float]], mode: str = "paint", closed: bool = False, smooth: bool = True, erase: bool = False) -> dict:
+    """Path tool through viewport points from 0 to 1: mode paint, ribbon or filled; one undo step."""
+    return tool("paint_path", points=points, mode=mode, closed=closed, smooth=smooth, erase=erase)
+
+
 def set_brush(**settings) -> dict:
     return tool("set_brush", **settings)
 

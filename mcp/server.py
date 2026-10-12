@@ -501,9 +501,10 @@ def formsurface_paint_path(
     closed: bool = False,
     smooth: bool = True,
     erase: bool = False,
+    mode: Literal["paint", "ribbon", "filled"] = "paint",
 ) -> dict:
-    """Painter's path tool: place control points on the surface at normalized viewport points (0,0 top left) and paint one stroke along a smooth curve through them (smooth false joins them with straight segments; closed loops back to the first point), with the current brush and paint material. The points are kept on the surface, so the curve follows the model rather than the screen; in the 2D view they are UV positions and the curve is drawn on the layout. erase removes paint along the path instead. One undo step."""
-    return call("paint_path", {"points": [list(p) for p in points], "closed": closed, "smooth": smooth, "erase": erase}, timeout=120)
+    """Painter's path tool: place control points on the surface at normalized viewport points (0,0 top left) and paint along a smooth curve through them (smooth false joins them with straight segments; closed loops back to the first point), with the current brush and paint material. mode paint stamps the brush along the curve; ribbon lays one continuous strip as wide as the brush size, its cross-section the brush hardness or, with an image tip, the brush alpha repeated along the curve; filled fills the inside of the curve (always closed, at least three points). Ribbon and filled are applied from the current view to the visible surface, so the camera should face the area. The points are kept on the surface, so the curve follows the model rather than the screen; in the 2D view they are UV positions and the curve is drawn on the layout. erase removes paint instead. One undo step."""
+    return call("paint_path", {"points": [list(p) for p in points], "closed": closed, "smooth": smooth, "erase": erase, "mode": mode}, timeout=120)
 
 
 @server.tool()
