@@ -399,8 +399,50 @@ function selectTextureSet(index: number): TextureSetInfo {
   refreshLayers();
   status(`Texture set ${set.name}: strokes, layers, bakes and the base material now apply to it`);
   emitPython('texture_set_changed', { index: set.index, name: set.name });
+  if (checked('ts-page')) pageOutIdle().catch((error) => status(error instanceof Error ? error.message : String(error), true));
+  else showTextureMemory();
   return set;
 }
+
+interface SetMemory { index: number; name: string; size: number; layers: number; resident_bytes: number; paged_bytes: number; active: boolean }
+let paging = false;
+
+function textureMemory(): SetMemory[] {
+  return engine ? (JSON.parse(engine.texture_memory_json()) as { sets: SetMemory[] }).sets : [];
+}
+
+function showTextureMemory(): void {
+  const sets = textureMemory();
+  const mb = (b: number) => (b / 1048576).toFixed(1);
+  const resident = sets.reduce((s, x) => s + x.resident_bytes, 0);
+  const paged = sets.reduce((s, x) => s + x.paged_bytes, 0);
+  const text = `Layer storage: ${mb(resident)} MB on the GPU, ${mb(paged)} MB paged out`;
+  if ($('ts-memory').textContent !== text) $('ts-memory').textContent = text;
+}
+
+async function pageOutIdle(): Promise<number> {
+  const e = requireEngine();
+  if (paging) return 0;
+  paging = true;
+  let freed = 0;
+  try {
+    for (const set of textureSets()) {
+      if (set.index === e.active_texture_set()) continue;
+      const job = e.page_out_set(set.index) as Promise<number> | undefined;
+      if (!job) continue;
+      await job;
+      freed += e.page_out_finish(set.index);
+    }
+  } finally {
+    paging = false;
+    showTextureMemory();
+  }
+  return freed;
+}
+
+$('ts-page').addEventListener('change', () => {
+  if (checked('ts-page')) pageOutIdle().then((freed) => status(`Paged ${(freed / 1048576).toFixed(1)} MB of idle texture sets out of GPU memory`), (error) => status(error instanceof Error ? error.message : String(error), true));
+});
 
 function syncCloneSources(all: LayerInfo[]): void {
   if (!engine) return;
@@ -418,6 +460,7 @@ function refreshLayers(): void {
   const all = layers();
   const active = engine.active_layer();
   layerList.render(all, active);
+  showTextureMemory();
   const stackKey = `${engine.active_texture_set()}|${all.map((l) => `${l.id}:${l.kind}:${l.parent}`).join(',')}`;
   if (stackKey !== lastStackKey) {
     if (lastStackKey) emitPython('layer_stack_changed', { texture_set: engine.active_texture_set(), layers: all.map((l) => ({ id: l.id, name: l.name, kind: l.kind })) });
@@ -2666,6 +2709,12 @@ const agentLink = new AgentLink({
   undo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().undo()) n++; return { undone: n }; },
   redo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().redo()) n++; return { redone: n }; },
   screenshot: async () => ({ png_base64: await blobBase64(await viewportPng()) }),
+  texture_memory: async ({ page_out_idle, auto }) => {
+    if (auto !== undefined && auto !== null) $<HTMLInputElement>('ts-page').checked = Boolean(auto);
+    const freed = page_out_idle ? await pageOutIdle() : 0;
+    showTextureMemory();
+    return { freed_bytes: freed, auto: checked('ts-page'), sets: textureMemory() };
+  },
   color_management: async ({ config, display, view, look, working_space }) => {
     const list = await refreshOcioConfigs();
     if (working_space !== undefined && working_space !== null) {
