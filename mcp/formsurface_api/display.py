@@ -20,6 +20,11 @@ def path_render(width: int = 1920, height: int = 1080, samples: int = 256, name:
     return tool("path_render", width=width, height=height, samples=samples, name=name)
 
 
+def color_management(**options) -> dict:
+    """config (built-in name or .ocio file, empty for none), display, view, look; no arguments lists configs."""
+    return tool("color_management", **options)
+
+
 def set_post_effects(**effects) -> dict:
     return tool("set_post_effects", **effects)
 

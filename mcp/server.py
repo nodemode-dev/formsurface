@@ -276,8 +276,8 @@ def formsurface_load_image(
 
 
 @server.tool()
-def formsurface_set_color_space(resource: str | int | None = None, color_space: Literal["srgb", "linear", "raw"] | None = None) -> dict:
-    """Per-resource color space override, like Painter's: list imported images and HDR environments with their index and color space (no arguments), or set one by name or index (the index is needed when one file was imported for two targets). Images are re-read and re-applied at once: a fill image marked linear is encoded to sRGB before use; an alpha, stencil or mask marked srgb is decoded to linear values; raw uses the stored numbers. An environment marked srgb has its values decoded from gamma before lighting (Radiance files are linear by default)."""
+def formsurface_set_color_space(resource: str | int | None = None, color_space: Annotated[str, Field(pattern=r"^(srgb|linear|raw|ocio:.{1,120})$")] | None = None) -> dict:
+    """Per-resource color space override, like Painter's: list imported images and HDR environments with their index and color space (no arguments), or set one by name or index (the index is needed when one file was imported for two targets). Images are re-read and re-applied at once: a fill image marked linear is encoded to sRGB before use; an alpha, stencil or mask marked srgb is decoded to linear values; raw uses the stored numbers. An environment marked srgb has its values decoded from gamma before lighting (Radiance files are linear by default). With an OCIO config active (formsurface_color_management), a fill image or environment can be marked ocio: followed by any color space of that config (for example ocio:ACEScg or ocio:ACES2065-1); the service converts it with OpenColorIO into the viewport's linear Rec.709."""
     if resource is None or color_space is None:
         return call("resources")
     return call("resource_color_space", {"resource": resource, "color_space": color_space})
@@ -388,6 +388,17 @@ def formsurface_path_trace(
 ) -> dict:
     """Progressive path tracing of the viewport: the painted texture sets (base color, roughness, metallic, height and normal, the extra channel as opacity cut-out or emissive) lit by the HDR environment, or by the studio sky with its two lights and traced shadows, with light bouncing up to bounces times. It keeps refining every frame until max_samples and restarts when the camera, lighting or paint changes; strokes show the raster view while painting. samples renders that many before returning, so a screenshot right after shows a converged image. HDR lighting is importance-sampled, so small bright sources such as a sun converge quickly. denoise smooths the traced image with an edge-aware filter guided by albedo, normals and depth, useful below a few hundred samples. aperture (0 to 1) opens a thin lens for depth of field and focus (-1 to 1, in mesh radii) moves the focal plane in front of or behind the orbit target. scatter_radius is the subsurface mean free path as a share of the mesh radius for sets whose extra channel is scattering. Viewport and screenshots only, never the exported maps."""
     return call("path_trace", drop_none(on=on, bounces=bounces, max_samples=max_samples, samples=samples, denoise=denoise, aperture=aperture, focus=focus, scatter_radius=scatter_radius), timeout=600)
+
+
+@server.tool()
+def formsurface_color_management(
+    config: Annotated[str, Field(pattern=r"^[A-Za-z0-9 _.-]{0,80}$")] | None = None,
+    display: str | None = None,
+    view: str | None = None,
+    look: str | None = None,
+) -> dict:
+    """OpenColorIO 2 color management for the viewport, screenshots and path-traced renders. With no arguments it lists the built-in configs (ACES CG and studio configs) and the .ocio files in the workspace ocio folder. config picks one (an empty string returns to the built-in view transforms); display, view and look pick from that config (defaults are the config's default display and view, no look). The service runs real OpenColorIO on the viewport's linear Rec.709 values and the editor applies the result as a 65-point 3D LUT over a log2 shaper. Never changes exported maps."""
+    return call("color_management", drop_none(config=config, display=display, view=view, look=look), timeout=120)
 
 
 @server.tool()
