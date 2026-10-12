@@ -10,6 +10,11 @@ def set_environment(**options) -> dict:
     return tool("set_environment", **options)
 
 
+def path_trace(**options) -> dict:
+    """on, bounces (1 to 12), max_samples (64, 256, 1024, 4096), samples to render before returning."""
+    return tool("path_trace", **options)
+
+
 def set_post_effects(**effects) -> dict:
     return tool("set_post_effects", **effects)
 

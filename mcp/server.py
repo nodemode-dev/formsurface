@@ -376,6 +376,17 @@ def formsurface_set_environment(
 
 
 @server.tool()
+def formsurface_path_trace(
+    on: bool | None = None,
+    bounces: Annotated[int, Field(ge=1, le=12)] | None = None,
+    max_samples: Literal[64, 256, 1024, 4096] | None = None,
+    samples: Annotated[int, Field(ge=1, le=4096)] | None = None,
+) -> dict:
+    """Progressive path tracing of the viewport: the painted texture sets (base color, roughness, metallic, height and normal, the extra channel as opacity cut-out or emissive) lit by the HDR environment, or by the studio sky with its two lights and traced shadows, with light bouncing up to bounces times. It keeps refining every frame until max_samples and restarts when the camera, lighting or paint changes; strokes show the raster view while painting. samples renders that many before returning, so a screenshot right after shows a converged image. Viewport and screenshots only, never the exported maps."""
+    return call("path_trace", drop_none(on=on, bounces=bounces, max_samples=max_samples, samples=samples), timeout=600)
+
+
+@server.tool()
 def formsurface_add_filter_layer(
     name: str = "Filter",
     brightness: Annotated[float, Field(ge=-0.5, le=0.5)] = 0.0,
