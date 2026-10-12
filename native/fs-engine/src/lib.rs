@@ -1569,6 +1569,31 @@ impl Engine {
         Ok(region.len() as u32)
     }
 
+    pub fn texture_set_size(&self, index: u32) -> u32 {
+        self.gpu.set_size(index as usize)
+    }
+
+    pub fn set_texture_set_size(&mut self, index: u32, size: u32) -> Result<String, JsValue> {
+        if self.stroking || self.trace.is_some() {
+            return Err(JsValue::from_str("Finish the stroke or bake first"));
+        }
+        let index = index as usize;
+        if index >= self.sets.len() {
+            return Err(JsValue::from_str("No texture set with that index"));
+        }
+        if !matches!(size, 128 | 256 | 512 | 1024 | 2048 | 4096) {
+            return Err(JsValue::from_str("A texture set size is 128, 256, 512, 1024, 2048 or 4096"));
+        }
+        let original = self.set_index;
+        self.switch_set(index);
+        self.gpu.resize_current(size);
+        self.render_fills();
+        self.flush_set();
+        self.switch_set(original);
+        self.dirty = true;
+        Ok(self.sets[index].info.name())
+    }
+
     pub fn projection_plane_to_screen(&self, qx: f32, qy: f32, axis: u32) -> Vec<f32> {
         let Some((mesh, _)) = self.mesh.as_ref() else { return Vec::new() };
         let (a, b) = ((qx - 0.5) * 2.0, (0.5 - qy) * 2.0);

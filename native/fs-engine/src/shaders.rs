@@ -1320,6 +1320,40 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
 }
 "#;
 
+pub const RESAMPLE: &str = r#"
+@group(0) @binding(0) var src_color: texture_2d<f32>;
+@group(0) @binding(1) var src_val: texture_2d<f32>;
+@group(0) @binding(2) var src_cov: texture_2d<f32>;
+@group(0) @binding(3) var src_mask: texture_2d<f32>;
+@group(0) @binding(4) var samp: sampler;
+struct Four {
+    @location(0) color: vec4<f32>,
+    @location(1) val: vec4<f32>,
+    @location(2) cov: vec4<f32>,
+    @location(3) mask: vec4<f32>,
+};
+
+@fragment
+fn fs(i: FOut) -> Four {
+    var o: Four;
+    o.color = textureSampleLevel(src_color, samp, i.uv, 0.0);
+    o.val = textureSampleLevel(src_val, samp, i.uv, 0.0);
+    o.cov = textureSampleLevel(src_cov, samp, i.uv, 0.0);
+    o.mask = textureSampleLevel(src_mask, samp, i.uv, 0.0);
+    return o;
+}
+"#;
+
+pub const RESAMPLE_ONE: &str = r#"
+@group(0) @binding(0) var src: texture_2d<f32>;
+@group(0) @binding(1) var samp: sampler;
+
+@fragment
+fn fs(i: FOut) -> @location(0) vec4<f32> {
+    return textureSampleLevel(src, samp, i.uv, 0.0);
+}
+"#;
+
 pub const MASK_IMAGE: &str = r#"
 @group(0) @binding(0) var image: texture_2d<f32>;
 @group(0) @binding(1) var samp: sampler;

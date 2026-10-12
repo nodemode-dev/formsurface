@@ -29,6 +29,7 @@ struct Pair {
 }
 
 struct SetState {
+    size: u32,
     base: [f32; 5],
     range: (u32, u32),
     layers: Vec<LayerTex>,
@@ -50,6 +51,9 @@ struct SetState {
 pub struct Gpu {
     pub backend: String,
     pub size: u32,
+    default_size: u32,
+    resample_pipe: wgpu::RenderPipeline,
+    resample_one_pipe: wgpu::RenderPipeline,
     pub base: [f32; 5],
     _instance: wgpu::Instance,
     _adapter: wgpu::Adapter,
@@ -506,6 +510,9 @@ impl Gpu {
         let gpu = Gpu {
             backend,
             size,
+            default_size: size,
+            resample_pipe: pipeline(&device, "resample layer", shaders::RESAMPLE, false, &[LAYER_FORMAT; 4], None, false),
+            resample_one_pipe: pipeline(&device, "resample texture", shaders::RESAMPLE_ONE, false, &[LAYER_FORMAT], None, false),
             base: [0.5, 0.5, 0.5, 0.6, 0.0],
             view_pipe: pipeline(&device, "view", &format!("{}{}", shaders::ENV_COMMON, shaders::VIEW), true, &[format], None, true),
             background_pipe: pipeline(&device, "background", &format!("{}{}", shaders::ENV_COMMON, shaders::BACKGROUND), false, &[format], None, true),
@@ -663,6 +670,7 @@ impl Gpu {
         let mut first = self.parked[0].take().unwrap_or_else(|| self.new_state(ranges[0]));
         self.exchange(&mut first);
         self.current = 0;
+        self.fit_shared();
         self.range = ranges[0];
         for k in 0..ranges.len() {
             self.select_set(k);
@@ -672,27 +680,112 @@ impl Gpu {
     }
 
     fn new_state(&self, range: (u32, u32)) -> SetState {
+        let size = self.default_size;
         SetState {
+            size,
             base: self.base,
             range,
             layers: Vec::new(),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
-            final_set: new_pair(&self.device, self.size),
-            coverage: texture(&self.device, self.size, wgpu::TextureFormat::R8Unorm, "uv coverage"),
+            final_set: new_pair(&self.device, size),
+            coverage: texture(&self.device, size, wgpu::TextureFormat::R8Unorm, "uv coverage"),
             geometry: None,
-            bake: texture(&self.device, self.size, LAYER_FORMAT, "baked maps"),
+            bake: texture(&self.device, size, LAYER_FORMAT, "baked maps"),
             baked: false,
             baked_normal: rgba_texture(&self.device, &self.queue, 1, 1, &[128, 128, 255, 255]),
             baked_id: rgba_texture(&self.device, &self.queue, 1, 1, &[128, 128, 128, 255]),
             high_baked: false,
-            quick: texture(&self.device, self.size, LAYER_FORMAT, "quick mask"),
-            mask: texture(&self.device, self.size, LAYER_FORMAT, "stroke mask"),
+            quick: texture(&self.device, size, LAYER_FORMAT, "quick mask"),
+            mask: texture(&self.device, size, LAYER_FORMAT, "stroke mask"),
             stroke: None,
         }
     }
 
+    fn fit_shared(&mut self) {
+        if self.group_mask.width() == self.size {
+            return;
+        }
+        self.group_mask = texture(&self.device, self.size, LAYER_FORMAT, "folder mask");
+        self.ping = new_pair(&self.device, self.size);
+        self.pong = new_pair(&self.device, self.size);
+        self.scratch = new_set(&self.device, self.size);
+    }
+
+    pub fn set_size(&self, index: usize) -> u32 {
+        if index == self.current {
+            return self.size;
+        }
+        self.parked.get(index).and_then(|s| s.as_ref()).map(|s| s.size).unwrap_or(self.default_size)
+    }
+
+    pub fn resize_current(&mut self, size: u32) {
+        if size == self.size {
+            return;
+        }
+        self.size = size;
+        self.fit_shared();
+        let layers = std::mem::take(&mut self.layers);
+        let mut resized = Vec::with_capacity(layers.len());
+        for layer in layers {
+            let next = new_set(&self.device, size);
+            self.resample_set(&layer.set, &next);
+            resized.push(LayerTex { id: layer.id, set: next });
+        }
+        self.layers = resized;
+        let quick = texture(&self.device, size, LAYER_FORMAT, "quick mask");
+        self.resample_one(&self.quick, &quick);
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.pool.clear();
+        self.final_set = new_pair(&self.device, size);
+        self.coverage = texture(&self.device, size, wgpu::TextureFormat::R8Unorm, "uv coverage");
+        self.bake = texture(&self.device, size, LAYER_FORMAT, "baked maps");
+        self.mask = texture(&self.device, size, LAYER_FORMAT, "stroke mask");
+        self.prepare_set();
+        self.quick = quick;
+    }
+
+    fn resample_set(&self, from: &Set, to: &Set) {
+        let views = [view_of(&from.color), view_of(&from.val), view_of(&from.cov), view_of(&from.mask)];
+        let group = bind(&self.device, &self.resample_pipe, &[
+            wgpu::BindingResource::TextureView(&views[0]),
+            wgpu::BindingResource::TextureView(&views[1]),
+            wgpu::BindingResource::TextureView(&views[2]),
+            wgpu::BindingResource::TextureView(&views[3]),
+            wgpu::BindingResource::Sampler(&self.clamp_sampler),
+        ]);
+        let targets = [view_of(&to.color), view_of(&to.val), view_of(&to.cov), view_of(&to.mask)];
+        let clear = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                color_attachments: &[attach(&targets[0], clear), attach(&targets[1], clear), attach(&targets[2], clear), attach(&targets[3], clear)],
+                ..Default::default()
+            });
+            pass.set_pipeline(&self.resample_pipe);
+            pass.set_bind_group(0, &group, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        self.queue.submit([encoder.finish()]);
+    }
+
+    fn resample_one(&self, from: &wgpu::Texture, to: &wgpu::Texture) {
+        let view = view_of(from);
+        let group = bind(&self.device, &self.resample_one_pipe, &[wgpu::BindingResource::TextureView(&view), wgpu::BindingResource::Sampler(&self.clamp_sampler)]);
+        let target = view_of(to);
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&target, wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT))], ..Default::default() });
+            pass.set_pipeline(&self.resample_one_pipe);
+            pass.set_bind_group(0, &group, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        self.queue.submit([encoder.finish()]);
+    }
+
     fn exchange(&mut self, s: &mut SetState) {
+        std::mem::swap(&mut self.size, &mut s.size);
         std::mem::swap(&mut self.base, &mut s.base);
         std::mem::swap(&mut self.range, &mut s.range);
         std::mem::swap(&mut self.layers, &mut s.layers);
@@ -737,6 +830,7 @@ impl Gpu {
         self.exchange(&mut state);
         self.parked[self.current] = Some(state);
         self.current = to;
+        self.fit_shared();
     }
 
     fn prepare_set(&mut self) {
@@ -1251,7 +1345,12 @@ impl Gpu {
     }
 
     fn take_set(&mut self) -> Set {
-        self.pool.pop().unwrap_or_else(|| new_set(&self.device, self.size))
+        while let Some(set) = self.pool.pop() {
+            if set.color.width() == self.size {
+                return set;
+            }
+        }
+        new_set(&self.device, self.size)
     }
 
     fn copy_set(&self, encoder: &mut wgpu::CommandEncoder, from: &Set, to: &Set) {
