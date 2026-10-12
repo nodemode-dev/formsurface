@@ -714,6 +714,49 @@ impl Engine {
         Ok(())
     }
 
+    pub fn set_mask_effects(&mut self, id: u32, json: &str) -> Result<(), JsValue> {
+        if let Some(r) = self.relay(|e| e.set_mask_effects(id, json)) {
+            return r;
+        }
+        let specs: Vec<fs_core::MaskEffect> = serde_json::from_str(json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        if specs.len() > 16 {
+            return Err(JsValue::from_str("A mask holds at most 16 effects"));
+        }
+        let index = self.layers.iter().position(|l| l.id == id).ok_or_else(|| JsValue::from_str("No layer with that id"))?;
+        if !self.layers[index].mask && !specs.is_empty() {
+            return Err(JsValue::from_str("Add a mask to the layer first (white or black), then stack effects on it"));
+        }
+        self.push_effects(index, &specs);
+        self.dirty = true;
+        self.propagate(id, |e, other| {
+            let _ = e.set_mask_effects(other, json);
+        });
+        Ok(())
+    }
+
+    pub fn mask_effects(&self, id: u32) -> String {
+        let index = self.layers.iter().position(|l| l.id == id);
+        index.map(|i| serde_json::to_string(&self.gpu.layer_effects(i)).unwrap_or_default()).unwrap_or_else(|| "[]".into())
+    }
+
+    fn push_effects(&mut self, index: usize, specs: &[fs_core::MaskEffect]) {
+        let (center, radius) = self.mesh.as_ref().map(|m| (m.0.center, m.0.radius)).unwrap_or(([0.0; 3], 1.0));
+        let effects: Vec<gpu::Effect> = specs
+            .iter()
+            .map(|s| {
+                let fill = (s.visible && s.kind == fs_core::MaskEffectKind::Generator).then(|| {
+                    let mut f = s.fill;
+                    f.use_roughness = true;
+                    f.opacity = 1.0;
+                    f.uniform(center, radius)
+                });
+                let params = if s.visible { s.params(0) } else { [9.0; 8] };
+                gpu::Effect { params, fill, source: s.layer, spec: *s }
+            })
+            .collect();
+        self.gpu.set_layer_effects(index, effects);
+    }
+
     pub fn mask_generator_settings(&self, id: u32) -> String {
         self.mask_gens.get(&id).map(|f| serde_json::to_string(f).unwrap_or_default()).unwrap_or_default()
     }
@@ -1944,6 +1987,7 @@ impl Engine {
             .iter()
             .filter_map(|&i| self.layers.iter().find(|l| l.id == i).map(|l| (l.clone(), self.fills.get(&i).copied(), self.filters.get(&i).copied(), self.mask_gens.get(&i).copied())))
             .collect();
+        let effects: Vec<String> = items.iter().map(|(info, ..)| self.mask_effects(info.id)).collect();
         let origin = self.set_index;
         let was = self.instancing;
         self.instancing = true;
@@ -1955,7 +1999,7 @@ impl Engine {
         }
         let text = |v: serde_json::Result<String>| v.unwrap_or_default();
         let mut made: Vec<(u32, u32)> = Vec::new();
-        for (info, fill, filter, generator) in &items {
+        for ((info, fill, filter, generator), fx) in items.iter().zip(effects.iter()) {
             let new_id = match info.kind {
                 LayerKind::Fill => self.add_fill_layer(info.name.clone()),
                 LayerKind::Filter => self.add_filter_layer(info.name.clone()),
@@ -1973,6 +2017,9 @@ impl Engine {
             }
             let copy = LayerInfo { id: new_id, parent: 0, instance: true, ..info.clone() };
             let _ = self.update_layer(&text(serde_json::to_string(&copy)));
+            if fx != "[]" {
+                let _ = self.set_mask_effects(new_id, fx);
+            }
             let parent = if info.id == id { parent_in_target } else { made.iter().find(|(old, _)| *old == info.parent).map(|(_, n)| *n).unwrap_or(parent_in_target) };
             self.set_parent(new_id, parent);
             if let Some(layer) = self.layers.iter_mut().find(|l| l.id == new_id) {
@@ -2297,6 +2344,12 @@ impl Engine {
         let gens: Vec<u32> = self.mask_gens.keys().copied().collect();
         for id in gens {
             self.render_mask_gen(id);
+        }
+        for index in 0..self.layers.len() {
+            let specs = self.gpu.layer_effects(index);
+            if !specs.is_empty() {
+                self.push_effects(index, &specs);
+            }
         }
     }
 

@@ -381,6 +381,97 @@ pub struct FillSettings {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub enum MaskEffectKind {
+    Fill,
+    Generator,
+    Levels,
+    Invert,
+    Blur,
+    Compare,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MaskBlend {
+    Normal,
+    Multiply,
+    Add,
+    Subtract,
+    Lighten,
+    Darken,
+    Screen,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MaskEffect {
+    pub kind: MaskEffectKind,
+    pub blend: MaskBlend,
+    pub opacity: f32,
+    pub visible: bool,
+    pub value: f32,
+    pub in_low: f32,
+    pub in_high: f32,
+    pub out_low: f32,
+    pub out_high: f32,
+    pub radius: f32,
+    pub layer: u32,
+    pub fill: FillSettings,
+}
+
+impl Default for MaskEffect {
+    fn default() -> Self {
+        MaskEffect {
+            kind: MaskEffectKind::Fill,
+            blend: MaskBlend::Normal,
+            opacity: 1.0,
+            visible: true,
+            value: 1.0,
+            in_low: 0.0,
+            in_high: 1.0,
+            out_low: 0.0,
+            out_high: 1.0,
+            radius: 4.0,
+            layer: 0,
+            fill: FillSettings::default(),
+        }
+    }
+}
+
+impl MaskEffect {
+    pub fn params(&self, pass: u32) -> [f32; 8] {
+        let kind = match self.kind {
+            MaskEffectKind::Fill => 0.0,
+            MaskEffectKind::Generator => 1.0,
+            MaskEffectKind::Levels => 2.0,
+            MaskEffectKind::Invert => 3.0,
+            MaskEffectKind::Blur => 4.0,
+            MaskEffectKind::Compare => 5.0,
+        };
+        let blend = match self.blend {
+            MaskBlend::Normal => 0.0,
+            MaskBlend::Multiply => 1.0,
+            MaskBlend::Add => 2.0,
+            MaskBlend::Subtract => 3.0,
+            MaskBlend::Lighten => 4.0,
+            MaskBlend::Darken => 5.0,
+            MaskBlend::Screen => 6.0,
+        };
+        let (a, b, c, d) = match self.kind {
+            MaskEffectKind::Fill => (self.value.clamp(0.0, 1.0), 0.0, 0.0, 0.0),
+            MaskEffectKind::Levels => {
+                let low = self.in_low.clamp(0.0, 1.0);
+                (low, self.in_high.clamp(0.0, 1.0).max(low + 0.001), self.out_low.clamp(0.0, 1.0), self.out_high.clamp(0.0, 1.0))
+            }
+            MaskEffectKind::Blur => (self.radius.clamp(0.0, 32.0), pass as f32, 0.0, 0.0),
+            _ => (0.0, 0.0, 0.0, 0.0),
+        };
+        [kind, blend, self.opacity.clamp(0.0, 1.0), a, b, c, d, 0.0]
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum Generator {
     None,
     Cavity,

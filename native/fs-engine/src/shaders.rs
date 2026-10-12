@@ -1320,6 +1320,58 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
 }
 "#;
 
+pub const MASK_FX: &str = r#"
+struct Fx { p: vec4<f32>, q: vec4<f32>, };
+@group(0) @binding(0) var<uniform> fx: Fx;
+@group(0) @binding(1) var acc_tex: texture_2d<f32>;
+@group(0) @binding(2) var src_tex: texture_2d<f32>;
+
+fn mix_mode(a: f32, v: f32, mode: f32) -> f32 {
+    if (mode < 0.5) { return v; }
+    if (mode < 1.5) { return a * v; }
+    if (mode < 2.5) { return min(a + v, 1.0); }
+    if (mode < 3.5) { return max(a - v, 0.0); }
+    if (mode < 4.5) { return max(a, v); }
+    if (mode < 5.5) { return min(a, v); }
+    return 1.0 - (1.0 - a) * (1.0 - v);
+}
+
+@fragment
+fn fs(i: FOut) -> @location(0) vec4<f32> {
+    let size = vec2<i32>(textureDimensions(acc_tex));
+    let px = vec2<i32>(i.clip.xy);
+    let a = clamp(textureLoad(acc_tex, px, 0).r, 0.0, 1.0);
+    let kind = fx.p.x;
+    var r = a;
+    if (kind < 0.5) {
+        r = mix_mode(a, fx.p.w, fx.p.y);
+    } else if (kind < 1.5) {
+        r = mix_mode(a, clamp(textureLoad(src_tex, px, 0).r, 0.0, 1.0), fx.p.y);
+    } else if (kind < 2.5) {
+        let t = clamp((a - fx.p.w) / max(fx.q.x - fx.p.w, 0.001), 0.0, 1.0);
+        r = mix(fx.q.y, fx.q.z, t);
+    } else if (kind < 3.5) {
+        r = 1.0 - a;
+    } else if (kind < 4.5) {
+        let radius = i32(round(fx.p.w));
+        var dir = vec2<i32>(1, 0);
+        if (fx.q.x > 0.5) { dir = vec2<i32>(0, 1); }
+        var sum = 0.0;
+        var n = 0.0;
+        for (var k = -radius; k <= radius; k = k + 1) {
+            let q = clamp(px + dir * k, vec2<i32>(0), size - vec2<i32>(1));
+            sum = sum + textureLoad(acc_tex, q, 0).r;
+            n = n + 1.0;
+        }
+        r = sum / max(n, 1.0);
+    } else {
+        r = mix_mode(a, clamp(textureLoad(src_tex, px, 0).r, 0.0, 1.0), fx.p.y);
+    }
+    let o = mix(a, r, clamp(fx.p.z, 0.0, 1.0));
+    return vec4<f32>(o, o, o, 1.0);
+}
+"#;
+
 pub const RESAMPLE: &str = r#"
 @group(0) @binding(0) var src_color: texture_2d<f32>;
 @group(0) @binding(1) var src_val: texture_2d<f32>;
