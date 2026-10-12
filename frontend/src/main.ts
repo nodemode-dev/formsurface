@@ -104,6 +104,7 @@ function syncChannels(): void {
     base_color: hex('c-color'), roughness: num('c-rough'), metallic: num('c-metal'), height: num('c-height'),
     use_color: checked('c-use-color'), use_roughness: checked('c-use-rough'), use_metallic: checked('c-use-metal'), use_height: checked('c-use-height'),
     extra: num('c-extra'), use_extra: checked('c-use-extra'),
+    extra2: num('c-extra2'), use_extra2: checked('c-use-extra2'), extra3: num('c-extra3'), use_extra3: checked('c-use-extra3'),
   }));
 }
 
@@ -141,6 +142,39 @@ function syncExtraControls(): void {
   const label = extraLabel(index);
   for (const id of ['c-extra-label', 'f-extra-label']) if ($(id).textContent !== label) $(id).textContent = label;
   for (const id of ['c-use-extra', 'c-extra', 'f-use-extra', 'f-extra']) $<HTMLInputElement>(id).disabled = role === 'off';
+  const on = engine.user_channels(index);
+  for (const slot of [2, 3]) {
+    const active = on.includes(slot);
+    const box = $<HTMLInputElement>(`ts-user${slot}`);
+    if (box.checked !== active) box.checked = active;
+    const field = $<HTMLInputElement>(`ts-user${slot}-name`);
+    const label = userName(index, slot);
+    if (document.activeElement !== field && field.value !== label) field.value = label;
+    for (const prefix of ['c', 'f']) {
+      const row = $(`${prefix}-extra${slot}-row`);
+      if (row.hidden === active) row.hidden = !active;
+      const text = $(`${prefix}-extra${slot}-label`);
+      if (text.textContent !== label) text.textContent = label;
+    }
+  }
+}
+
+const userNames = new Map<string, string>();
+
+function userName(index: number, slot: number): string {
+  return userNames.get(`${index}:${slot}`) || `user${slot - 1}`;
+}
+
+function setUserChannel(index: number, slot: number, on: boolean, name?: string): void {
+  if (slot !== 2 && slot !== 3) throw new Error('User channel slots are 2 and 3');
+  if (name !== undefined && !/^[A-Za-z0-9_]{1,24}$/.test(name)) throw new Error('A user channel name uses 1 to 24 letters, digits or underscores');
+  requireEngine().set_user_channel(index, slot, on);
+  if (name !== undefined) userNames.set(`${index}:${slot}`, name);
+  syncExtraControls();
+}
+
+function userChannelInfo(index: number): { slot: number; name: string }[] {
+  return engine ? [...engine.user_channels(index)].map((slot) => ({ slot, name: userName(index, slot) })) : [];
 }
 
 function syncBase(): void {
@@ -266,11 +300,11 @@ function layers(): LayerInfo[] {
 
 const setList = new TextureSetList($('texture-sets'), (index) => { selectTextureSet(index); });
 
-function textureSets(): (TextureSetInfo & { size: number; extra_channel: string; extra_name?: string })[] {
+function textureSets(): (TextureSetInfo & { size: number; extra_channel: string; extra_name?: string; user_channels: { slot: number; name: string }[] })[] {
   const e = engine;
   return e ? (JSON.parse(e.texture_sets_json()) as TextureSetInfo[]).map((s) => {
     const role = e.extra_channel(s.index);
-    return { ...s, size: e.texture_set_size(s.index), extra_channel: role, ...(role === 'user' ? { extra_name: extraNames.get(s.index) || 'user0' } : {}) };
+    return { ...s, size: e.texture_set_size(s.index), extra_channel: role, ...(role === 'user' ? { extra_name: extraNames.get(s.index) || 'user0' } : {}), user_channels: userChannelInfo(s.index) };
   }) : [];
 }
 
@@ -550,7 +584,7 @@ const FILL_FIELDS: [string, string][] = [
   ['f-proj', 'projection'], ['f-axis', 'axis'], ['f-pattern', 'pattern'], ['f-imgcolor', 'image_color'], ['f-scale', 'scale'], ['f-rot', 'rotation'],
   ['f-ox', 'offset_x'], ['f-oy', 'offset_y'], ['f-sharp', 'sharpness'], ['f-rough', 'roughness'], ['f-metal', 'metallic'], ['f-height', 'height'],
   ['f-use-color', 'use_color'], ['f-use-rough', 'use_roughness'], ['f-use-metal', 'use_metallic'], ['f-use-height', 'use_height'], ['f-opacity', 'opacity'],
-  ['f-extra', 'extra'], ['f-use-extra', 'use_extra'],
+  ['f-extra', 'extra'], ['f-use-extra', 'use_extra'], ['f-extra2', 'extra2'], ['f-use-extra2', 'use_extra2'], ['f-extra3', 'extra3'], ['f-use-extra3', 'use_extra3'],
   ['f-gen', 'generator'], ['f-glevel', 'generator_level'], ['f-gsoft', 'generator_softness'], ['f-ginvert', 'generator_invert'],
   ['f-gnoise', 'generator_noise'], ['f-gscale', 'noise_scale'], ['f-bao', 'builder_ao'], ['f-bcurv', 'builder_curvature'], ['f-bnoise', 'builder_noise'],
 ];
@@ -999,8 +1033,23 @@ window.addEventListener('keydown', (event) => {
 
 for (const id of ['b-size', 'b-hardness', 'b-flow', 'b-opacity', 'b-spacing']) $(id).addEventListener('input', () => { setOutput(id); syncBrush(); });
 for (const id of ['b-cull', 'b-psize', 'b-pflow']) $(id).addEventListener('change', syncBrush);
-for (const id of ['c-rough', 'c-metal', 'c-height', 'c-extra']) $(id).addEventListener('input', () => { setOutput(id); syncChannels(); });
-for (const id of ['c-color', 'c-use-color', 'c-use-rough', 'c-use-metal', 'c-use-height', 'c-use-extra']) $(id).addEventListener('input', syncChannels);
+for (const id of ['c-rough', 'c-metal', 'c-height', 'c-extra', 'c-extra2', 'c-extra3']) $(id).addEventListener('input', () => { setOutput(id); syncChannels(); });
+for (const id of ['c-color', 'c-use-color', 'c-use-rough', 'c-use-metal', 'c-use-height', 'c-use-extra', 'c-use-extra2', 'c-use-extra3']) $(id).addEventListener('input', syncChannels);
+for (const slot of [2, 3]) {
+  $(`ts-user${slot}`).addEventListener('change', () => {
+    if (!engine) return;
+    const on = checked(`ts-user${slot}`);
+    try {
+      setUserChannel(engine.active_texture_set(), slot, on);
+      status(on ? `This texture set now has a ${userName(engine.active_texture_set(), slot)} channel: paint it from the paint material, fill it from fill layers, and it exports as its own map` : `User channel ${slot} off for this texture set`);
+    } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+  });
+  $(`ts-user${slot}-name`).addEventListener('change', () => {
+    if (!engine) return;
+    const index = engine.active_texture_set();
+    try { setUserChannel(index, slot, engine.user_channels(index).includes(slot), $<HTMLInputElement>(`ts-user${slot}-name`).value.trim()); status(`User channel ${slot} renamed ${userName(index, slot)}`); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+  });
+}
 $('ts-extra').addEventListener('change', () => {
   if (!engine) return;
   try {
@@ -2176,7 +2225,7 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
             if (baked) channels.set(c, baked);
             continue;
           }
-          if (c >= 5 && !e.is_baked()) continue;
+          if (c >= 5 && c < 12 && !e.is_baked()) continue;
           channels.set(c, await channelPixels(e, c, max));
         }
         for (const map of template.maps) await write(`${prefix}${map.suffix}${suffix}`, pack(map, channels, size, max), !!map.a, !!map.rgb && COLOR_SOURCES.includes(map.rgb), src);
@@ -2200,6 +2249,7 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
           await write(`${prefix}${label}${suffix}`, extra, false, false, src);
         }
       }
+      for (const slot of e.user_channels(set.index)) await write(`${prefix}${userName(set.index, slot)}${suffix}`, await channelPixels(e, slot + 11, max), false, false, src);
       for (const [code, label] of [[100, 'ambient_occlusion_high'], [101, 'height_high'], [102, 'opacity'], [103, 'bent_normal']] as const) {
         const baked = bakedPixels(set.index, code, size, max);
         if (baked) await write(`${prefix}${label}${suffix}`, baked, false, false, src);
@@ -2333,7 +2383,7 @@ function snapshotState(): Record<string, unknown> {
       lazy_px: num('b-lazy'), jitter_size: num('b-jsize'), jitter_angle: num('b-jangle'), jitter_position: num('b-jpos'), jitter_flow: num('b-jflow'),
       symmetry: sel('b-sym'), symmetry_axis: Number(sel('b-axis')), radial_count: num('b-radial'), stencil: checked('s-on'),
     },
-    paint_material: { base_color: $<HTMLInputElement>('c-color').value, roughness: num('c-rough'), metallic: num('c-metal'), height: num('c-height'), paint_color: checked('c-use-color'), paint_roughness: checked('c-use-rough'), paint_metallic: checked('c-use-metal'), paint_height: checked('c-use-height'), extra: num('c-extra'), paint_extra: checked('c-use-extra') },
+    paint_material: { base_color: $<HTMLInputElement>('c-color').value, roughness: num('c-rough'), metallic: num('c-metal'), height: num('c-height'), paint_color: checked('c-use-color'), paint_roughness: checked('c-use-rough'), paint_metallic: checked('c-use-metal'), paint_height: checked('c-use-height'), extra: num('c-extra'), paint_extra: checked('c-use-extra'), extra2: num('c-extra2'), paint_extra2: checked('c-use-extra2'), extra3: num('c-extra3'), paint_extra3: checked('c-use-extra3') },
     camera: JSON.parse(e.camera_json()),
     viewport: e.viewport_size(),
   };
@@ -2375,6 +2425,7 @@ const agentLink = new AgentLink({
     setControl('c-color', args.base_color); setControl('c-rough', args.roughness); setControl('c-metal', args.metallic); setControl('c-height', args.height);
     setControl('c-use-color', args.use_color); setControl('c-use-rough', args.use_roughness); setControl('c-use-metal', args.use_metallic); setControl('c-use-height', args.use_height);
     setControl('c-extra', args.extra); setControl('c-use-extra', args.use_extra);
+    setControl('c-extra2', args.extra2); setControl('c-use-extra2', args.use_extra2); setControl('c-extra3', args.extra3); setControl('c-use-extra3', args.use_extra3);
     return snapshotState().paint_material as Record<string, unknown>;
   },
   base: (args) => { setControl('m-color', args.base_color); setControl('m-rough', args.roughness); setControl('m-metal', args.metallic); return {}; },
@@ -2568,8 +2619,8 @@ const agentLink = new AgentLink({
   view_2d: ({ on, center_u, center_v, zoom, channel }) => {
     const e = requireEngine();
     if (channel !== undefined && channel !== null) {
-      const code = ['base_color', 'roughness', 'metallic', 'height', 'extra'].indexOf(String(channel));
-      if (code < 0) throw new Error('channel is base_color, roughness, metallic, height or extra');
+      const code = ['base_color', 'roughness', 'metallic', 'height', 'extra', 'user2', 'user3'].indexOf(String(channel));
+      if (code < 0) throw new Error('channel is base_color, roughness, metallic, height, extra, user2 or user3');
       setControl('d-2d-channel', code, 'change');
     }
     if (on !== undefined && on !== null && Boolean(on) !== e.view_2d()) setView2d(Boolean(on));
@@ -2657,15 +2708,24 @@ const agentLink = new AgentLink({
     return { filled_triangles: filled, mode: modes[code], layer: e.active_layer() };
   },
   texture_sets: () => ({ texture_sets: textureSets(), active_texture_set: requireEngine().active_texture_set() }),
-  select_texture_set: ({ index, name, size, extra_channel, extra_name }) => {
+  select_texture_set: ({ index, name, size, extra_channel, extra_name, user_channels }) => {
     const all = textureSets();
     const match = name !== undefined && name !== null ? all.find((s) => s.name === String(name) || s.material === String(name)) : all.find((s) => s.index === Number(index));
     if (!match) throw new Error(`No texture set ${name ?? index}. Sets: ${all.map((s) => s.name).join(', ')}`);
     const set = selectTextureSet(match.index);
     if (size !== undefined && size !== null) resizeTextureSet(match.index, Number(size));
     if (extra_channel !== undefined && extra_channel !== null) setExtraChannel(match.index, String(extra_channel), extra_name === undefined || extra_name === null ? undefined : String(extra_name));
+    if (Array.isArray(user_channels)) {
+      const wanted = new Map<number, string | undefined>();
+      for (const item of user_channels as { slot?: unknown; name?: unknown }[]) {
+        const slot = Number(item.slot);
+        if (slot !== 2 && slot !== 3) throw new Error('user_channels entries use slot 2 or 3');
+        wanted.set(slot, item.name === undefined || item.name === null ? undefined : String(item.name));
+      }
+      for (const slot of [2, 3]) setUserChannel(match.index, slot, wanted.has(slot), wanted.get(slot));
+    }
     const info = textureSets().find((s) => s.index === match.index);
-    return { active_texture_set: set, size: requireEngine().texture_set_size(match.index), extra_channel: info?.extra_channel, extra_name: info?.extra_name, layers: layers(), active_layer: requireEngine().active_layer() };
+    return { active_texture_set: set, size: requireEngine().texture_set_size(match.index), extra_channel: info?.extra_channel, extra_name: info?.extra_name, user_channels: info?.user_channels, layers: layers(), active_layer: requireEngine().active_layer() };
   },
   add_folder: ({ name, layer_ids }) => {
     const e = requireEngine();

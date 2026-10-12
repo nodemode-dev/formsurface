@@ -52,6 +52,7 @@ svg { width: var(--icon); height: var(--icon); flex: none; }
 .check { display: flex; align-items: center; gap: var(--space-2); min-height: 28px; color: var(--text-muted); }
 .check input { accent-color: var(--accent); }
 .channel { display: grid; grid-template-columns: 20px 74px 1fr 44px; align-items: center; gap: var(--space-2); min-height: 28px; }
+.channel[hidden] { display: none; }
 .channel input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
 .channel label { color: var(--text-muted); }
 .channel output { font: 11px var(--mono); text-align: right; color: var(--text-muted); }

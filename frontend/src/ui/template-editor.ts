@@ -1,5 +1,5 @@
 import { RGB_SOURCES, type MapSpec, type Source, type Template } from './export-templates';
-const GRAY_SOURCES: Source[] = ['roughness', 'smoothness', 'metallic', 'height', 'ao', 'curvature', 'thickness', 'ao_high', 'height_high', 'opacity', 'one', 'zero'];
+const GRAY_SOURCES: Source[] = ['roughness', 'smoothness', 'metallic', 'height', 'ao', 'curvature', 'thickness', 'ao_high', 'height_high', 'opacity', 'extra', 'user2', 'user3', 'one', 'zero'];
 
 export async function loadTemplates(): Promise<Template[]> {
   try {
