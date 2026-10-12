@@ -74,9 +74,9 @@ def formsurface_list_texture_sets() -> dict:
 
 
 @server.tool()
-def formsurface_select_texture_set(name: str | None = None, index: int | None = None) -> dict:
-    """Make a texture set active by name (for example body.1002 or trim) or index. Strokes, layers, fills, masks, smart materials and the base material then apply to it only; the viewport keeps showing every set."""
-    return call("select_texture_set", drop_none(name=name, index=index))
+def formsurface_select_texture_set(name: str | None = None, index: int | None = None, size: Literal[256, 512, 1024, 2048, 4096] | None = None) -> dict:
+    """Make a texture set active by name (for example body.1002 or trim) or index. Strokes, layers, fills, masks, smart materials and the base material then apply to it only; the viewport keeps showing every set. size sets that set's (or UV tile's) own resolution, as in Painter's texture set settings: its layers and quick mask are resampled, fills and generators re-rendered, undo cleared, bakes must be run again, and its maps export at that size. formsurface_list_texture_sets reports each set's size."""
+    return call("select_texture_set", drop_none(name=name, index=index, size=size), timeout=120)
 
 
 @server.tool()
