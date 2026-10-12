@@ -101,6 +101,10 @@ Every color in the stack is linear and every export encodes with gamma 2.2, so a
 
 `set_mesh` with `reproject` on takes the old mesh and BVH before they are replaced, rasterizes the new first set (`Mesh::subset`) and, per texel, casts along the normal from both sides within 5 percent of the radius onto the old first set's triangles (`bake::reproject_map`), giving an Rgba32Float map of old UV plus a found flag. `Gpu::reproject_layers` resamples every layer's color, values, coverage and mask through that map (REPROJECT, four targets, textureLoad on the map) into a pooled set and copies back; texels not found get no coverage and a white mask. It clears undo and redo because old snapshots are in the old UV layout. The view transform is `env.look.x` (the Env uniform is 80 bytes now): `view_transform` in ENV_COMMON serves VIEW and BACKGROUND; 0 is the old ACES fit, so the default picture is unchanged.
 
+## Ray-traced bake and carried sets (v0.22.0)
+
+`Bvh::gpu_buffers` writes nodes as three vec4 per node (lo plus leaf start, hi plus count, miss link plus node total) and triangles in BVH order. TRACE reads nodes as an array of unsigned integer vec4 and bitcasts the coordinates: integers stored as float bits are denormals that some GPUs flush to zero. Traversal is stackless (descend to i+1 on a hit, jump to the miss link otherwise) with a guard of twice the node count. A full trace in one go hung Chrome's GPU process on lavapipe (its watchdog), so `bake_traced_begin` plus `bake_traced_step(rows)` trace a few rows per call and the editor calls one step per animation frame; keep that pacing. `upload_mesh` takes a carry map: each new set gets the old `SetState` chosen by the engine (material and tile name; set 0 from set 0), with range updated and bake flags cleared, and the engine moves the matching `Parked` data across.
+
 ## Next capabilities, in plan order
 
 Per-tile resolution; isolated folder blending; the whole engine in a Worker with OffscreenCanvas (also what a headless batch needs); tile paging for 4K and 8K; color management; stacked mask effects; warp and stylization filters.

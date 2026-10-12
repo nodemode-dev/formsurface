@@ -63,7 +63,7 @@ def formsurface_instance_layer(layer_id: int, texture_set: str) -> dict:
 
 @server.tool()
 def formsurface_load_mesh(file: str, reproject: bool | None = None) -> dict:
-    """Replace the mesh with a glb, gltf, obj, fbx, usd, usda, usdc, usdz, ply or dae from the workspace meshes folder (the mesh update step of a batch). By default the first texture set keeps its layers in UV space. With reproject true (it stays on until set false), the first texture set's paint, fill masks and painted masks are carried to the new mesh by surface position, so an edited or re-unwrapped version of the same model keeps its painting; texels with no old surface within 5 percent of the mesh radius come out empty, and undo history is cleared. Other texture sets start fresh and bakes are reset either way."""
+    """Replace the mesh with a glb, gltf, obj, fbx, usd, usda, usdc, usdz, ply or dae from the workspace meshes folder (the mesh update step of a batch). Texture sets keep their layers when their material and UDIM tile match a set of the old mesh (the first set always continues from the first), in UV space by default. With reproject true (it stays on until set false), every carried set's paint, fill masks and painted masks follow the surface instead of the old UVs, so an edited or re-unwrapped version of the same model keeps its painting; texels with no old surface within 5 percent of the mesh radius come out empty, and undo history is cleared. Unmatched sets start fresh and bakes are reset either way."""
     return call("load_mesh", drop_none(file=file, reproject=reproject), timeout=180)
 
 
