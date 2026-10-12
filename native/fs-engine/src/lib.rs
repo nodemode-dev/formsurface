@@ -1107,6 +1107,9 @@ impl Engine {
         if self.layers[index].kind != LayerKind::Paint && !self.layers[index].mask && self.gpu.quick_mode != 1 {
             return false;
         }
+        if self.gpu.quick_mode != 1 && self.instance_copy(self.active) {
+            return false;
+        }
         self.gpu.begin_stroke(index);
         let active = self.active;
         self.each_sibling(|e| {
@@ -1257,6 +1260,12 @@ impl Engine {
         if let Some(r) = self.relay_new(|e| e.add_layer(name.clone())) {
             return r;
         }
+        let id = self.add_layer_inner(name);
+        self.replicate_into_instances(id);
+        id
+    }
+
+    fn add_layer_inner(&mut self, name: String) -> u32 {
         let id = self.next_id;
         self.next_id += 1;
         let (at, parent) = if self.layers.is_empty() {
@@ -1277,10 +1286,11 @@ impl Engine {
         if let Some(r) = self.relay_new(|e| e.add_folder(name.clone())) {
             return r;
         }
-        let id = self.add_layer(name);
+        let id = self.add_layer_inner(name);
         let index = self.layer_index(id);
         self.layers[index].kind = LayerKind::Folder;
         self.dirty = true;
+        self.replicate_into_instances(id);
         id
     }
 
@@ -1299,6 +1309,7 @@ impl Engine {
         layer.parent = parent;
         self.layers.push(layer);
         self.normalize();
+        self.replicate_into_instances(id);
         true
     }
 
@@ -1373,11 +1384,12 @@ impl Engine {
         if let Some(r) = self.relay_new(|e| e.add_fill_layer(name.clone())) {
             return r;
         }
-        let id = self.add_layer(name);
+        let id = self.add_layer_inner(name);
         let index = self.layer_index(id);
         self.layers[index].kind = LayerKind::Fill;
         self.fills.insert(id, FillSettings::default());
         self.render_fill(id);
+        self.replicate_into_instances(id);
         id
     }
 
@@ -1532,6 +1544,9 @@ impl Engine {
         if self.layers[index].kind != LayerKind::Paint && !self.layers[index].mask && self.gpu.quick_mode != 1 {
             return Err(JsValue::from_str("Fill, filter and folder layers are filled through their mask: choose a mask first"));
         }
+        if self.gpu.quick_mode != 1 && self.instance_copy(self.active) {
+            return Err(JsValue::from_str("This layer is an instance: paint actions only reach its source layer's texture set"));
+        }
         let (mesh, _) = self.mesh.as_ref().unwrap();
         let region = match (mode, self.polygons.as_ref()) {
             (1, Some(ids)) => (first..last).filter(|&t| ids[t as usize] == ids[triangle as usize]).collect(),
@@ -1594,6 +1609,9 @@ impl Engine {
         let index = self.layer_index(self.active);
         if self.layers[index].kind != LayerKind::Paint && !self.layers[index].mask && self.gpu.quick_mode != 1 {
             return Err(JsValue::from_str("Fill, filter and folder layers are painted through their mask: choose a mask first"));
+        }
+        if self.gpu.quick_mode != 1 && self.instance_copy(self.active) {
+            return Err(JsValue::from_str("This layer is an instance: paint actions only reach its source layer's texture set"));
         }
         let (forward, right, up, eye) = self.basis();
         let aspect = self.width as f32 / self.height.max(1) as f32;
@@ -1834,11 +1852,12 @@ impl Engine {
         if let Some(r) = self.relay_new(|e| e.add_filter_layer(name.clone())) {
             return r;
         }
-        let id = self.add_layer(name);
+        let id = self.add_layer_inner(name);
         let index = self.layer_index(id);
         self.layers[index].kind = LayerKind::Filter;
         self.filters.insert(id, FilterSettings::default());
         self.dirty = true;
+        self.replicate_into_instances(id);
         id
     }
 
@@ -1867,45 +1886,111 @@ impl Engine {
         if self.stroking || target >= self.sets.len() || target == self.set_index {
             return Err(JsValue::from_str("Choose another texture set to instance into"));
         }
-        let index = self.layers.iter().position(|l| l.id == id).ok_or_else(|| JsValue::from_str("No layer with that id"))?;
-        let info = self.layers[index].clone();
-        let (fill, filter, generator) = (self.fills.get(&id).copied(), self.filters.get(&id).copied(), self.mask_gens.get(&id).copied());
-        if fill.is_none() && filter.is_none() {
-            return Err(JsValue::from_str("Only fill and filter layers can be instanced: paint lives in each texture set's own UV space"));
+        if !self.layers.iter().any(|l| l.id == id) {
+            return Err(JsValue::from_str("No layer with that id"));
         }
+        if self.instance_copy(id) {
+            return Err(JsValue::from_str("That layer is itself an instance: instance its source layer instead"));
+        }
+        self.instance_into(id, target, 0).map_err(|e| JsValue::from_str(&e))
+    }
+
+    pub fn is_instance_copy(&self, id: u32) -> bool {
+        self.instance_copy(id)
+    }
+
+    fn instance_copy(&self, id: u32) -> bool {
+        let here = (self.set_index, id);
+        self.instance_groups.iter().any(|g| g.contains(&here) && g[0] != here)
+    }
+
+    fn subtree_plan(&self, id: u32, out: &mut Vec<u32>) {
+        out.push(id);
+        let children: Vec<u32> = self.layers.iter().filter(|l| l.parent == id && l.id != id).map(|l| l.id).collect();
+        for child in children {
+            self.subtree_plan(child, out);
+        }
+    }
+
+    fn instance_into(&mut self, id: u32, target: usize, parent_in_target: u32) -> Result<u32, String> {
+        let mut plan = Vec::new();
+        self.subtree_plan(id, &mut plan);
+        let items: Vec<(LayerInfo, Option<FillSettings>, Option<FilterSettings>, Option<FillSettings>)> = plan
+            .iter()
+            .filter_map(|&i| self.layers.iter().find(|l| l.id == i).map(|l| (l.clone(), self.fills.get(&i).copied(), self.filters.get(&i).copied(), self.mask_gens.get(&i).copied())))
+            .collect();
         let origin = self.set_index;
-        let group = match self.instance_groups.iter().position(|g| g.contains(&(origin, id))) {
-            Some(g) => g,
-            None => {
-                self.instance_groups.push(vec![(origin, id)]);
-                self.instance_groups.len() - 1
-            }
-        };
-        self.layers[index].instance = true;
+        let was = self.instancing;
         self.instancing = true;
         self.switch_set(target);
-        let new_id = if fill.is_some() { self.add_fill_layer(info.name.clone()) } else { self.add_filter_layer(info.name.clone()) };
+        if parent_in_target != 0 && !self.layers.iter().any(|l| l.id == parent_in_target && l.kind == LayerKind::Folder) {
+            self.switch_set(origin);
+            self.instancing = was;
+            return Err("The instance folder is missing in the target texture set".into());
+        }
         let text = |v: serde_json::Result<String>| v.unwrap_or_default();
-        if let Some(f) = fill {
-            let _ = self.set_fill(new_id, &text(serde_json::to_string(&f)));
-        }
-        if let Some(f) = filter {
-            let _ = self.set_filter(new_id, &text(serde_json::to_string(&f)));
-        }
-        if let Some(g) = generator {
-            let _ = self.mask_generator(new_id, &text(serde_json::to_string(&g)));
-        }
-        let copy = LayerInfo { id: new_id, parent: 0, instance: true, ..info.clone() };
-        let _ = self.update_layer(&text(serde_json::to_string(&copy)));
-        if let Some(layer) = self.layers.iter_mut().find(|l| l.id == new_id) {
-            layer.instance = true;
+        let mut made: Vec<(u32, u32)> = Vec::new();
+        for (info, fill, filter, generator) in &items {
+            let new_id = match info.kind {
+                LayerKind::Fill => self.add_fill_layer(info.name.clone()),
+                LayerKind::Filter => self.add_filter_layer(info.name.clone()),
+                LayerKind::Folder => self.add_folder(info.name.clone()),
+                _ => self.add_layer(info.name.clone()),
+            };
+            if let Some(f) = fill {
+                let _ = self.set_fill(new_id, &text(serde_json::to_string(f)));
+            }
+            if let Some(f) = filter {
+                let _ = self.set_filter(new_id, &text(serde_json::to_string(f)));
+            }
+            if let Some(g) = generator {
+                let _ = self.mask_generator(new_id, &text(serde_json::to_string(g)));
+            }
+            let copy = LayerInfo { id: new_id, parent: 0, instance: true, ..info.clone() };
+            let _ = self.update_layer(&text(serde_json::to_string(&copy)));
+            let parent = if info.id == id { parent_in_target } else { made.iter().find(|(old, _)| *old == info.parent).map(|(_, n)| *n).unwrap_or(parent_in_target) };
+            self.set_parent(new_id, parent);
+            if let Some(layer) = self.layers.iter_mut().find(|l| l.id == new_id) {
+                layer.instance = true;
+            }
+            made.push((info.id, new_id));
         }
         self.gpu.composite(&self.layers, &self.filters);
         self.switch_set(origin);
-        self.instancing = false;
-        self.instance_groups[group].push((target, new_id));
+        self.instancing = was;
+        for (old, new) in &made {
+            if let Some(layer) = self.layers.iter_mut().find(|l| l.id == *old) {
+                layer.instance = true;
+            }
+            match self.instance_groups.iter_mut().find(|g| g.contains(&(origin, *old))) {
+                Some(g) => g.push((target, *new)),
+                None => self.instance_groups.push(vec![(origin, *old), (target, *new)]),
+            }
+        }
         self.dirty = true;
-        Ok(new_id)
+        Ok(made.first().map(|m| m.1).unwrap_or(0))
+    }
+
+    fn replicate_into_instances(&mut self, id: u32) {
+        if self.instancing || self.relaying {
+            return;
+        }
+        let Some(parent) = self.layers.iter().find(|l| l.id == id).map(|l| l.parent) else { return };
+        if parent == 0 {
+            return;
+        }
+        let here = (self.set_index, parent);
+        let Some(group) = self.instance_groups.iter().find(|g| g.contains(&here)).cloned() else { return };
+        if group[0] != here {
+            return;
+        }
+        let mine = (self.set_index, id);
+        for (set, folder) in group.into_iter().filter(|m| *m != here) {
+            let copied = self.instance_groups.iter().any(|g| g.contains(&mine) && g.iter().any(|m| m.0 == set));
+            if !copied {
+                let _ = self.instance_into(id, set, folder);
+            }
+        }
     }
 
     pub fn snapshot(&mut self) -> js_sys::Promise {
