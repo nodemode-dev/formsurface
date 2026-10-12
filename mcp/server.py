@@ -80,9 +80,11 @@ def formsurface_select_texture_set(
     size: Literal[256, 512, 1024, 2048, 4096] | None = None,
     extra_channel: Literal["off", "user", "opacity", "ambient_occlusion", "emissive", "transmission", "scattering"] | None = None,
     extra_name: Annotated[str, Field(pattern=r"^[A-Za-z0-9_]{1,24}$")] | None = None,
+    user_channels: Annotated[list[Annotated[str, Field(pattern=r"^[A-Za-z0-9_]{1,24}$")]], Field(max_length=2)] | None = None,
 ) -> dict:
-    """Make a texture set active by name (for example body.1002 or trim) or index. Strokes, layers, fills, masks, smart materials and the base material then apply to it only; the viewport keeps showing every set. size sets that set's (or UV tile's) own resolution, as in Painter's texture set settings: its layers and quick mask are resampled, fills and generators re-rendered, undo cleared, bakes must be run again, and its maps export at that size. extra_channel gives the set a fifth channel (Painter's per-set channel list): user (named by extra_name, exported under that name), opacity (shown as cut-out in the viewport), ambient_occlusion (darkens the shading) emissive (glows with the base color, exported as an emissive map), transmission (glass of index 1.5 tinted by the base color, refracted in the path tracer, dithered see-through in the raster view) or scattering (subsurface: the path tracer random-walks light inside the mesh over the scatter radius, tinted by the base color; the raster view only softens it); off removes it. It is painted with formsurface_set_paint_material paint_extra and filled with formsurface_set_fill extra and use_extra. formsurface_list_texture_sets reports each set's size and extra channel."""
-    return call("select_texture_set", drop_none(name=name, index=index, size=size, extra_channel=extra_channel, extra_name=extra_name), timeout=120)
+    """Make a texture set active by name (for example body.1002 or trim) or index. Strokes, layers, fills, masks, smart materials and the base material then apply to it only; the viewport keeps showing every set. size sets that set's (or UV tile's) own resolution, as in Painter's texture set settings: its layers and quick mask are resampled, fills and generators re-rendered, undo cleared, bakes must be run again, and its maps export at that size. extra_channel gives the set a fifth channel (Painter's per-set channel list): user (named by extra_name, exported under that name), opacity (shown as cut-out in the viewport), ambient_occlusion (darkens the shading) emissive (glows with the base color, exported as an emissive map), transmission (glass of index 1.5 tinted by the base color, refracted in the path tracer, dithered see-through in the raster view) or scattering (subsurface: the path tracer random-walks light inside the mesh over the scatter radius, tinted by the base color; the raster view only softens it); off removes it. It is painted with formsurface_set_paint_material paint_extra and filled with formsurface_set_fill extra and use_extra. formsurface_list_texture_sets reports each set's size, extra channel and user channels. user_channels adds up to two more named grayscale channels to the set beside the extra channel (slots 2 and 3, in list order), each painted with formsurface_set_paint_material extra2/paint_extra2 or extra3/paint_extra3, filled with formsurface_set_fill extra2/use_extra2 or extra3/use_extra3, kept through flatten, merge, undo, resize and paging, and exported as its own map under its name; an empty list removes them."""
+    channels = None if user_channels is None else [{"slot": k + 2, "name": n} for k, n in enumerate(user_channels)]
+    return call("select_texture_set", drop_none(name=name, index=index, size=size, extra_channel=extra_channel, extra_name=extra_name, user_channels=channels), timeout=120)
 
 
 @server.tool()
@@ -138,9 +140,14 @@ def formsurface_set_paint_material(
     paint_height: bool | None = None,
     extra: Unit | None = None,
     paint_extra: bool | None = None,
+    extra2: Unit | None = None,
+    paint_extra2: bool | None = None,
+    extra3: Unit | None = None,
+    paint_extra3: bool | None = None,
 ) -> dict:
-    """Set what strokes and fills apply: channel values and which channels are painted. Height 0.5 is flat, above raises, below carves. extra and paint_extra drive the texture set's extra channel (set its role with formsurface_select_texture_set extra_channel): opacity 1 is solid, ambient occlusion 1 is unoccluded, emissive is the glow strength of the base color, a user channel is any value."""
-    return call("material", drop_none(base_color=base_color, roughness=roughness, metallic=metallic, height=height, use_color=paint_color, use_roughness=paint_roughness, use_metallic=paint_metallic, use_height=paint_height, extra=extra, use_extra=paint_extra))
+    """Set what strokes and fills apply: channel values and which channels are painted. Height 0.5 is flat, above raises, below carves. extra and paint_extra drive the texture set's extra channel (set its role with formsurface_select_texture_set extra_channel): opacity 1 is solid, ambient occlusion 1 is unoccluded, emissive is the glow strength of the base color, a user channel is any value. extra2/paint_extra2 and extra3/paint_extra3 drive user channels 2 and 3 (add them with formsurface_select_texture_set user_channels); on a set without them they paint nothing."""
+    return call("material", drop_none(base_color=base_color, roughness=roughness, metallic=metallic, height=height, use_color=paint_color, use_roughness=paint_roughness, use_metallic=paint_metallic, use_height=paint_height, extra=extra, use_extra=paint_extra,
+                                      extra2=extra2, use_extra2=paint_extra2, extra3=extra3, use_extra3=paint_extra3))
 
 
 @server.tool()
@@ -214,6 +221,10 @@ def formsurface_set_fill(
     warp_points: Annotated[list[tuple[float, float]], Field(min_length=16, max_length=16)] | None = None,
     extra: Unit | None = None,
     use_extra: bool | None = None,
+    extra2: Unit | None = None,
+    use_extra2: bool | None = None,
+    extra3: Unit | None = None,
+    use_extra3: bool | None = None,
     reset_warp: bool = False,
     tile_images: Annotated[list[str], Field(min_length=1, max_length=99)] | None = None,
 ) -> dict:
@@ -230,6 +241,7 @@ def formsurface_set_fill(
         warp = [float(c) for p in warp_points for c in p]
     settings = fill_settings(projection=projection, pattern=pattern, base_color=base_color, roughness=roughness, metallic=metallic, height=height, scale=scale,
                              rotation=rotation_degrees, offset_x=offset_u, offset_y=offset_v, planar_axis=planar_axis, sharpness=sharpness, opacity=amount, extra=extra, use_extra=use_extra,
+                             extra2=extra2, use_extra2=use_extra2, extra3=extra3, use_extra3=use_extra3,
                              warp=warp if reset_warp or warp_points is not None else None)
     result = call("set_fill", {"id": layer_id, "settings": settings})
     if tiles is not None:
@@ -559,13 +571,13 @@ def formsurface_clone_layer(layer_id: int = 0) -> dict:
 
 @server.tool()
 def formsurface_view_2d(
-    channel: Literal["base_color", "roughness", "metallic", "height", "extra"] | None = None,
+    channel: Literal["base_color", "roughness", "metallic", "height", "extra", "user2", "user3"] | None = None,
     on: bool | None = None,
     center_u: Annotated[float, Field(ge=-1, le=2)] | None = None,
     center_v: Annotated[float, Field(ge=-1, le=2)] | None = None,
     zoom: Annotated[float, Field(ge=0.25, le=32)] | None = None,
 ) -> dict:
-    """Switch the viewport to the 2D view (the active texture set's UV layout) or back to 3D; channel picks what it shows (base_color, roughness, metallic or height). In the 2D view, formsurface_paint_stroke, formsurface_paint_path and formsurface_polygon_fill points land on the layout (u right, v down, the 0 to 1 square framed at zoom 1) and paint straight into the texture, reaching faces the 3D camera cannot see; brush size is in screen pixels of that view. center_u, center_v and zoom frame part of the layout. ID picking needs the 3D view; symmetry and the stencil do not apply in 2D, and strokes stay on the active UDIM tile."""
+    """Switch the viewport to the 2D view (the active texture set's UV layout) or back to 3D; channel picks what it shows (base_color, roughness, metallic, height, the extra channel or user channels 2 and 3). In the 2D view, formsurface_paint_stroke, formsurface_paint_path and formsurface_polygon_fill points land on the layout (u right, v down, the 0 to 1 square framed at zoom 1) and paint straight into the texture, reaching faces the 3D camera cannot see; brush size is in screen pixels of that view. center_u, center_v and zoom frame part of the layout. ID picking needs the 3D view; symmetry and the stencil do not apply in 2D, and strokes stay on the active UDIM tile."""
     return call("view_2d", drop_none(on=on, center_u=center_u, center_v=center_v, zoom=zoom, channel=channel))
 
 
@@ -658,7 +670,7 @@ def formsurface_screenshot() -> Image:
     return Image(data=base64.b64decode(result["png_base64"]), format="png")
 
 
-Source = Literal["basecolor", "normal_gl", "normal_dx", "roughness", "smoothness", "metallic", "height", "ao", "curvature", "thickness", "ao_high", "height_high", "opacity", "one", "zero"]
+Source = Literal["basecolor", "normal_gl", "normal_dx", "roughness", "smoothness", "metallic", "height", "ao", "curvature", "thickness", "ao_high", "height_high", "opacity", "extra", "user2", "user3", "one", "zero"]
 
 
 class MapSpec(BaseModel):
@@ -687,7 +699,7 @@ def formsurface_export_maps(
     padding_width: Annotated[int, Field(ge=0, le=256)] | None = None,
     padding_color: Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$")] | None = None,
 ) -> dict:
-    """Export maps for every texture set into the FormSurface workspace and return the folder. template is pbr (base color, roughness, metallic, height and normal plus baked maps), gltf, unreal, unity_hdrp, unity_urp, unity_standard_specular, godot, blender, arnold, redshift, usd, sketchfab, spec_gloss, or a template saved with formsurface_save_export_template (see formsurface_list_export_templates). custom_maps defines files for this export only: each has a suffix and either rgb (basecolor, normal_gl, normal_dx, or diffuse and specular converted from base color and metallic for specular glossiness workflows) or r, g, b, a sources; smoothness is 1 minus roughness (glossiness) and ao is white until baked. With several sets, files are named name_material_suffix, with .udim for tiled materials. format and bit_depth: png 8 or 16, tif 8, 16 or 32 (float), exr 16 (half) or 32 (float), hdr 32, jpg 8, psd 8, 16 or 32; float files store base color linear, everything else as in PNG. padding fills texels outside the UV islands: infinite dilation (default), or padding_width texels of dilation followed by transparent (alpha 0; not jpg or hdr), color (padding_color) or diffusion (a smooth blur fill). Omitted values use the editor's Export choices."""
+    """Export maps for every texture set into the FormSurface workspace and return the folder. template is pbr (base color, roughness, metallic, height and normal plus baked maps), gltf, unreal, unity_hdrp, unity_urp, unity_standard_specular, godot, blender, arnold, redshift, usd, sketchfab, spec_gloss, or a template saved with formsurface_save_export_template (see formsurface_list_export_templates). custom_maps defines files for this export only: each has a suffix and either rgb (basecolor, normal_gl, normal_dx, or diffuse and specular converted from base color and metallic for specular glossiness workflows) or r, g, b, a sources; smoothness is 1 minus roughness (glossiness) and ao is white until baked; extra, user2 and user3 pack the set's extra channel and user channels 2 and 3 (black where a set lacks them). With several sets, files are named name_material_suffix, with .udim for tiled materials. format and bit_depth: png 8 or 16, tif 8, 16 or 32 (float), exr 16 (half) or 32 (float), hdr 32, jpg 8, psd 8, 16 or 32; float files store base color linear, everything else as in PNG. padding fills texels outside the UV islands: infinite dilation (default), or padding_width texels of dilation followed by transparent (alpha 0; not jpg or hdr), color (padding_color) or diffusion (a smooth blur fill). Omitted values use the editor's Export choices."""
     maps = [m.model_dump(exclude_none=True) for m in custom_maps] if custom_maps else None
     return call("export", drop_none(name=name, template=template, maps=maps, format=format, bit_depth=bit_depth, padding=padding, padding_width=padding_width, padding_color=padding_color), timeout=600)
 
