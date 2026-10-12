@@ -3,7 +3,7 @@ name: formsurface-harness
 description: Use when building, fixing or extending the FormSurface repo, the Form family 3D texture painter (Rust wgpu engine in WebAssembly, TypeScript and Vite editor, FastAPI service, MCP server). Use whenever work touches the FormSurface repo, including continue formsurface, fix formsurface painting, brush or stroke bugs, projection painting, seams, layers, blend modes, undo, the PBR viewport, export maps, mesh import, the agent link relay, formsurface MCP tools, formsurface releases, the planning sidecar, or Substance Painter parity rows. Also trigger on fs-engine, fs-core, setup/build_engine, ./formsurface mcp or formsurface-harness. Not for using FormSurface to paint a model through MCP, which is the formsurface-painting skill, and not for FormVis or FormCut.
 license: Apache-2.0
 metadata:
-  version: "0.21.0"
+  version: "0.22.0"
   author: nodemode-ai
 ---
 
