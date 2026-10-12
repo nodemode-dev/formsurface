@@ -294,6 +294,21 @@ def read_image(name: str):
     return FileResponse(path)
 
 
+@app.get("/api/scripts")
+def list_scripts():
+    folder = DATA / "scripts"
+    names = sorted(p.name for p in folder.glob("*.py") if p.is_file() and SAFE.match(p.name) and not p.name.startswith(".")) if folder.is_dir() else []
+    return {"scripts": names}
+
+
+@app.get("/api/scripts/{name}")
+def read_script(name: str):
+    path = DATA / "scripts" / name
+    if not SAFE.match(name) or name.startswith(".") or path.suffix.lower() != ".py" or not path.is_file():
+        raise HTTPException(404, "Put the script in the workspace scripts folder (.py)")
+    return FileResponse(path, media_type="text/plain")
+
+
 MESH_SUFFIXES = {".glb", ".gltf", ".obj", ".fbx", ".usd", ".usda", ".usdc", ".usdz", ".ply", ".dae"}
 
 
