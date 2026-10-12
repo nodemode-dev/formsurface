@@ -203,7 +203,7 @@ def clean_thumbnail(value):
     return value
 
 
-TEMPLATE_SOURCES = {"basecolor", "normal_gl", "normal_dx", "roughness", "smoothness", "metallic", "height", "ao", "curvature", "thickness", "ao_high", "height_high", "opacity", "diffuse", "specular", "one", "zero"}
+TEMPLATE_SOURCES = {"basecolor", "normal_gl", "normal_dx", "roughness", "smoothness", "metallic", "height", "ao", "curvature", "thickness", "ao_high", "height_high", "opacity", "extra", "user2", "user3", "diffuse", "specular", "one", "zero"}
 RGB_SOURCES = {"basecolor", "normal_gl", "normal_dx", "diffuse", "specular"}
 SUFFIX = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
 
