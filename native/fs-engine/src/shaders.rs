@@ -1007,8 +1007,67 @@ struct Fill {
     generator: vec4<f32>,
     builder: vec4<f32>,
     direction: vec4<f32>,
+    warp: array<vec4<f32>, 8>,
 };
 @group(0) @binding(0) var<uniform> fill: Fill;
+
+fn warp_point(i: i32, j: i32) -> vec2<f32> {
+    let k = j * 4 + i;
+    let v = fill.warp[k / 2];
+    if (k % 2 == 0) { return v.xy; }
+    return v.zw;
+}
+
+fn cross2(a: vec2<f32>, b: vec2<f32>) -> f32 {
+    return a.x * b.y - a.y * b.x;
+}
+
+fn solve_u(h: vec2<f32>, e: vec2<f32>, f: vec2<f32>, g: vec2<f32>, v: f32) -> f32 {
+    let den = e + g * v;
+    if (abs(den.x) > abs(den.y)) { return (h.x - f.x * v) / den.x; }
+    return (h.y - f.y * v) / den.y;
+}
+
+fn inv_bilinear(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>, c: vec2<f32>, d: vec2<f32>) -> vec2<f32> {
+    let e = b - a;
+    let f = d - a;
+    let g = a - b + c - d;
+    let h = p - a;
+    let k2 = cross2(g, f);
+    let k1 = cross2(e, f) + cross2(h, g);
+    let k0 = cross2(h, e);
+    if (abs(k2) < 1e-6) {
+        let v = -k0 / select(k1, 1e-6, abs(k1) < 1e-9);
+        return vec2<f32>(solve_u(h, e, f, g, v), v);
+    }
+    let w = k1 * k1 - 4.0 * k0 * k2;
+    if (w < 0.0) { return vec2<f32>(-100.0); }
+    let r = sqrt(w);
+    let ik = 0.5 / k2;
+    let v1 = (-k1 - r) * ik;
+    let s1 = vec2<f32>(solve_u(h, e, f, g, v1), v1);
+    let v2 = (-k1 + r) * ik;
+    let s2 = vec2<f32>(solve_u(h, e, f, g, v2), v2);
+    let d1 = length(s1 - clamp(s1, vec2<f32>(0.0), vec2<f32>(1.0)));
+    let d2 = length(s2 - clamp(s2, vec2<f32>(0.0), vec2<f32>(1.0)));
+    return select(s2, s1, d1 <= d2);
+}
+
+fn unwarp(q: vec2<f32>) -> vec2<f32> {
+    var best = q;
+    var best_err = 1e9;
+    for (var j = 0; j < 3; j = j + 1) {
+        for (var i = 0; i < 3; i = i + 1) {
+            let st = inv_bilinear(q, warp_point(i, j), warp_point(i + 1, j), warp_point(i + 1, j + 1), warp_point(i, j + 1));
+            let err = length(st - clamp(st, vec2<f32>(0.0), vec2<f32>(1.0)));
+            if (err < best_err) {
+                best_err = err;
+                best = (vec2<f32>(f32(i), f32(j)) + st) / 3.0;
+            }
+        }
+    }
+    return best;
+}
 
 fn hash3(p: vec3<f32>) -> f32 {
     return fract(sin(dot(p, vec3<f32>(127.1, 311.7, 74.7))) * 43758.5453);
@@ -1110,8 +1169,10 @@ fn fs(@builtin(position) frag: vec4<f32>) -> Out {
     } else if (mode < 3.5) {
         let d = normalize(local + vec3<f32>(1e-6));
         s = pattern(vec2<f32>(atan2(d.z, d.x) / 6.2831853 + 0.5, acos(clamp(d.y, -1.0, 1.0)) / 3.1415927));
-    } else {
+    } else if (mode < 4.5) {
         s = pattern(vec2<f32>(atan2(local.z, local.x) / 6.2831853 + 0.5, local.y * 0.5 + 0.5));
+    } else {
+        s = pattern(unwarp(axis_coords(local, fill.proj2.w) * vec2<f32>(0.5, -0.5) + 0.5));
     }
     var lum = dot(s.rgb, vec3<f32>(0.2126, 0.7152, 0.0722)) * s.a;
     if (fill.color.w > 0.5) { lum = s.a; }

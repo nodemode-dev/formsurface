@@ -539,7 +539,7 @@ impl Gpu {
             }),
             camera: uniform("camera", 128),
             stamp_buffer: uniform("stamps", 64 + 32 * 64),
-            fill_uniform: uniform("fill", 144),
+            fill_uniform: uniform("fill", 272),
             bake: texture(&device, size, LAYER_FORMAT, "baked maps"),
             baked: false,
             baked_normal: rgba_texture(&device, &queue, 1, 1, &[128, 128, 255, 255]),
@@ -827,11 +827,11 @@ impl Gpu {
         self.queue.submit([encoder.finish()]);
     }
 
-    pub fn fill_layer_content(&mut self, index: usize, uniform: &[f32; 36]) {
+    pub fn fill_layer_content(&mut self, index: usize, uniform: &[f32; 68]) {
         self.fill_target(self.layers[index].id, &self.layers[index].set, uniform);
     }
 
-    pub fn mask_from_fill(&mut self, index: usize, uniform: &[f32; 36]) {
+    pub fn mask_from_fill(&mut self, index: usize, uniform: &[f32; 68]) {
         self.fill_target(self.layers[index].id, &self.scratch, uniform);
         let extent = wgpu::Extent3d { width: self.size, height: self.size, depth_or_array_layers: 1 };
         let mut encoder = self.device.create_command_encoder(&Default::default());
@@ -1046,7 +1046,7 @@ impl Gpu {
         read_rgba(buffer, size, size, size * 4, false, false)
     }
 
-    fn fill_target(&self, id: u32, set: &Set, uniform: &[f32; 36]) {
+    fn fill_target(&self, id: u32, set: &Set, uniform: &[f32; 68]) {
         let Some(geometry) = &self.geometry else { return };
         self.queue.write_buffer(&self.fill_uniform, 0, bytemuck::cast_slice(uniform));
         let (pv, nv) = (view_of(&geometry.0), view_of(&geometry.1));

@@ -1525,7 +1525,37 @@ impl Engine {
         Ok(region.len() as u32)
     }
 
-    pub fn path_cover(&mut self, width: u32, height: u32, rgba: &[u8], x0: f32, y0: f32, x1: f32, y1: f32) -> Result<(), JsValue> {
+    pub fn projection_plane_to_screen(&self, qx: f32, qy: f32, axis: u32) -> Vec<f32> {
+        let Some((mesh, _)) = self.mesh.as_ref() else { return Vec::new() };
+        let (a, b) = ((qx - 0.5) * 2.0, (0.5 - qy) * 2.0);
+        let local = match axis { 0 => [0.0, b, a], 1 => [a, 0.0, b], _ => [a, b, 0.0] };
+        let p = add(mesh.center, scale(local, mesh.radius));
+        self.screen_point(p[0], p[1], p[2])
+    }
+
+    pub fn projection_plane_at(&self, x: f32, y: f32, axis: u32) -> Vec<f32> {
+        let Some((mesh, _)) = self.mesh.as_ref() else { return Vec::new() };
+        let (forward, right, up, eye) = self.basis();
+        let aspect = self.width as f32 / self.height as f32;
+        let t = (self.fov * 0.5).tan();
+        let nx = (x / self.width as f32) * 2.0 - 1.0;
+        let ny = 1.0 - (y / self.height as f32) * 2.0;
+        let dir = normalize(add(forward, add(scale(right, nx * t * aspect), scale(up, ny * t))));
+        let k = axis.min(2) as usize;
+        if dir[k].abs() < 1e-5 {
+            return Vec::new();
+        }
+        let along = (mesh.center[k] - eye[k]) / dir[k];
+        if along <= 0.0 {
+            return Vec::new();
+        }
+        let p = add(eye, scale(dir, along));
+        let local = scale(sub(p, mesh.center), 1.0 / mesh.radius.max(1e-6));
+        let (a, b) = match axis { 0 => (local[2], local[1]), 1 => (local[0], local[2]), _ => (local[0], local[1]) };
+        vec![a * 0.5 + 0.5, 0.5 - b * 0.5]
+    }
+
+    pub fn path_cover(&mut self,width: u32, height: u32, rgba: &[u8], x0: f32, y0: f32, x1: f32, y1: f32) -> Result<(), JsValue> {
         if self.stroking {
             return Err(JsValue::from_str("Finish the stroke first"));
         }

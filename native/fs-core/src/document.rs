@@ -317,6 +317,21 @@ pub enum Projection {
     Planar,
     Spherical,
     Cylindrical,
+    Warp,
+}
+
+pub const WARP_SIDE: usize = 4;
+
+pub fn warp_rest() -> [f32; 32] {
+    let mut grid = [0.0; 32];
+    for j in 0..WARP_SIDE {
+        for i in 0..WARP_SIDE {
+            let k = (j * WARP_SIDE + i) * 2;
+            grid[k] = i as f32 / (WARP_SIDE - 1) as f32;
+            grid[k + 1] = j as f32 / (WARP_SIDE - 1) as f32;
+        }
+    }
+    grid
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -360,6 +375,7 @@ pub struct FillSettings {
     pub builder_ao: f32,
     pub builder_curvature: f32,
     pub builder_noise: f32,
+    pub warp: [f32; 32],
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -439,12 +455,13 @@ impl Default for FillSettings {
             builder_ao: 1.0,
             builder_curvature: 0.0,
             builder_noise: 0.0,
+            warp: warp_rest(),
         }
     }
 }
 
 impl FillSettings {
-    pub fn uniform(&self, center: [f32; 3], radius: f32) -> [f32; 36] {
+    pub fn uniform(&self, center: [f32; 3], radius: f32) -> [f32; 68] {
         let generator = match self.generator {
             Generator::None => 0.0,
             Generator::Cavity => 1.0,
@@ -467,6 +484,7 @@ impl FillSettings {
             Projection::Planar => 2.0,
             Projection::Spherical => 3.0,
             Projection::Cylindrical => 4.0,
+            Projection::Warp => 5.0,
         };
         let pattern = match self.pattern {
             Pattern::Solid => 0.0,
@@ -476,7 +494,7 @@ impl FillSettings {
             Pattern::Image => 4.0,
         };
         let c = self.base_color;
-        [
+        let head = [
             c[0], c[1], c[2], flag(self.image_color && self.pattern == Pattern::Image),
             self.roughness, self.metallic, self.height, self.opacity.clamp(0.0, 1.0),
             flag(self.use_color), flag(self.use_roughness), flag(self.use_metallic), flag(self.use_height),
@@ -486,6 +504,12 @@ impl FillSettings {
             generator, self.generator_level.clamp(0.0, 1.0), self.generator_softness.clamp(0.001, 0.5), flag(self.generator_invert),
             self.builder_ao.clamp(0.0, 1.0), self.builder_curvature.clamp(0.0, 1.0), self.builder_noise.clamp(0.0, 1.0), self.noise_scale.clamp(0.1, 64.0),
             d[0] / len, d[1] / len, d[2] / len, self.generator_noise.clamp(0.0, 1.0),
-        ]
+        ];
+        let mut out = [0.0; 68];
+        out[..36].copy_from_slice(&head);
+        for (o, w) in out[36..].iter_mut().zip(self.warp.iter()) {
+            *o = if w.is_finite() { w.clamp(-2.0, 3.0) } else { 0.0 };
+        }
+        out
     }
 }
