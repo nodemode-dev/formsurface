@@ -345,7 +345,10 @@
         <div id="te-maps"></div>
         <div class="row" style="grid-template-columns:1fr 1fr 1fr"><button class="btn" id="te-load" style="justify-content:center" title="Copy the selected template's maps here">From selected</button><button class="btn" id="te-add" style="justify-content:center">Add map</button><button class="btn" id="te-save" style="justify-content:center" title="Save to the workspace library; it then appears in the Template list">Save</button></div>
       </details>
-      <button class="btn" id="x-mesh" style="width:100%;justify-content:center" title="Write the mesh as OBJ with its UDIM UVs, normals and one group per texture set (triangulated)"><svg><use href="#i-export"/></svg>Export mesh (OBJ)</button>
+      <label class="check" title="Write the original quads and n-gons when the mesh came from an OBJ or ASCII PLY; otherwise triangles"><input type="checkbox" id="x-ngons" checked>Keep quads and n-gons</label>
+      <div class="row" style="grid-template-columns:84px 1fr"><label for="x-subdiv">Tessellate</label><select id="x-subdiv"><option value="0" selected>Off</option><option value="1">1 level (4x)</option><option value="2">2 levels (16x)</option><option value="3">3 levels (64x)</option></select></div>
+      <div class="row"><label for="x-disp">Displacement</label><input id="x-disp" type="range" min="0" max="0.2" step="0.005" value="0" title="Push the tessellated surface along its normal by the height channel, as a fraction of the mesh radius"><output for="x-disp">0.00</output></div>
+      <button class="btn" id="x-mesh" style="width:100%;justify-content:center" title="Write the mesh as OBJ with its UDIM UVs, normals and one group per texture set"><svg><use href="#i-export"/></svg>Export mesh (OBJ)</button>
     </section>
   </aside>
 

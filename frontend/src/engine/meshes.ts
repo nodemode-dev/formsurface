@@ -7,6 +7,7 @@ import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
 import { ColladaLoader } from 'three/addons/loaders/ColladaLoader.js';
 
 export interface FlatMesh {
+  polygons?: Uint32Array;
   positions: Float32Array;
   normals: Float32Array;
   uvs: Float32Array;
@@ -107,6 +108,39 @@ async function parseScene(name: string, data: ArrayBuffer): Promise<THREE.Object
   throw new Error(`Unsupported mesh format. Use ${MESH_EXTENSIONS.join(', ')}.`);
 }
 
+function polygonIds(name: string, data: ArrayBuffer): Uint32Array | undefined {
+  const lower = name.toLowerCase();
+  const ids: number[] = [];
+  const add = (corners: number) => {
+    const face = ids.length ? ids[ids.length - 1] + 1 : 0;
+    for (let k = 0; k < corners - 2; k++) ids.push(face);
+  };
+  if (lower.endsWith('.obj')) {
+    let face = 0;
+    for (const line of new TextDecoder().decode(data).split('\n')) {
+      if (!line.startsWith('f ')) continue;
+      const corners = line.trim().split(/\s+/).length - 1;
+      for (let k = 0; k < corners - 2; k++) ids.push(face);
+      face++;
+    }
+    return ids.length ? new Uint32Array(ids) : undefined;
+  }
+  if (lower.endsWith('.ply')) {
+    const text = new TextDecoder().decode(data);
+    const end = text.indexOf('end_header');
+    if (end < 0 || !/format ascii/.test(text.slice(0, end))) return undefined;
+    const vertices = Number(/element vertex (\d+)/.exec(text.slice(0, end))?.[1] ?? 0);
+    const faces = Number(/element face (\d+)/.exec(text.slice(0, end))?.[1] ?? 0);
+    const lines = text.slice(end).split('\n').slice(1).filter((l) => l.trim());
+    for (const line of lines.slice(vertices, vertices + faces)) {
+      const corners = Number(line.trim().split(/\s+/)[0]);
+      if (corners === 3 || corners === 4) add(corners);
+    }
+    return ids.length ? new Uint32Array(ids) : undefined;
+  }
+  return undefined;
+}
+
 export async function loadHighPoly(name: string, data: ArrayBuffer): Promise<FlatMesh> {
   return flatten(await parseScene(name, data), false);
 }
@@ -169,7 +203,10 @@ export function sampleHighPoly(kind = 'sphere'): FlatMesh {
 }
 
 export async function loadMeshFile(file: File): Promise<FlatMesh> {
-  return flatten(await parseScene(file.name, await file.arrayBuffer()));
+  const data = await file.arrayBuffer();
+  const mesh = flatten(await parseScene(file.name, data));
+  mesh.polygons = polygonIds(file.name, data);
+  return mesh;
 }
 
 function namedMesh(geometry: THREE.BufferGeometry, material: string): THREE.Mesh {

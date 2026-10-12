@@ -501,7 +501,11 @@ function applyMesh(next: FlatMesh, name: string): void {
   mesh = next;
   meshName = name;
   const info = engine.set_mesh(next.positions, next.normals, next.uvs, next.indices, next.materials, JSON.stringify(next.materialNames));
-  $('mesh-info').textContent = `${name} · ${info}`;
+  let polygons = '';
+  if (next.polygons) {
+    try { polygons = `, ${engine.set_polygons(next.polygons)}`; } catch { polygons = ''; }
+  }
+  $('mesh-info').textContent = `${name} · ${info}${polygons}`;
   bakeState();
   refreshLayers();
   status(next.skipped ? `Loaded ${name}. ${next.skipped} part(s) without UVs were skipped.` : `Loaded ${name}`);
@@ -780,8 +784,27 @@ function downloadBlob(blob: Blob, name: string): void {
   setTimeout(() => URL.revokeObjectURL(link.href), 4000);
 }
 
-async function exportMesh(name = meshName.replace(/\.[^.]+$/, '')): Promise<string> {
-  const obj = requireEngine().mesh_obj();
+async function exportMesh(name = meshName.replace(/\.[^.]+$/, ''), ngons = checked('x-ngons'), subdivide = Number(sel('x-subdiv')), displacement = num('x-disp')): Promise<string> {
+  const e = requireEngine();
+  let heights = new Uint8Array();
+  let size = 0;
+  if (subdivide > 0 || displacement > 0) {
+    size = e.texture_size();
+    const original = e.active_texture_set();
+    const parts: Uint8Array[] = [];
+    try {
+      for (const set of textureSets()) {
+        if (!e.select_texture_set(set.index)) throw new Error('Finish the stroke before exporting');
+        parts.push(await e.export_channel(3) as Uint8Array);
+      }
+    } finally {
+      e.select_texture_set(original);
+    }
+    heights = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+    let at = 0;
+    for (const p of parts) { heights.set(p, at); at += p.length; }
+  }
+  const obj = e.mesh_obj_with(ngons, subdivide, displacement, size, heights);
   if (await api.alive()) return api.saveMesh(name, obj);
   downloadBlob(new Blob([obj], { type: 'text/plain' }), `${name}.obj`);
   return 'your downloads';
@@ -1125,6 +1148,7 @@ function syncDepths(): void {
 $('x-format').addEventListener('change', syncDepths);
 $('x-pad').addEventListener('change', syncDepths);
 $('x-pad-width').addEventListener('input', () => setOutput('x-pad-width'));
+$('x-disp').addEventListener('input', () => setOutput('x-disp'));
 syncDepths();
 function describeTemplate(): void {
   const template = allTemplates().find((t) => t.name === sel('x-template'));
@@ -1803,7 +1827,14 @@ const agentLink = new AgentLink({
     if (!target) throw new Error(`No texture set ${texture_set}. Sets: ${sets.map((s) => s.name).join(', ')}`);
     return { id: instanceLayer(Number(id), target.index), texture_set: target.name };
   },
-  export_mesh: async ({ name }) => ({ folder: await exportMesh(name ? String(name) : undefined), format: 'obj' }),
+  export_mesh: async ({ name, ngons, subdivide, displacement }) => {
+    const e = requireEngine();
+    const keep = ngons === undefined || ngons === null ? checked('x-ngons') : Boolean(ngons);
+    const levels = subdivide === undefined || subdivide === null ? Number(sel('x-subdiv')) : Math.max(0, Math.min(3, Math.round(Number(subdivide))));
+    const amount = displacement === undefined || displacement === null ? num('x-disp') : Math.max(0, Math.min(0.2, Number(displacement)));
+    const folder = await exportMesh(name ? String(name) : undefined, keep, levels, amount);
+    return { folder, format: 'obj', ngons: keep && e.has_polygons() && levels === 0 && amount === 0, subdivide: levels, displacement: amount };
+  },
   flatten: ({ name }) => ({ id: flattenStack(String(name || 'Flattened')), layers: layers() }),
   export_mask: async ({ id, name }) => ({ folder: await exportMask(Number(id), String(name || meshName.replace(/\.[^.]+$/, ''))) }),
   clone_source: ({ x, y }) => {
