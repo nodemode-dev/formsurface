@@ -326,6 +326,7 @@ print(project.status()["mesh"])</textarea>
       <label class="check" title="Progressive path tracing of the painted model: soft shadows, bounced light and reflections of itself. Strokes show the raster view while painting."><input type="checkbox" id="d-path">Path trace the viewport</label>
       <div class="row"><label for="d-path-bounces">Bounces</label><input id="d-path-bounces" type="range" min="1" max="12" step="1" value="4"><output for="d-path-bounces">4</output></div>
       <div class="row" style="grid-template-columns:84px 1fr"><label for="d-path-max">Samples</label><select id="d-path-max"><option value="64">64</option><option value="256">256</option><option value="1024" selected>1024</option><option value="4096">4096</option></select></div>
+      <label class="check" title="Edge-aware filter guided by the traced albedo, normals and depth; it smooths noise while samples are few and keeps texture detail"><input type="checkbox" id="d-path-denoise">Denoise the traced image</label>
       <p class="check" id="d-path-state" style="margin:2px 0 0">Raster viewport</p>
       <div class="row" style="grid-template-columns:84px 1fr"><label for="d-2d-channel">2D view shows</label><select id="d-2d-channel"><option value="0">Base color</option><option value="1">Roughness</option><option value="2">Metallic</option><option value="3">Height</option><option value="4">Extra channel</option></select></div>
       <input type="file" id="env-file" accept=".hdr" hidden>

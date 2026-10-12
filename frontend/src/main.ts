@@ -903,6 +903,7 @@ function syncPath(): void {
   setOutput('d-path-bounces');
   try {
     engine?.set_path_trace(checked('d-path'), num('d-path-bounces'), Number(sel('d-path-max')));
+    engine?.set_path_denoise(checked('d-path-denoise'));
   } catch (error) {
     $<HTMLInputElement>('d-path').checked = false;
     status(error instanceof Error ? error.message : String(error), true);
@@ -923,6 +924,7 @@ function showPathState(): void {
 $('d-path').addEventListener('change', syncPath);
 $('d-path-bounces').addEventListener('input', syncPath);
 $('d-path-max').addEventListener('change', syncPath);
+$('d-path-denoise').addEventListener('change', () => engine?.set_path_denoise(checked('d-path-denoise')));
 for (const k of POST_FIELDS) $(`p-${k}`).addEventListener('input', () => { setOutput(`p-${k}`); syncView(); });
 function resetPost(): void {
   for (const k of POST_FIELDS) {
@@ -2463,8 +2465,9 @@ const agentLink = new AgentLink({
   undo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().undo()) n++; return { undone: n }; },
   redo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().redo()) n++; return { redone: n }; },
   screenshot: async () => ({ png_base64: await blobBase64(await viewportPng()) }),
-  path_trace: async ({ on, bounces, max_samples, samples }) => {
+  path_trace: async ({ on, bounces, max_samples, samples, denoise }) => {
     const e = requireEngine();
+    setControl('d-path-denoise', denoise, 'change');
     if (max_samples !== undefined && max_samples !== null) {
       if (![...$<HTMLSelectElement>('d-path-max').options].some((o) => o.value === String(max_samples))) throw new Error('max_samples is 64, 256, 1024 or 4096');
       setControl('d-path-max', String(max_samples), 'change');
