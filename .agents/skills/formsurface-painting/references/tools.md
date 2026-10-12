@@ -1,4 +1,4 @@
-# FormSurface MCP tools (server 0.31.0)
+# FormSurface MCP tools (server 0.32.0)
 
 When this table and the server disagree, the server wins and this file is stale.
 
@@ -29,6 +29,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_save_smart_mask` | layer_id, name | file and the saved generator settings |
 | `formsurface_set_generator` | layer_id, generator (none, cavity, edges, thin, top, light, position, noise, mask_builder, dirt, metal_edge_wear), level, softness, invert, noise, noise_scale, direction [x, y, z], builder_ao, builder_curvature, builder_noise | fill settings |
 | `formsurface_set_environment` | file (.hdr in workspace/environments), studio, rotation_degrees, blur, background, exposure, view_transform (aces, standard, agx, filmic) | environment, rotation, blur, background, exposure, view transform |
+| `formsurface_path_trace` | on, bounces (1 to 12), max_samples (64, 256, 1024, 4096), samples (render that many before returning) | on, bounces, samples, max_samples, texture_side |
 | `formsurface_add_filter_layer` | name, brightness, contrast, hue_degrees, saturation, gamma, roughness_offset, metallic_offset, blur, sharpen | id and settings |
 | `formsurface_layer_mask` | layer_id, action (add_white, add_black, remove, keep), paint_target (layer, mask), effects (list replacing the mask's effect stack: kind fill, generator, levels, invert, blur, compare; blend, opacity, visible and the kind's values) | layers, whether strokes paint the mask, and the effect stack |
 | `formsurface_update_layer` | layer_id, name, visible, opacity, blend (normal, multiply, screen, overlay, add, subtract, inverse_subtract, darken, lighten, disable, replace, divide, inverse_divide, difference, exclusion, signed_addition, linear_burn, color_burn, color_dodge, soft_light, hard_light, vivid_light, linear_light, pin_light, tint, saturation, color, value, normal_map_combine, normal_map_detail, normal_map_inverse_detail; the normal map modes combine height), make_active | layers and active layer |
