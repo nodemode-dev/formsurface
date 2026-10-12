@@ -514,7 +514,12 @@ fn fs(i: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
         if (extra < t) { discard; }
     }
     if (look.x > 2.5 && look.x < 3.5) { color = color * extra; }
-    if (look.x > 3.5) { color = color + base * extra * 4.0; }
+    if (look.x > 3.5 && look.x < 4.5) { color = color + base * extra * 4.0; }
+    if (look.x > 4.5 && look.x < 5.5) {
+        let t = fract(sin(dot(floor(i.clip.xy), vec2<f32>(12.9898, 78.233))) * 43758.5453);
+        if (extra * (1.0 - metal) * 0.7 > t) { discard; }
+    }
+    if (look.x > 5.5) { color = color + base * base * extra * (1.0 - metal) * 0.25; }
     color = color * cam.params.x;
     color = view_transform(color);
     if (cam.cursor.w > 0.0) {
@@ -1687,7 +1692,7 @@ fn fs(i: FOut) -> GOut {
 "#;
 
 pub const PATH: &str = r#"
-struct Path { eye: vec4<f32>, params: vec4<f32>, };
+struct Path { eye: vec4<f32>, params: vec4<f32>, scatter: vec4<f32>, };
 @group(0) @binding(0) var<uniform> pt: Path;
 @group(0) @binding(1) var<uniform> env: Env;
 @group(0) @binding(2) var env_sharp: texture_2d<f32>;
@@ -1785,10 +1790,14 @@ fn cut(t: u32, u: f32, v: f32) -> bool {
     let r3 = attrs[k + 3u];
     let layer = i32(r3.w + 0.5);
     let role = roles[u32(layer)];
-    if (role < 1.5 || role > 2.5) { return false; }
+    let cutout = role > 1.5 && role < 2.5;
+    let glass = role > 4.5 && role < 5.5;
+    if (!cutout && !glass) { return false; }
     let w = 1.0 - u - v;
     let uv = vec2<f32>(attrs[k].w, attrs[k + 1u].w) * w + vec2<f32>(attrs[k + 2u].w, r3.x) * u + vec2<f32>(r3.y, r3.z) * v;
-    return rnd() >= clamp(textureSampleLevel(mat_arr, samp, uv, layer, 0.0).a, 0.0, 1.0);
+    let m = textureSampleLevel(mat_arr, samp, uv, layer, 0.0);
+    if (glass) { return rnd() < clamp(m.a, 0.0, 1.0) * (1.0 - clamp(m.g, 0.0, 1.0)) * 0.9; }
+    return rnd() >= clamp(m.a, 0.0, 1.0);
 }
 
 fn slab(lo: vec3<f32>, hi: vec3<f32>, o: vec3<f32>, inv: vec3<f32>, tmax: f32) -> bool {
@@ -1956,6 +1965,7 @@ fn fs(i: FOut) -> POut {
             continue;
         }
         if (depth == 0u) { cover = 1.0; }
+        let entering = dot(ng, d) < 0.0;
         if (dot(ng, d) > 0.0) { ng = -ng; }
         if (dot(n, ng) < 0.0) { n = -n; }
         let nt = textureSampleLevel(nrm_arr, samp, uv, layer, 0.0).xyz;
@@ -1973,10 +1983,88 @@ fn fs(i: FOut) -> POut {
             g_albedo = vec4<f32>(base, 1.0);
             g_normal = vec4<f32>(ns, h.t / (eps * 5000.0));
         }
-        if (role > 3.5) { radiance = radiance + thr * base * extra * 4.0; }
+        if (role > 3.5 && role < 4.5) { radiance = radiance + thr * base * extra * 4.0; }
         let po = p + ng * eps;
         let a = rough * rough;
         let ps = mix(0.3, 0.95, metal);
+        if (role > 4.5 && role < 5.5 && rnd() < extra * (1.0 - metal)) {
+            var mh = ns;
+            if (a > 0.002) {
+                let g1 = rnd();
+                let g2 = rnd();
+                let ct = sqrt((1.0 - g2) / (1.0 + (a * a - 1.0) * g2));
+                let st = sqrt(max(1.0 - ct * ct, 0.0));
+                mh = normalize(basis(ns) * vec3<f32>(st * cos(6.2831853 * g1), st * sin(6.2831853 * g1), ct));
+            }
+            let eta = select(1.5, 1.0 / 1.5, entering);
+            let fr = 0.04 + 0.96 * pow(1.0 - max(dot(v, mh), 0.0), 5.0);
+            let rd = refract(d, mh, eta);
+            if (rnd() < fr || dot(rd, rd) < 1e-6) {
+                d = reflect(d, mh);
+                o = po;
+                if (dot(d, ng) <= 0.0) { break; }
+            } else {
+                d = normalize(rd);
+                o = p - ng * eps;
+                if (entering) { thr = thr * base; }
+                if (dot(d, ng) >= 0.0) { break; }
+            }
+            last_pdf = 1e6;
+            depth = depth + 1u;
+            if (depth > bounces + 6u) { break; }
+            continue;
+        }
+        if (role > 5.5 && rnd() < extra * (1.0 - metal) && rnd() >= 0.04 + 0.96 * pow(1.0 - max(dot(v, ns), 0.0), 5.0)) {
+            let s1 = rnd();
+            let s2 = rnd();
+            var wd = basis(-ng) * vec3<f32>(sqrt(s1) * cos(6.2831853 * s2), sqrt(s1) * sin(6.2831853 * s2), sqrt(max(1.0 - s1, 0.0)));
+            var wo = p - ng * eps;
+            var exited = false;
+            var exit_n = vec3<f32>(0.0, 1.0, 0.0);
+            for (var walk = 0u; walk < 48u; walk = walk + 1u) {
+                let dist = -log(max(1.0 - rnd(), 1e-6)) * pt.scatter.x;
+                let hw = trace(wo, wd, dist, false);
+                if (hw.tri != NONE) {
+                    let b0 = tris[hw.tri * 3u].xyz;
+                    var en = normalize(cross(tris[hw.tri * 3u + 1u].xyz - b0, tris[hw.tri * 3u + 2u].xyz - b0));
+                    if (dot(en, wd) < 0.0) { en = -en; }
+                    let s3 = rnd();
+                    let s4 = rnd();
+                    d = basis(en) * vec3<f32>(sqrt(s3) * cos(6.2831853 * s4), sqrt(s3) * sin(6.2831853 * s4), sqrt(max(1.0 - s3, 0.0)));
+                    o = wo + wd * hw.t + en * eps;
+                    exit_n = en;
+                    exited = true;
+                    break;
+                }
+                wo = wo + wd * dist;
+                thr = thr * 0.99;
+                let z = 1.0 - 2.0 * rnd();
+                let sp = 6.2831853 * rnd();
+                let sr = sqrt(max(1.0 - z * z, 0.0));
+                wd = vec3<f32>(sr * cos(sp), sr * sin(sp), z);
+            }
+            if (!exited) { break; }
+            thr = thr * base;
+            if (hdr) {
+                let pick = env_pick(rnd(), rnd(), rnd(), rnd());
+                let enl = dot(exit_n, pick.xyz);
+                if (pick.w > 0.0 && enl > 0.0 && trace(o, pick.xyz, 1e30, true).tri == NONE) {
+                    let pc = enl / PI;
+                    radiance = radiance + thr * (enl / PI) * env_sample(pick.xyz, 0.0) * (pick.w / (pick.w * pick.w + pc * pc));
+                }
+            } else {
+                for (var s = 0; s < 2; s = s + 1) {
+                    let enl = dot(exit_n, lights[s]);
+                    if (enl > 0.0 && trace(o, lights[s], 1e30, true).tri == NONE) {
+                        radiance = radiance + thr * (enl / PI) * power[s];
+                    }
+                }
+            }
+            last_pdf = max(dot(exit_n, d), 1e-4) / PI;
+            depth = depth + 1u;
+            if (depth > bounces + 6u) { break; }
+            continue;
+        }
         if (hdr) {
             let pick = env_pick(rnd(), rnd(), rnd(), rnd());
             let l = pick.xyz;

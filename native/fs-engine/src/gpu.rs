@@ -148,6 +148,7 @@ pub struct Gpu {
     pub path_view: bool,
     pub path_denoise: bool,
     pub path_lens: [f32; 2],
+    pub path_scatter: f32,
     pub path_size: Option<(u32, u32)>,
     path_filter_pipe: wgpu::RenderPipeline,
     path_filter_uniforms: [wgpu::Buffer; 4],
@@ -570,6 +571,7 @@ impl Gpu {
             path_filter_uniforms: [uniform("path denoise", 16), uniform("path denoise", 16), uniform("path denoise", 16), uniform("path denoise", 16)],
             path_denoise: false,
             path_lens: [0.0, 1.0],
+            path_scatter: 0.05,
             path_size: None,
             env_cdf: {
                 let buffer = device.create_buffer(&wgpu::BufferDescriptor { label: Some("environment distribution"), size: 32, usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
@@ -578,7 +580,7 @@ impl Gpu {
             },
             path_show_pipe: pipeline(&device, "path show", &format!("{}{}", shaders::ENV_COMMON, shaders::PATH_SHOW), false, &[format], None, false),
             path_gather_pipe: pipeline(&device, "path gather", shaders::PATH_GATHER, false, &[LAYER_FORMAT; 3], None, false),
-            path_uniform: uniform("path trace", 32),
+            path_uniform: uniform("path trace", 48),
             path_show_uniform: uniform("path show", 32),
             path: None,
             path_view: false,
@@ -1492,7 +1494,7 @@ impl Gpu {
         let Some(scene) = self.path.as_mut() else { return };
         let (Some(arrays), Some(accum)) = (scene.arrays.as_ref(), scene.accum.as_ref()) else { return };
         scene.seed = scene.seed.wrapping_add(1) % 16_000_000;
-        self.queue.write_buffer(&self.path_uniform, 0, bytemuck::cast_slice(&[eye[0], eye[1], eye[2], scene.seed as f32, bounces as f32, radius.max(1e-6) * 2e-4, self.path_lens[0], self.path_lens[1]]));
+        self.queue.write_buffer(&self.path_uniform, 0, bytemuck::cast_slice(&[eye[0], eye[1], eye[2], scene.seed as f32, bounces as f32, radius.max(1e-6) * 2e-4, self.path_lens[0], self.path_lens[1], self.path_scatter.max(1e-6), 0.0, 0.0, 0.0]));
         self.queue.write_buffer(&self.env_uniform, 0, bytemuck::cast_slice(&self.env_params));
         let (e0, e1, e2) = (view_of(&self.env_textures[0]), view_of(&self.env_textures[1]), view_of(&self.env_textures[2]));
         let array_view = |t: &wgpu::Texture| t.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
@@ -1606,11 +1608,19 @@ impl Gpu {
             self.env_uniform.as_entire_binding(),
             wgpu::BindingResource::TextureView(&shown),
         ]);
-        let out = view_of(target);
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&out, wgpu::LoadOp::Clear(wgpu::Color::BLACK))], ..Default::default() });
-        pass.set_pipeline(&self.path_show_pipe);
-        pass.set_bind_group(0, &group, &[]);
-        pass.draw(0..3, 0..1);
+        let post = self.post_params[19] > 0.5 && self.scene.width() == target.width() && self.scene.height() == target.height();
+        let out = if post { view_of(&self.scene) } else { view_of(target) };
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&out, wgpu::LoadOp::Clear(wgpu::Color::BLACK))], ..Default::default() });
+            pass.set_pipeline(&self.path_show_pipe);
+            pass.set_bind_group(0, &group, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        if post {
+            let mut params = self.post_params;
+            params[4] = 0.0;
+            self.encode_post(encoder, target, params);
+        }
         true
     }
 
@@ -2274,10 +2284,14 @@ impl Gpu {
         if !post {
             return;
         }
-        self.queue.write_buffer(&self.post_uniform, 0, bytemuck::cast_slice(&self.post_params));
+        self.encode_post(encoder, target, self.post_params);
+    }
+
+    fn encode_post(&self, encoder: &mut wgpu::CommandEncoder, target: &wgpu::Texture, params: [f32; 24]) {
+        self.queue.write_buffer(&self.post_uniform, 0, bytemuck::cast_slice(&params));
         let scene = view_of(&self.scene);
         let bloom = view_of(&self.bloom);
-        let glow = self.post_params[0] > 0.0 || self.post_params[2] > 0.0 || self.post_params[3] > 0.0;
+        let glow = params[0] > 0.0 || params[2] > 0.0 || params[3] > 0.0;
         {
             let group = bind(&self.device, &self.bloom_pipe, &[
                 self.post_uniform.as_entire_binding(),

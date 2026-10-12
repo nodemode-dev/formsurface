@@ -93,6 +93,7 @@ pub struct Engine {
     path_limit: u32,
     path_key: Vec<f32>,
     path_lens: [f32; 2],
+    path_scatter: f32,
     render: Option<(u32, u32)>,
 }
 
@@ -159,6 +160,7 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         path_limit: 1024,
         path_key: Vec::new(),
         path_lens: [0.0, 0.0],
+        path_scatter: 0.05,
         render: None,
     };
     engine.add_layer("Layer 1".into());
@@ -1007,6 +1009,7 @@ impl Engine {
             "denoise": self.gpu.path_denoise,
             "aperture": self.path_lens[0],
             "focus": self.path_lens[1],
+            "scatter_radius": self.path_scatter,
             "rendering": self.render.map(|(w, h)| vec![w, h]),
             "bounces": self.path_bounces,
             "samples": self.gpu.path_samples(),
@@ -1022,6 +1025,10 @@ impl Engine {
 
     pub fn set_path_lens(&mut self, aperture: f32, focus: f32) {
         self.path_lens = [aperture.clamp(0.0, 1.0), focus.clamp(-1.0, 1.0)];
+    }
+
+    pub fn set_path_scatter(&mut self, radius: f32) {
+        self.path_scatter = radius.clamp(0.001, 0.5);
     }
 
     pub fn path_render_begin(&mut self, width: u32, height: u32) -> Result<(), JsValue> {
@@ -1174,7 +1181,7 @@ impl Engine {
     }
 
     pub fn set_extra_channel(&mut self, index: u32, role: &str) -> Result<(), JsValue> {
-        let parsed: fs_core::ExtraRole = serde_json::from_str(&format!("\"{role}\"")).map_err(|_| JsValue::from_str("Extra channel is off, user, opacity, ambient_occlusion or emissive"))?;
+        let parsed: fs_core::ExtraRole = serde_json::from_str(&format!("\"{role}\"")).map_err(|_| JsValue::from_str("Extra channel is off, user, opacity, ambient_occlusion, emissive, transmission or scattering"))?;
         let index = index as usize;
         if index >= self.sets.len() {
             return Err(JsValue::from_str("No texture set with that index"));
@@ -1190,7 +1197,7 @@ impl Engine {
 
     pub fn extra_channel(&self, index: u32) -> String {
         let code = self.gpu.set_extra_role(index as usize);
-        ["off", "user", "opacity", "ambient_occlusion", "emissive"][(code.round() as usize).min(4)].to_string()
+        ["off", "user", "opacity", "ambient_occlusion", "emissive", "transmission", "scattering"][(code.round() as usize).min(6)].to_string()
     }
 
     pub fn uv_at(&self, x: f32, y: f32) -> Vec<f32> {
@@ -2461,8 +2468,9 @@ impl Engine {
         let (forward, _, _, eye) = self.basis();
         let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
         self.gpu.path_lens = [self.path_lens[0] * r * 0.15, (self.distance + self.path_lens[1] * r).max(r * 0.05)];
+        self.gpu.path_scatter = self.path_scatter * r;
         let (w, h) = self.render.unwrap_or((self.width, self.height));
-        let mut key = vec![eye[0], eye[1], eye[2], forward[0], forward[1], forward[2], self.fov, w as f32, h as f32, self.normal_strength, self.path_bounces as f32, self.path_lens[0], self.path_lens[1]];
+        let mut key = vec![eye[0], eye[1], eye[2], forward[0], forward[1], forward[2], self.fov, w as f32, h as f32, self.normal_strength, self.path_bounces as f32, self.path_lens[0], self.path_lens[1], self.path_scatter];
         key.extend_from_slice(&self.gpu.env_params[..15]);
         if composited || key != self.path_key {
             self.gpu.path_reset(self.normal_strength);

@@ -112,6 +112,8 @@ pub enum ExtraRole {
     Opacity,
     AmbientOcclusion,
     Emissive,
+    Transmission,
+    Scattering,
 }
 
 impl ExtraRole {
@@ -122,6 +124,8 @@ impl ExtraRole {
             ExtraRole::Opacity => 2.0,
             ExtraRole::AmbientOcclusion => 3.0,
             ExtraRole::Emissive => 4.0,
+            ExtraRole::Transmission => 5.0,
+            ExtraRole::Scattering => 6.0,
         }
     }
 
