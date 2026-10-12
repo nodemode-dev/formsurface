@@ -77,6 +77,33 @@ impl Bvh {
         index
     }
 
+    pub fn gpu_buffers(&self, mesh: &Mesh) -> (Vec<f32>, Vec<f32>) {
+        let total = self.nodes.len();
+        let mut miss = vec![total as u32; total];
+        for i in (0..total).rev() {
+            let node = &self.nodes[i];
+            miss[i] = if node.count > 0 { (i + 1) as u32 } else { miss[node.right as usize] };
+        }
+        let mut nodes = Vec::with_capacity(total * 12);
+        for (i, node) in self.nodes.iter().enumerate() {
+            nodes.extend_from_slice(&[node.lo[0], node.lo[1], node.lo[2], f32::from_bits(node.start), node.hi[0], node.hi[1], node.hi[2], f32::from_bits(node.count)]);
+            nodes.extend_from_slice(&[f32::from_bits(miss[i]), f32::from_bits(total as u32), 0.0, 0.0]);
+        }
+        let mut tris = Vec::with_capacity(self.order.len() * 12);
+        for &t in &self.order {
+            for p in corners(mesh, t as usize) {
+                tris.extend_from_slice(&[p[0], p[1], p[2], 0.0]);
+            }
+        }
+        if nodes.is_empty() {
+            nodes.resize(12, 0.0);
+        }
+        if tris.is_empty() {
+            tris.resize(12, 0.0);
+        }
+        (nodes, tris)
+    }
+
     pub fn raycast(&self, mesh: &Mesh, origin: Vec3, direction: Vec3) -> Option<Hit> {
         self.raycast_filter(mesh, origin, direction, &|_| true)
     }

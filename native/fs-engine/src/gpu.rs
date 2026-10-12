@@ -107,6 +107,8 @@ pub struct Gpu {
     post_pipe: wgpu::RenderPipeline,
     bloom_pipe: wgpu::RenderPipeline,
     reproject_pipe: wgpu::RenderPipeline,
+    trace_pipe: wgpu::RenderPipeline,
+    trace_job: Option<(wgpu::BindGroup, u32)>,
     post_uniform: wgpu::Buffer,
     pub post_params: [f32; 24],
     scene: wgpu::Texture,
@@ -511,6 +513,8 @@ impl Gpu {
             post_pipe: pipeline(&device, "post", &format!("{}{}", shaders::POST_COMMON, shaders::POST), false, &[format], None, false),
             bloom_pipe: pipeline(&device, "bloom", &format!("{}{}", shaders::POST_COMMON, shaders::BLOOM), false, &[LAYER_FORMAT], None, false),
             reproject_pipe: pipeline(&device, "reproject", shaders::REPROJECT, false, &[LAYER_FORMAT; 4], None, false),
+            trace_pipe: pipeline(&device, "ray traced bake", shaders::TRACE, false, &[LAYER_FORMAT], None, false),
+            trace_job: None,
             post_uniform: uniform("post", 96),
             post_params: [0.0; 24],
             scene: scene_texture(&device, format, width, height),
@@ -616,7 +620,7 @@ impl Gpu {
         self.bloom = bloom_texture(&self.device, width, height);
     }
 
-    pub fn upload_mesh(&mut self, mesh: &Mesh, ranges: &[(u32, u32)]) {
+    pub fn upload_mesh(&mut self, mesh: &Mesh, ranges: &[(u32, u32)], carry: &[Option<usize>]) {
         let data = mesh.interleaved();
         let upload = |label: &str, bytes: &[u8], usage: wgpu::BufferUsages| {
             let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size: bytes.len().next_multiple_of(4) as u64, usage: usage | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
@@ -628,10 +632,31 @@ impl Gpu {
         self.total = mesh.indices.len() as u32;
         let ranges: Vec<(u32, u32)> = if ranges.is_empty() { vec![(0, self.total)] } else { ranges.to_vec() };
         self.select_set(0);
-        self.parked = (0..ranges.len()).map(|_| None).collect();
-        for (k, range) in ranges.iter().enumerate().skip(1) {
-            self.parked[k] = Some(self.new_state(*range));
+        let mut old: Vec<Option<SetState>> = std::mem::take(&mut self.parked);
+        let mut live = self.new_state(self.range);
+        self.exchange(&mut live);
+        if old.is_empty() {
+            old.push(None);
         }
+        old[0] = Some(live);
+        let mut fresh: Vec<Option<SetState>> = Vec::with_capacity(ranges.len());
+        for (k, range) in ranges.iter().enumerate() {
+            let kept = carry.get(k).copied().flatten().and_then(|j| old.get_mut(j).and_then(|s| s.take()));
+            let state = match kept {
+                Some(mut s) => {
+                    s.range = *range;
+                    s.geometry = None;
+                    s.baked = false;
+                    s.high_baked = false;
+                    s
+                }
+                None => self.new_state(*range),
+            };
+            fresh.push(Some(state));
+        }
+        self.parked = fresh;
+        let mut first = self.parked[0].take().unwrap_or_else(|| self.new_state(ranges[0]));
+        self.exchange(&mut first);
         self.current = 0;
         self.range = ranges[0];
         for k in 0..ranges.len() {
@@ -1129,6 +1154,63 @@ impl Gpu {
         self.queue.submit([encoder.finish()]);
         self.baked = true;
         Ok(())
+    }
+
+    pub fn trace_begin(&mut self, nodes: &[f32], tris: &[f32], radius: f32, rays: u32) -> Result<(), String> {
+        let Some((pos, normal)) = &self.geometry else { return Err("Load a mesh before baking".into()) };
+        if !self.baked {
+            return Err("Bake mesh maps before tracing".into());
+        }
+        let storage = |label: &str, data: &[f32]| {
+            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size: (data.len() * 4) as u64, usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+            self.queue.write_buffer(&buffer, 0, bytemuck::cast_slice(data));
+            buffer
+        };
+        let node_buffer = storage("bvh nodes", nodes);
+        let tri_buffer = storage("bvh triangles", tris);
+        let params = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("trace"), size: 16, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+        let r = radius.max(1e-6);
+        self.queue.write_buffer(&params, 0, bytemuck::cast_slice(&[rays.clamp(4, 256) as f32, 2.0 * r, r, 0.0]));
+        let previous = texture(&self.device, self.size, LAYER_FORMAT, "bake before tracing");
+        let extent = wgpu::Extent3d { width: self.size, height: self.size, depth_or_array_layers: 1 };
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        encoder.copy_texture_to_texture(self.bake.as_image_copy(), previous.as_image_copy(), extent);
+        self.queue.submit([encoder.finish()]);
+        let (pv, nv, prev_view) = (view_of(pos), view_of(normal), view_of(&previous));
+        let group = bind(&self.device, &self.trace_pipe, &[
+            params.as_entire_binding(),
+            wgpu::BindingResource::TextureView(&pv),
+            wgpu::BindingResource::TextureView(&nv),
+            wgpu::BindingResource::TextureView(&prev_view),
+            node_buffer.as_entire_binding(),
+            tri_buffer.as_entire_binding(),
+        ]);
+        self.trace_job = Some((group, 0));
+        Ok(())
+    }
+
+    pub fn trace_step(&mut self, rows: u32) -> bool {
+        let Some((group, y)) = self.trace_job.take() else { return true };
+        let rows = rows.max(1).min(self.size - y);
+        let bake_view = view_of(&self.bake);
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&bake_view, wgpu::LoadOp::Load)], ..Default::default() });
+            pass.set_pipeline(&self.trace_pipe);
+            pass.set_bind_group(0, &group, &[]);
+            pass.set_scissor_rect(0, y, self.size, rows);
+            pass.draw(0..3, 0..1);
+        }
+        self.queue.submit([encoder.finish()]);
+        if y + rows < self.size {
+            self.trace_job = Some((group, y + rows));
+            return false;
+        }
+        true
+    }
+
+    pub fn trace_progress(&self) -> f32 {
+        self.trace_job.as_ref().map(|(_, y)| *y as f32 / self.size as f32).unwrap_or(1.0)
     }
 
     pub fn set_pattern(&mut self, id: u32, width: u32, height: u32, rgba: &[u8]) -> Result<(), String> {

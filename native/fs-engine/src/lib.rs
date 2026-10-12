@@ -20,6 +20,16 @@ struct SetEntry {
     parked: Option<Parked>,
 }
 
+struct TraceRun {
+    nodes: Vec<f32>,
+    tris: Vec<f32>,
+    radius: f32,
+    rays: u32,
+    next: usize,
+    original: usize,
+    active: bool,
+}
+
 const VIEW_TRANSFORMS: [&str; 4] = ["aces", "standard", "agx", "filmic"];
 const POST_KEYS: [&str; 16] = ["bloom", "bloom_threshold", "glare", "lens_flare", "vignette", "vignette_softness", "grain", "sharpen", "aberration", "dof_aperture", "dof_focus", "contrast", "saturation", "temperature", "tint", "gain"];
 const POST_DEFAULTS: [f32; 16] = [0.0, 0.8, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
@@ -61,6 +71,7 @@ pub struct Engine {
     reproject: bool,
     reprojected: Option<(usize, usize)>,
     view_transform: u32,
+    trace: Option<TraceRun>,
     normal_strength: f32,
     uv_tiles: bool,
     relaying: bool,
@@ -120,6 +131,7 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         reproject: false,
         reprojected: None,
         view_transform: 0,
+        trace: None,
         normal_strength: 1.0,
         uv_tiles: false,
         relaying: false,
@@ -184,12 +196,26 @@ impl Engine {
         let mesh = Mesh::from_flat(&split.positions, &split.normals, &split.uvs, &split.indices).map_err(|e| JsValue::from_str(&e))?;
         let bvh = Bvh::build(&mesh);
         self.select_texture_set(0);
-        let old_first = self.sets.first().map(|s| (s.info.start / 3, (s.info.start + s.info.count) / 3));
-        let previous = if self.reproject { self.mesh.take().zip(old_first) } else { None };
+        let mut old_sets = std::mem::take(&mut self.sets);
+        let carry: Vec<Option<usize>> = split.sets.iter().enumerate().map(|(k, s)| {
+            if k == 0 {
+                (!old_sets.is_empty()).then_some(0)
+            } else {
+                old_sets.iter().enumerate().skip(1).find(|(_, o)| o.info.name() == s.name()).map(|(j, _)| j)
+            }
+        }).collect();
+        let old_ranges: Vec<(u32, u32)> = old_sets.iter().map(|s| (s.info.start / 3, (s.info.start + s.info.count) / 3)).collect();
+        let previous = if self.reproject { self.mesh.take() } else { None };
         self.reprojected = None;
         let ranges: Vec<(u32, u32)> = split.sets.iter().map(|s| (s.start, s.count)).collect();
-        self.gpu.upload_mesh(&mesh, &ranges);
-        self.sets = split.sets.into_iter().map(|info| SetEntry { info, parked: None }).collect();
+        self.gpu.upload_mesh(&mesh, &ranges, &carry);
+        let mut sets = Vec::with_capacity(split.sets.len());
+        for (k, info) in split.sets.into_iter().enumerate() {
+            let parked = carry[k].filter(|&j| j > 0).and_then(|j| old_sets.get_mut(j).and_then(|o| o.parked.take()));
+            sets.push(SetEntry { info, parked });
+        }
+        self.sets = sets;
+        let carried = carry.iter().filter(|c| c.is_some()).count();
         self.tri_order = split.order;
         self.match_keys = None;
         self.cage = None;
@@ -200,13 +226,27 @@ impl Engine {
         self.distance = mesh.radius * 2.8;
         let count = self.sets.len();
         let mut info = format!("{} vertices, {} triangles, {} texture set{}", mesh.positions.len(), mesh.triangle_count(), count, if count == 1 { "" } else { "s" });
-        if let (Some(((old, old_bvh), range)), Some(first)) = (previous, self.sets.first()) {
-            let low = mesh.subset(first.info.start as usize, first.info.count as usize);
+        if count > 1 && carried > 1 {
+            info.push_str(&format!("; {carried} texture sets kept their layers (matched by material and tile)"));
+        }
+        if let Some((old, old_bvh)) = previous {
             let reach = old.radius.max(mesh.radius) * 0.05;
-            let result = fs_core::bake::reproject_map(&low, &old, &old_bvh, range, self.gpu.size as usize, reach);
-            self.gpu.reproject_layers(&result.map).map_err(|e| JsValue::from_str(&e))?;
-            self.reprojected = Some((result.found, result.texels));
-            info.push_str(&format!("; reprojected the first texture set's layers onto {} of {} texels", result.found, result.texels));
+            let (mut found, mut texels, mut sets_done) = (0usize, 0usize, 0usize);
+            for (k, source) in carry.iter().enumerate() {
+                let Some(j) = *source else { continue };
+                let Some(&range) = old_ranges.get(j) else { continue };
+                self.switch_set(k);
+                let set = &self.sets[k].info;
+                let low = mesh.subset(set.start as usize, set.count as usize);
+                let result = fs_core::bake::reproject_map(&low, &old, &old_bvh, range, self.gpu.size as usize, reach);
+                self.gpu.reproject_layers(&result.map).map_err(|e| JsValue::from_str(&e))?;
+                found += result.found;
+                texels += result.texels;
+                sets_done += 1;
+            }
+            self.switch_set(0);
+            self.reprojected = Some((found, texels));
+            info.push_str(&format!("; reprojected {sets_done} texture set{} onto {found} of {texels} texels", if sets_done == 1 { "" } else { "s" }));
             self.dirty = true;
         }
         self.mesh = Some((mesh, bvh));
@@ -1388,6 +1428,56 @@ impl Engine {
             Ok(())
         })
         .map_err(|e| JsValue::from_str(&e))
+    }
+
+    pub fn bake_traced_begin(&mut self, directions: u32, rays: u32) -> Result<(), JsValue> {
+        if self.stroking {
+            return Err(JsValue::from_str("Finish the stroke before baking"));
+        }
+        self.bake_maps(directions)?;
+        let (mesh, bvh) = self.mesh.as_ref().ok_or_else(|| JsValue::from_str("Load a mesh before baking"))?;
+        let (nodes, tris) = bvh.gpu_buffers(mesh);
+        self.trace = Some(TraceRun { nodes, tris, radius: mesh.radius, rays, next: 0, original: self.set_index, active: false });
+        Ok(())
+    }
+
+    pub fn bake_traced_step(&mut self, rows: u32) -> Result<f32, JsValue> {
+        let total = self.sets.len().max(1) as f32;
+        let Some(run) = self.trace.as_ref() else { return Ok(1.0) };
+        let (next, active, original) = (run.next, run.active, run.original);
+        if !active {
+            if next >= self.sets.len() {
+                self.switch_set(original);
+                self.trace = None;
+                return Ok(1.0);
+            }
+            self.switch_set(next);
+            let run = self.trace.as_ref().ok_or_else(|| JsValue::from_str("No trace running"))?;
+            let (nodes, tris, radius, rays) = (run.nodes.clone(), run.tris.clone(), run.radius, run.rays);
+            if let Err(e) = self.gpu.trace_begin(&nodes, &tris, radius, rays) {
+                self.trace = None;
+                return Err(JsValue::from_str(&e));
+            }
+            if let Some(run) = self.trace.as_mut() {
+                run.active = true;
+            }
+        }
+        let done = self.gpu.trace_step(rows);
+        let progress = self.gpu.trace_progress();
+        if done {
+            self.render_fills();
+            self.dirty = true;
+            if let Some(run) = self.trace.as_mut() {
+                run.active = false;
+                run.next += 1;
+            }
+            return Ok(((next + 1) as f32 / total).min(0.999));
+        }
+        Ok(((next as f32 + progress) / total).min(0.999))
+    }
+
+    pub fn tracing(&self) -> bool {
+        self.trace.is_some()
     }
 
     pub fn set_high_mesh(&mut self, positions: &[f32], normals: &[f32], indices: &[u32], parts: &[u32]) -> Result<String, JsValue> {

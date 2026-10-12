@@ -79,6 +79,117 @@ fn fs(i: FOut) -> BOut {
 }
 "#;
 
+pub const TRACE: &str = r#"
+struct Trace { params: vec4<f32>, };
+@group(0) @binding(0) var<uniform> tr: Trace;
+@group(0) @binding(1) var pos_map: texture_2d<f32>;
+@group(0) @binding(2) var normal_map: texture_2d<f32>;
+@group(0) @binding(3) var prev: texture_2d<f32>;
+@group(0) @binding(4) var<storage, read> nodes: array<vec4<u32>>;
+@group(0) @binding(5) var<storage, read> tris: array<vec4<f32>>;
+
+fn slab(lo: vec3<f32>, hi: vec3<f32>, o: vec3<f32>, inv: vec3<f32>, tmax: f32) -> bool {
+    let t0 = (lo - o) * inv;
+    let t1 = (hi - o) * inv;
+    let near = max(max(min(t0.x, t1.x), min(t0.y, t1.y)), min(t0.z, t1.z));
+    let far = min(min(max(t0.x, t1.x), max(t0.y, t1.y)), max(t0.z, t1.z));
+    return far >= max(near, 0.0) && near <= tmax;
+}
+
+fn nearest(o: vec3<f32>, d: vec3<f32>, tmax: f32, any_hit: bool) -> f32 {
+    let inv = 1.0 / select(d, vec3<f32>(1e-12), abs(d) < vec3<f32>(1e-12));
+    var best = tmax;
+    let total = nodes[2u].y;
+    var i = 0u;
+    var guard = 0u;
+    loop {
+        if (i >= total || guard > total * 2u) { break; }
+        guard = guard + 1u;
+        let lo = nodes[i * 3u];
+        let hi = nodes[i * 3u + 1u];
+        let miss = nodes[i * 3u + 2u].x;
+        if (!slab(bitcast<vec3<f32>>(lo.xyz), bitcast<vec3<f32>>(hi.xyz), o, inv, best)) {
+            i = miss;
+            continue;
+        }
+        let count = hi.w;
+        let link = lo.w;
+        if (count == 0u) {
+            i = i + 1u;
+            continue;
+        }
+        i = miss;
+        {
+            for (var t = link; t < link + count; t = t + 1u) {
+                let a = tris[t * 3u].xyz;
+                let e1 = tris[t * 3u + 1u].xyz - a;
+                let e2 = tris[t * 3u + 2u].xyz - a;
+                let pv = cross(d, e2);
+                let det = dot(e1, pv);
+                if (abs(det) < 1e-12) { continue; }
+                let id = 1.0 / det;
+                let tv = o - a;
+                let u = dot(tv, pv) * id;
+                if (u < 0.0 || u > 1.0) { continue; }
+                let qv = cross(tv, e1);
+                let v = dot(d, qv) * id;
+                if (v < 0.0 || u + v > 1.0) { continue; }
+                let dist = dot(e2, qv) * id;
+                if (dist > 0.0 && dist < best) {
+                    best = dist;
+                    if (any_hit) { return best; }
+                }
+            }
+        }
+    }
+    return best;
+}
+
+fn hash(p: vec2<f32>) -> f32 {
+    return fract(sin(dot(p, vec2<f32>(12.9898, 78.233))) * 43758.5453);
+}
+
+fn around(n: vec3<f32>, k: f32, count: f32, spin: f32) -> vec3<f32> {
+    let u1 = (k + 0.5) / count;
+    let phi = k * 2.39996323 + spin;
+    let r = sqrt(u1);
+    let local = vec3<f32>(r * cos(phi), r * sin(phi), sqrt(max(1.0 - u1, 0.0)));
+    let up = select(vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0), abs(n.y) > 0.9);
+    let t = normalize(cross(up, n));
+    let b = cross(n, t);
+    return normalize(t * local.x + b * local.y + n * local.z);
+}
+
+@fragment
+fn fs(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+    let px = vec2<i32>(frag.xy);
+    let old = textureLoad(prev, px, 0);
+    let wp = textureLoad(pos_map, px, 0);
+    if (wp.w < 0.5) { return old; }
+    let n = normalize(textureLoad(normal_map, px, 0).xyz);
+    let rays = tr.params.x;
+    let reach = tr.params.y;
+    let radius = tr.params.z;
+    let eps = radius * 1e-4;
+    let spin = hash(frag.xy) * 6.2831853;
+    var open = 0.0;
+    var depth = 0.0;
+    var inside = 0.0;
+    for (var k = 0.0; k < rays; k = k + 1.0) {
+        let d = around(n, k, rays, spin);
+        if (nearest(wp.xyz + n * eps, d, reach, true) >= reach) { open = open + 1.0; }
+        let t = nearest(wp.xyz - n * eps, around(-n, k, rays, spin), radius * 2.0, false);
+        if (t < radius * 2.0) {
+            depth = depth + t;
+            inside = inside + 1.0;
+        }
+    }
+    let ao = open / max(rays, 1.0);
+    let thickness = clamp(select(1.0, depth / max(inside, 1.0) / radius, inside > 0.0), 0.0, 1.0);
+    return vec4<f32>(ao, old.y, thickness, old.w);
+}
+"#;
+
 pub const REPROJECT: &str = r#"
 @group(0) @binding(0) var map: texture_2d<f32>;
 @group(0) @binding(1) var src_color: texture_2d<f32>;
