@@ -92,6 +92,8 @@ pub struct Engine {
     path_bounces: u32,
     path_limit: u32,
     path_key: Vec<f32>,
+    path_lens: [f32; 2],
+    render: Option<(u32, u32)>,
 }
 
 #[wasm_bindgen]
@@ -156,6 +158,8 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         path_bounces: 0,
         path_limit: 1024,
         path_key: Vec::new(),
+        path_lens: [0.0, 0.0],
+        render: None,
     };
     engine.add_layer("Layer 1".into());
     Ok(engine)
@@ -1001,6 +1005,9 @@ impl Engine {
         serde_json::json!({
             "on": self.path_bounces > 0,
             "denoise": self.gpu.path_denoise,
+            "aperture": self.path_lens[0],
+            "focus": self.path_lens[1],
+            "rendering": self.render.map(|(w, h)| vec![w, h]),
             "bounces": self.path_bounces,
             "samples": self.gpu.path_samples(),
             "max_samples": self.path_limit,
@@ -1011,6 +1018,36 @@ impl Engine {
 
     pub fn gpu_idle(&self) -> js_sys::Promise {
         self.gpu.idle()
+    }
+
+    pub fn set_path_lens(&mut self, aperture: f32, focus: f32) {
+        self.path_lens = [aperture.clamp(0.0, 1.0), focus.clamp(-1.0, 1.0)];
+    }
+
+    pub fn path_render_begin(&mut self, width: u32, height: u32) -> Result<(), JsValue> {
+        if self.path_bounces == 0 {
+            return Err(JsValue::from_str("Turn path tracing on first"));
+        }
+        if !(16..=3840).contains(&width) || !(16..=3840).contains(&height) {
+            return Err(JsValue::from_str("Render width and height are 16 to 3840 pixels"));
+        }
+        self.render = Some((width, height));
+        self.gpu.path_size = Some((width, height));
+        self.path_key.clear();
+        Ok(())
+    }
+
+    pub fn path_render_read(&mut self) -> Result<js_sys::Promise, JsValue> {
+        if self.render.is_none() {
+            return Err(JsValue::from_str("Start a render first"));
+        }
+        self.gpu.path_read().map_err(|e| JsValue::from_str(&e))
+    }
+
+    pub fn path_render_end(&mut self) {
+        self.render = None;
+        self.gpu.path_size = None;
+        self.path_key.clear();
     }
 
     pub fn path_trace_run(&mut self, samples: u32) -> Result<u32, JsValue> {
@@ -1030,7 +1067,7 @@ impl Engine {
         self.path_prepare(composited);
         let (_, _, _, eye) = self.basis();
         let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
-        let goal = samples.min(self.path_limit);
+        let goal = if self.render.is_some() { samples.min(65536) } else { samples.min(self.path_limit) };
         while self.gpu.path_samples() < goal {
             self.gpu.path_sample(eye, self.path_bounces, r);
         }
@@ -1086,7 +1123,8 @@ impl Engine {
     fn push_env_params(&mut self) {
         let (forward, right, up, _) = self.basis();
         let t = (self.fov * 0.5).tan();
-        let aspect = self.width as f32 / self.height as f32;
+        let (w, h) = self.render.unwrap_or((self.width, self.height));
+        let aspect = w as f32 / h.max(1) as f32;
         let on = if self.environment.is_some() { 1.0 } else { 0.0 };
         self.gpu.env_params = [
             on, self.env_view[0], self.env_view[1], self.env_view[2],
@@ -1638,8 +1676,8 @@ impl Engine {
         let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
         let view_proj = gpu::view_projection(eye, forward, right, up, self.fov, aspect, (self.distance - r * 2.0).max(r * 0.01), self.distance + r * 3.0);
         self.push_env_params();
-        self.gpu.path_view = self.path_bounces > 0 && !self.stroking;
-        if self.path_bounces > 0 && self.flat.is_none() && !self.stroking {
+        self.gpu.path_view = self.path_bounces > 0 && !self.stroking && self.render.is_none();
+        if self.path_bounces > 0 && self.flat.is_none() && !self.stroking && self.render.is_none() {
             self.path_prepare(composited);
             if self.gpu.path_samples() < self.path_limit && self.gpu.path_ready() {
                 self.gpu.path_sample(eye, self.path_bounces, r);
@@ -2170,7 +2208,7 @@ impl Engine {
         let aspect = self.width as f32 / self.height as f32;
         let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
         self.push_env_params();
-        if self.path_bounces > 0 && self.flat.is_none() {
+        if self.path_bounces > 0 && self.flat.is_none() && self.render.is_none() {
             self.path_prepare(composited);
             if self.gpu.path_samples() == 0 {
                 self.gpu.path_sample(eye, self.path_bounces, r);
@@ -2421,7 +2459,10 @@ impl Engine {
             self.path_key.clear();
         }
         let (forward, _, _, eye) = self.basis();
-        let mut key = vec![eye[0], eye[1], eye[2], forward[0], forward[1], forward[2], self.fov, self.width as f32, self.height as f32, self.normal_strength, self.path_bounces as f32];
+        let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
+        self.gpu.path_lens = [self.path_lens[0] * r * 0.15, (self.distance + self.path_lens[1] * r).max(r * 0.05)];
+        let (w, h) = self.render.unwrap_or((self.width, self.height));
+        let mut key = vec![eye[0], eye[1], eye[2], forward[0], forward[1], forward[2], self.fov, w as f32, h as f32, self.normal_strength, self.path_bounces as f32, self.path_lens[0], self.path_lens[1]];
         key.extend_from_slice(&self.gpu.env_params[..15]);
         if composited || key != self.path_key {
             self.gpu.path_reset(self.normal_strength);

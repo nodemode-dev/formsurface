@@ -1780,6 +1780,17 @@ fn rnd() -> f32 {
 
 struct Hit { t: f32, tri: u32, u: f32, v: f32, };
 
+fn cut(t: u32, u: f32, v: f32) -> bool {
+    let k = t * 6u;
+    let r3 = attrs[k + 3u];
+    let layer = i32(r3.w + 0.5);
+    let role = roles[u32(layer)];
+    if (role < 1.5 || role > 2.5) { return false; }
+    let w = 1.0 - u - v;
+    let uv = vec2<f32>(attrs[k].w, attrs[k + 1u].w) * w + vec2<f32>(attrs[k + 2u].w, r3.x) * u + vec2<f32>(r3.y, r3.z) * v;
+    return rnd() >= clamp(textureSampleLevel(mat_arr, samp, uv, layer, 0.0).a, 0.0, 1.0);
+}
+
 fn slab(lo: vec3<f32>, hi: vec3<f32>, o: vec3<f32>, inv: vec3<f32>, tmax: f32) -> bool {
     let t0 = (lo - o) * inv;
     let t1 = (hi - o) * inv;
@@ -1831,6 +1842,7 @@ fn trace(o: vec3<f32>, d: vec3<f32>, tmax: f32, any_hit: bool) -> Hit {
             if (v < 0.0 || u + v > 1.0) { continue; }
             let dist = dot(e2, qv) * id;
             if (dist > 0.0 && dist < h.t) {
+                if (any_hit && cut(t, u, v)) { continue; }
                 h.t = dist;
                 h.tri = t;
                 h.u = u;
@@ -1888,6 +1900,13 @@ fn fs(i: FOut) -> POut {
     let ndc = vec2<f32>(q.x * 2.0 - 1.0, 1.0 - q.y * 2.0);
     var d = normalize(env.forward.xyz + env.right.xyz * ndc.x * env.right.w + env.up.xyz * ndc.y * env.up.w);
     var o = pt.eye.xyz;
+    if (pt.params.z > 0.0) {
+        let focal = o + d * (pt.params.w / max(dot(d, env.forward.xyz), 1e-4));
+        let lr = sqrt(rnd()) * pt.params.z;
+        let la = rnd() * 6.2831853;
+        o = o + env.right.xyz * (lr * cos(la)) + env.up.xyz * (lr * sin(la));
+        d = normalize(focal - o);
+    }
     let eps = pt.params.y;
     let bounces = u32(pt.params.x);
     let hdr = env.a.x > 0.5;

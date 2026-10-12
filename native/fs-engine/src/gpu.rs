@@ -147,6 +147,8 @@ pub struct Gpu {
     path: Option<PathScene>,
     pub path_view: bool,
     pub path_denoise: bool,
+    pub path_lens: [f32; 2],
+    pub path_size: Option<(u32, u32)>,
     path_filter_pipe: wgpu::RenderPipeline,
     path_filter_uniforms: [wgpu::Buffer; 4],
     env_cdf: wgpu::Buffer,
@@ -567,6 +569,8 @@ impl Gpu {
             path_filter_pipe: pipeline(&device, "path denoise", shaders::PATH_FILTER, false, &[wgpu::TextureFormat::Rgba32Float], None, false),
             path_filter_uniforms: [uniform("path denoise", 16), uniform("path denoise", 16), uniform("path denoise", 16), uniform("path denoise", 16)],
             path_denoise: false,
+            path_lens: [0.0, 1.0],
+            path_size: None,
             env_cdf: {
                 let buffer = device.create_buffer(&wgpu::BufferDescriptor { label: Some("environment distribution"), size: 32, usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
                 queue.write_buffer(&buffer, 0, bytemuck::cast_slice(&[1.0f32, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0]));
@@ -1435,7 +1439,7 @@ impl Gpu {
         self.queue.write_buffer(&scene.roles, 0, bytemuck::cast_slice(&roles));
         let gather = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("path gather"), size: 16, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
         self.queue.write_buffer(&gather, 0, bytemuck::cast_slice(&[normal_strength, 0.0f32, 0.0, 0.0]));
-        let (width, height) = (self.config.width.max(1), self.config.height.max(1));
+        let (width, height) = self.path_size.unwrap_or((self.config.width.max(1), self.config.height.max(1)));
         let sized = scene.accum.as_ref().map(|a| a[0].width() == width && a[0].height() == height).unwrap_or(false);
         if !sized {
             let accum = |label: &str, format: wgpu::TextureFormat| self.device.create_texture(&wgpu::TextureDescriptor {
@@ -1488,7 +1492,7 @@ impl Gpu {
         let Some(scene) = self.path.as_mut() else { return };
         let (Some(arrays), Some(accum)) = (scene.arrays.as_ref(), scene.accum.as_ref()) else { return };
         scene.seed = scene.seed.wrapping_add(1) % 16_000_000;
-        self.queue.write_buffer(&self.path_uniform, 0, bytemuck::cast_slice(&[eye[0], eye[1], eye[2], scene.seed as f32, bounces as f32, radius.max(1e-6) * 2e-4, 0.0, 0.0]));
+        self.queue.write_buffer(&self.path_uniform, 0, bytemuck::cast_slice(&[eye[0], eye[1], eye[2], scene.seed as f32, bounces as f32, radius.max(1e-6) * 2e-4, self.path_lens[0], self.path_lens[1]]));
         self.queue.write_buffer(&self.env_uniform, 0, bytemuck::cast_slice(&self.env_params));
         let (e0, e1, e2) = (view_of(&self.env_textures[0]), view_of(&self.env_textures[1]), view_of(&self.env_textures[2]));
         let array_view = |t: &wgpu::Texture| t.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
@@ -1531,6 +1535,34 @@ impl Gpu {
         self.queue.on_submitted_work_done(move || {
             inflight.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
         });
+    }
+
+    pub fn path_read(&mut self) -> Result<js_sys::Promise, String> {
+        let (width, height) = self.path.as_ref().and_then(|p| p.accum.as_ref()).map(|a| (a[0].width(), a[0].height())).ok_or("Nothing has been traced yet")?;
+        let target = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("path render"),
+            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.config.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let row = (width * 4).next_multiple_of(256);
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("path render readback"), size: (row * height) as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        if !self.encode_path(&mut encoder, &target) {
+            return Err("Nothing has been traced yet".into());
+        }
+        encoder.copy_texture_to_buffer(
+            target.as_image_copy(),
+            wgpu::TexelCopyBufferInfo { buffer: &buffer, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(row), rows_per_image: Some(height) } },
+            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        );
+        self.queue.submit([encoder.finish()]);
+        let bgra = matches!(self.config.format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
+        Ok(read_rgba(buffer, width, height, row, bgra, false))
     }
 
     pub fn path_ready(&self) -> bool {
