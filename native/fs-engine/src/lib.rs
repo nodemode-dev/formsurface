@@ -680,9 +680,20 @@ impl Engine {
         if size > limit {
             return Err(JsValue::from_str(&format!("This GPU's largest texture is {limit} px")));
         }
+        let (center, radius) = self.mesh.as_ref().map(|m| (m.0.center, m.0.radius)).unwrap_or(([0.0; 3], 1.0));
+        let fills: std::collections::HashMap<u32, [f32; 76]> = self.fills.iter().map(|(id, s)| (*id, s.uniform(center, radius))).collect();
+        let gens: std::collections::HashMap<u32, [f32; 76]> = self
+            .mask_gens
+            .iter()
+            .map(|(id, s)| {
+                let mut s = *s;
+                s.use_roughness = true;
+                s.opacity = 1.0;
+                (*id, s.uniform(center, radius))
+            })
+            .collect();
         self.gpu.export_scale_begin(size);
-        self.render_fills();
-        self.flush_set();
+        self.gpu.composite_scaled(&self.layers, &self.filters, &fills, &gens);
         Ok(())
     }
 

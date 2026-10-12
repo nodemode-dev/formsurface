@@ -78,17 +78,10 @@ struct SetState {
 
 struct ExportScale {
     size: u32,
-    layers: Vec<LayerTex>,
     final_set: Pair,
     coverage: wgpu::Texture,
     geometry: Option<(wgpu::Texture, wgpu::Texture)>,
     bake: wgpu::Texture,
-    baked: bool,
-    baked_normal: wgpu::Texture,
-    baked_id: wgpu::Texture,
-    high_baked: bool,
-    quick: wgpu::Texture,
-    mask: wgpu::Texture,
 }
 
 fn stack_sets(state: &SetState) -> Vec<&Set> {
@@ -1039,54 +1032,37 @@ impl Gpu {
         if self.export_scale.is_some() || size == self.size {
             return;
         }
-        let layers = std::mem::take(&mut self.layers);
-        let mut scaled = Vec::with_capacity(layers.len());
-        for layer in &layers {
-            let next = new_set(&self.device, size);
-            self.resample_set(&layer.set, &next);
-            let fx = layer.fx.as_ref().map(|_| [texture(&self.device, size, LAYER_FORMAT, "mask effects"), texture(&self.device, size, LAYER_FORMAT, "mask effects")]);
-            scaled.push(LayerTex { id: layer.id, set: next, effects: layer.effects.clone(), fx });
-        }
         let saved = ExportScale {
             size: self.size,
-            layers,
             final_set: std::mem::replace(&mut self.final_set, new_pair(&self.device, size)),
             coverage: std::mem::replace(&mut self.coverage, texture(&self.device, size, wgpu::TextureFormat::R8Unorm, "uv coverage")),
             geometry: self.geometry.take(),
             bake: std::mem::replace(&mut self.bake, texture(&self.device, size, LAYER_FORMAT, "baked maps")),
-            baked: self.baked,
-            baked_normal: self.baked_normal.clone(),
-            baked_id: self.baked_id.clone(),
-            high_baked: self.high_baked,
-            quick: std::mem::replace(&mut self.quick, texture(&self.device, size, LAYER_FORMAT, "quick mask")),
-            mask: std::mem::replace(&mut self.mask, texture(&self.device, size, LAYER_FORMAT, "stroke mask")),
         };
         self.size = size;
-        self.layers = scaled;
         self.fit_shared();
-        self.prepare_set();
+        self.rasterize_set();
         self.resample_one(&saved.bake, &self.bake);
-        self.baked = saved.baked;
-        self.baked_normal = saved.baked_normal.clone();
-        self.baked_id = saved.baked_id.clone();
-        self.high_baked = saved.high_baked;
         self.export_scale = Some(saved);
     }
 
     pub fn export_scale_end(&mut self) {
         let Some(saved) = self.export_scale.take() else { return };
         self.size = saved.size;
-        self.layers = saved.layers;
+        for t in [&self.final_set.color, &self.final_set.mat, &self.final_set.aux, &self.coverage, &self.bake] {
+            t.destroy();
+        }
+        if let Some((p, n)) = &self.geometry {
+            p.destroy();
+            n.destroy();
+        }
         self.final_set = saved.final_set;
         self.coverage = saved.coverage;
         self.geometry = saved.geometry;
         self.bake = saved.bake;
-        self.baked = saved.baked;
-        self.baked_normal = saved.baked_normal;
-        self.baked_id = saved.baked_id;
-        self.high_baked = saved.high_baked;
-        self.quick = saved.quick;
-        self.mask = saved.mask;
+        for t in [&self.group_mask, &self.ping.color, &self.ping.mat, &self.ping.aux, &self.pong.color, &self.pong.mat, &self.pong.aux, &self.scratch.color, &self.scratch.val, &self.scratch.cov, &self.scratch.mask, &self.scratch.aux] {
+            t.destroy();
+        }
         self.fit_shared();
     }
 
@@ -1183,6 +1159,21 @@ impl Gpu {
     }
 
     fn prepare_set(&mut self) {
+        self.rasterize_set();
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let bv = view_of(&self.bake);
+            encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&bv, wgpu::LoadOp::Clear(wgpu::Color { r: 1.0, g: 0.5, b: 0.5, a: 1.0 }))], ..Default::default() });
+        }
+        self.queue.submit([encoder.finish()]);
+        self.baked = false;
+        self.baked_normal = rgba_texture(&self.device, &self.queue, 1, 1, &[128, 128, 255, 255]);
+        self.baked_id = rgba_texture(&self.device, &self.queue, 1, 1, &[128, 128, 128, 255]);
+        self.high_baked = false;
+        self.quick_fill(0.0);
+    }
+
+    fn rasterize_set(&mut self) {
         let view = view_of(&self.coverage);
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
@@ -1208,17 +1199,8 @@ impl Gpu {
             pass.set_pipeline(&self.geometry_pipe);
             self.draw_mesh(&mut pass);
         }
-        {
-            let bv = view_of(&self.bake);
-            encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&bv, wgpu::LoadOp::Clear(wgpu::Color { r: 1.0, g: 0.5, b: 0.5, a: 1.0 }))], ..Default::default() });
-        }
         self.queue.submit([encoder.finish()]);
         self.geometry = Some((pos, normal));
-        self.baked = false;
-        self.baked_normal = rgba_texture(&self.device, &self.queue, 1, 1, &[128, 128, 255, 255]);
-        self.baked_id = rgba_texture(&self.device, &self.queue, 1, 1, &[128, 128, 128, 255]);
-        self.high_baked = false;
-        self.quick_fill(0.0);
     }
 
     pub fn set_high_bake_for(&mut self, index: usize, size: u32, normal: &[u8], id: &[u8]) {
@@ -1274,6 +1256,10 @@ impl Gpu {
     }
 
     pub fn fill_layer_content(&mut self, index: usize, uniform: &[f32; 76]) {
+        self.fill_into(self.layers[index].id, &self.layers[index].set, uniform);
+    }
+
+    fn fill_into(&self, id: u32, set: &Set, uniform: &[f32; 76]) {
         let mut working = *uniform;
         let c = self.working_color([uniform[0], uniform[1], uniform[2]]);
         working[..3].copy_from_slice(&c);
@@ -1284,7 +1270,7 @@ impl Gpu {
         if self.aux_roles[1] < 0.5 {
             working[75] = 0.0;
         }
-        self.fill_target(self.layers[index].id, &self.layers[index].set, &working);
+        self.fill_target(id, set, &working);
     }
 
     pub fn mask_from_fill(&mut self, index: usize, uniform: &[f32; 76]) {
@@ -2417,23 +2403,33 @@ impl Gpu {
         if layer.effects.is_empty() {
             return None;
         }
+        Some(self.effects_into(layer.id, &layer.effects, &layer.set.mask, fx))
+    }
+
+    fn effects_into(&self, id: u32, effects: &[Effect], mask: &wgpu::Texture, fx: &[wgpu::Texture; 2]) -> usize {
         let extent = wgpu::Extent3d { width: self.size, height: self.size, depth_or_array_layers: 1 };
         let mut encoder = self.device.create_command_encoder(&Default::default());
-        encoder.copy_texture_to_texture(layer.set.mask.as_image_copy(), fx[0].as_image_copy(), extent);
+        encoder.copy_texture_to_texture(mask.as_image_copy(), fx[0].as_image_copy(), extent);
         self.queue.submit([encoder.finish()]);
         let mut cur = 0;
-        for effect in &layer.effects {
+        let mut resized: Option<wgpu::Texture> = None;
+        for effect in effects {
             if effect.params[0] > 8.0 {
                 continue;
             }
             let passes: &[f32] = if effect.params[0] == 4.0 { &[0.0, 1.0] } else { &[0.0] };
             for &pass in passes {
                 if let Some(fill) = effect.fill.as_ref() {
-                    self.fill_target(layer.id, &self.scratch, fill);
+                    self.fill_target(id, &self.scratch, fill);
+                }
+                let other = if effect.params[0] as u32 == 5 { self.layers.iter().find(|l| l.id == effect.source && l.id != id).map(|l| &l.set.mask) } else { None };
+                if let Some(m) = other.filter(|m| m.width() != self.size) {
+                    let target = resized.get_or_insert_with(|| texture(&self.device, self.size, LAYER_FORMAT, "effect source"));
+                    self.resample_one(m, target);
                 }
                 let source = match effect.params[0] as u32 {
                     1 => Some(&self.scratch.cov),
-                    5 => self.layers.iter().find(|l| l.id == effect.source && l.id != layer.id).map(|l| &l.set.mask),
+                    5 => other.map(|m| if m.width() != self.size { resized.as_ref().unwrap_or(m) } else { m }),
                     _ => None,
                 };
                 let mut params = effect.params;
@@ -2458,7 +2454,7 @@ impl Gpu {
                 cur = 1 - cur;
             }
         }
-        Some(cur)
+        cur
     }
 
     fn effective_mask(&self, index: usize, results: &[Option<usize>]) -> &wgpu::Texture {
@@ -2468,13 +2464,104 @@ impl Gpu {
         }
     }
 
-    pub fn composite(&mut self, infos: &[LayerInfo], filters: &std::collections::HashMap<u32, FilterSettings>) {
-        let results: Vec<Option<usize>> = (0..self.layers.len()).map(|i| if infos.get(i).map(|l| l.mask).unwrap_or(false) { self.run_effects(i) } else { None }).collect();
+    fn base_pass(&self) {
         let b = self.base;
         let bc = self.working_color([b[0], b[1], b[2]]);
         let extra_base = if self.extra_role > 1.5 && self.extra_role < 3.5 { 1.0 } else { 0.0 };
         let base_uniform = [0.0, 0.0, 0.0, 0.0, f32::from_bits(0), f32::from_bits(1), 0.0, 0.0, bc[0], bc[1], bc[2], 1.0, b[3], b[4], 0.5, extra_base, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
         self.layer_pass(base_uniform, &self.pong, &self.ping, &self.scratch, &self.scratch.mask);
+    }
+
+    fn layer_uniform(&self, info: &LayerInfo, opacity: f32, masked: bool, f: FilterSettings) -> [f32; 24] {
+        let filter = if info.kind == LayerKind::Filter { 1 } else { 0 };
+        [
+            opacity, if masked { 1.0 } else { 0.0 }, (f.blur.clamp(0.0, 32.0) * self.size as f32 / 1024.0), f.sharpen.clamp(0.0, 4.0),
+            f32::from_bits(info.blend.code()), f32::from_bits(0), f32::from_bits(filter), 0.0,
+            f.brightness, f.contrast, f.hue.to_radians(), f.saturation,
+            f.gamma.max(0.05), f.roughness_offset, f.metallic_offset, 0.0,
+            f.levels_in_low.clamp(0.0, 1.0), f.levels_in_high.clamp(0.0, 1.0).max(f.levels_in_low.clamp(0.0, 1.0) + 0.001), f.levels_out_low.clamp(0.0, 1.0), f.levels_out_high.clamp(0.0, 1.0),
+            if f.posterize >= 2.0 { f.posterize.min(64.0).floor() } else { 0.0 }, (f.pixelate.clamp(0.0, 128.0) * self.size as f32 / 1024.0).floor(), if f.invert { 1.0 } else { 0.0 }, 0.0,
+        ]
+    }
+
+    fn scaled_mask(&self, index: usize, mask_on: bool, gens: &std::collections::HashMap<u32, [f32; 76]>, target: &wgpu::Texture, fx: &[wgpu::Texture; 2]) {
+        let layer = &self.layers[index];
+        self.resample_one(&layer.set.mask, target);
+        if let Some(uniform) = gens.get(&layer.id) {
+            self.fill_target(layer.id, &self.scratch, uniform);
+            self.copy_full(&self.scratch.cov, target);
+        }
+        if mask_on && layer.fx.is_some() && !layer.effects.is_empty() {
+            let k = self.effects_into(layer.id, &layer.effects, target, fx);
+            self.copy_full(&fx[k], target);
+        }
+    }
+
+    fn copy_full(&self, from: &wgpu::Texture, to: &wgpu::Texture) {
+        let extent = wgpu::Extent3d { width: self.size, height: self.size, depth_or_array_layers: 1 };
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        encoder.copy_texture_to_texture(from.as_image_copy(), to.as_image_copy(), extent);
+        self.queue.submit([encoder.finish()]);
+    }
+
+    pub fn composite_scaled(&mut self, infos: &[LayerInfo], filters: &std::collections::HashMap<u32, FilterSettings>, fills: &std::collections::HashMap<u32, [f32; 76]>, gens: &std::collections::HashMap<u32, [f32; 76]>) {
+        if self.export_scale.is_none() {
+            return;
+        }
+        let size = self.size;
+        let own_mask = texture(&self.device, size, LAYER_FORMAT, "layer mask");
+        let fx = [texture(&self.device, size, LAYER_FORMAT, "mask effects"), texture(&self.device, size, LAYER_FORMAT, "mask effects")];
+        let mut folder_masks: Vec<wgpu::Texture> = Vec::new();
+        self.base_pass();
+        let mut current_is_ping = true;
+        for (info, source) in infos.iter().zip(self.layers.iter()) {
+            if !info.visible || info.kind == LayerKind::Folder {
+                continue;
+            }
+            let chain = fs_core::ancestors(infos, info.id);
+            if chain.iter().any(|&a| !infos[a].visible) {
+                continue;
+            }
+            let opacity = chain.iter().fold(info.opacity, |o, &a| o * infos[a].opacity);
+            let index = self.layers.iter().position(|l| l.id == source.id).unwrap_or(0);
+            let masked_folders: Vec<usize> = chain.iter().copied().filter(|&a| infos[a].mask).collect();
+            while folder_masks.len() < masked_folders.len() {
+                folder_masks.push(texture(&self.device, size, LAYER_FORMAT, "folder mask"));
+            }
+            for (k, &a) in masked_folders.iter().enumerate() {
+                self.scaled_mask(a, true, gens, &folder_masks[k], &fx);
+            }
+            self.scaled_mask(index, info.mask, gens, &own_mask, &fx);
+            self.resample_set(&source.set, &self.scratch);
+            if let Some(uniform) = fills.get(&source.id) {
+                self.fill_into(source.id, &self.scratch, uniform);
+            }
+            let grouped = !masked_folders.is_empty();
+            if grouped {
+                let mut masks: Vec<&wgpu::Texture> = folder_masks[..masked_folders.len()].iter().collect();
+                if info.mask {
+                    masks.push(&own_mask);
+                }
+                self.build_group_mask(&masks);
+            }
+            let mask_texture = if grouped { &self.group_mask } else { &own_mask };
+            let uniform = self.layer_uniform(info, opacity, info.mask || grouped, filters.get(&info.id).copied().unwrap_or_default());
+            let (prev, out) = if current_is_ping { (&self.ping, &self.pong) } else { (&self.pong, &self.ping) };
+            self.layer_pass(uniform, prev, out, &self.scratch, mask_texture);
+            current_is_ping = !current_is_ping;
+        }
+        self.finish_composite(current_is_ping);
+        for t in folder_masks.iter().chain(fx.iter()).chain([&own_mask]) {
+            t.destroy();
+        }
+    }
+
+    pub fn composite(&mut self, infos: &[LayerInfo], filters: &std::collections::HashMap<u32, FilterSettings>) {
+        if self.export_scale.is_some() {
+            return;
+        }
+        let results: Vec<Option<usize>> = (0..self.layers.len()).map(|i| if infos.get(i).map(|l| l.mask).unwrap_or(false) { self.run_effects(i) } else { None }).collect();
+        self.base_pass();
         let mut current_is_ping = true;
         for (info, layer) in infos.iter().zip(self.layers.iter()) {
             if !info.visible || info.kind == LayerKind::Folder {
@@ -2495,20 +2582,15 @@ impl Gpu {
                 self.build_group_mask(&masks);
             }
             let mask_texture = if grouped { &self.group_mask } else { self.effective_mask(index, &results) };
-            let f = filters.get(&info.id).copied().unwrap_or_default();
-            let filter = if info.kind == LayerKind::Filter { 1 } else { 0 };
-            let uniform = [
-                opacity, if info.mask || grouped { 1.0 } else { 0.0 }, (f.blur.clamp(0.0, 32.0) * self.size as f32 / 1024.0), f.sharpen.clamp(0.0, 4.0),
-                f32::from_bits(info.blend.code()), f32::from_bits(0), f32::from_bits(filter), 0.0,
-                f.brightness, f.contrast, f.hue.to_radians(), f.saturation,
-                f.gamma.max(0.05), f.roughness_offset, f.metallic_offset, 0.0,
-                f.levels_in_low.clamp(0.0, 1.0), f.levels_in_high.clamp(0.0, 1.0).max(f.levels_in_low.clamp(0.0, 1.0) + 0.001), f.levels_out_low.clamp(0.0, 1.0), f.levels_out_high.clamp(0.0, 1.0),
-                if f.posterize >= 2.0 { f.posterize.min(64.0).floor() } else { 0.0 }, (f.pixelate.clamp(0.0, 128.0) * self.size as f32 / 1024.0).floor(), if f.invert { 1.0 } else { 0.0 }, 0.0,
-            ];
+            let uniform = self.layer_uniform(info, opacity, info.mask || grouped, filters.get(&info.id).copied().unwrap_or_default());
             let (prev, out) = if current_is_ping { (&self.ping, &self.pong) } else { (&self.pong, &self.ping) };
             self.layer_pass(uniform, prev, out, &layer.set, mask_texture);
             current_is_ping = !current_is_ping;
         }
+        self.finish_composite(current_is_ping);
+    }
+
+    fn finish_composite(&self, current_is_ping: bool) {
         let src = if current_is_ping { &self.ping } else { &self.pong };
         let (sc, sm, cv, sa) = (view_of(&src.color), view_of(&src.mat), view_of(&self.coverage), view_of(&src.aux));
         let group = bind(&self.device, &self.dilate_pipe, &[wgpu::BindingResource::TextureView(&sc), wgpu::BindingResource::TextureView(&sm), wgpu::BindingResource::TextureView(&cv), wgpu::BindingResource::TextureView(&sa)]);
