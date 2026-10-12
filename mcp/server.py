@@ -396,9 +396,10 @@ def formsurface_color_management(
     display: str | None = None,
     view: str | None = None,
     look: str | None = None,
+    working_space: Literal["linear_rec709", "acescg"] | None = None,
 ) -> dict:
-    """OpenColorIO 2 color management for the viewport, screenshots and path-traced renders. With no arguments it lists the built-in configs (ACES CG and studio configs) and the .ocio files in the workspace ocio folder. config picks one (an empty string returns to the built-in view transforms); display, view and look pick from that config (defaults are the config's default display and view, no look). The service runs real OpenColorIO on the viewport's linear Rec.709 values and the editor applies the result as a 65-point 3D LUT over a log2 shaper. Never changes exported maps."""
-    return call("color_management", drop_none(config=config, display=display, view=view, look=look), timeout=120)
+    """OpenColorIO 2 color management for the viewport, screenshots and path-traced renders. With no arguments it lists the built-in configs (ACES CG and studio configs) and the .ocio files in the workspace ocio folder. config picks one (an empty string returns to the built-in view transforms); display, view and look pick from that config (defaults are the config's default display and view, no look). The service runs real OpenColorIO from the working space and the editor applies the result as a 65-point 3D LUT over a log2 shaper. working_space sets the space painting, compositing and shading happen in: linear_rec709 (default) or acescg, as in Painter's ACES mode; switching converts every painted layer, clears undo, and makes paint and fill colors, fill images and environments convert into it, so wide-gamut ACEScg colors survive. Base color maps still export as sRGB-encoded Rec.709."""
+    return call("color_management", drop_none(config=config, display=display, view=view, look=look, working_space=working_space), timeout=120)
 
 
 @server.tool()
