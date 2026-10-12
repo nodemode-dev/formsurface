@@ -208,7 +208,7 @@ async function applyOcio(): Promise<Record<string, unknown>> {
   const e = requireEngine();
   const name = sel('d-ocio');
   if (!name) return { config: null, view_transform: e.view_transform() };
-  const query = new URLSearchParams({ display: sel('d-ocio-display'), view: sel('d-ocio-view'), look: sel('d-ocio-look') });
+  const query = new URLSearchParams({ display: sel('d-ocio-display'), view: sel('d-ocio-view'), look: sel('d-ocio-look'), source: ocioWorkingSpace() });
   const response = await fetch(`/api/ocio/${encodeURIComponent(name)}/lut?${query}`);
   if (!response.ok) throw new Error((await response.json()).detail ?? 'OpenColorIO could not build that view');
   const meta = JSON.parse(response.headers.get('X-Lut') ?? '{}') as { size: number; low: number; high: number; source: string };
@@ -804,6 +804,7 @@ async function boot(): Promise<void> {
     engine = await create_engine(canvas, Number($<HTMLSelectElement>('tex-size').value));
     $('gpu-info').textContent = `${engine.backend()} · ${engine.texture_size()} px`;
     syncBrush(); syncChannels(); syncBase(); syncView();
+    if (sel('d-working') === 'acescg') engine.set_working_space('acescg');
     if (sel('d-env')) useEnvironment(sel('d-env'));
     if (!sel('d-ocio')) refreshOcioConfigs().catch(() => { $('d-ocio-state').textContent = 'OpenColorIO needs the FormSurface service'; });
     applyMesh(mesh ?? sampleMesh('sphere'), mesh ? meshName : 'sphere');
@@ -1360,10 +1361,10 @@ function spaceLabel(space: ColorSpace): string {
   return space.startsWith('ocio:') ? `OCIO ${space.slice(5)}` : SPACE_LABEL[space as BuiltinSpace];
 }
 
-async function ocioConvert(src: string, rgb: Float32Array): Promise<Float32Array> {
+async function ocioConvert(src: string, rgb: Float32Array, dst = ''): Promise<Float32Array> {
   const config = sel('d-ocio');
   if (!config) throw new Error('Choose an OCIO config in the Display panel first');
-  const response = await fetch(`/api/ocio/${encodeURIComponent(config)}/convert?${new URLSearchParams({ src })}`, { method: 'POST', body: rgb.buffer as ArrayBuffer });
+  const response = await fetch(`/api/ocio/${encodeURIComponent(config)}/convert?${new URLSearchParams({ src, dst })}`, { method: 'POST', body: rgb.buffer as ArrayBuffer });
   if (!response.ok) throw new Error((await response.json()).detail ?? `OpenColorIO could not convert from ${src}`);
   return new Float32Array(await response.arrayBuffer());
 }
@@ -1373,7 +1374,7 @@ async function ocioConvertResource(r: Resource): Promise<void> {
   if (r.target === 'environment') {
     const image = environments.get(r.name);
     if (!image) throw new Error(`${r.name} is not loaded`);
-    r.envRgb = await ocioConvert(src, image.rgb);
+    r.envRgb = await ocioConvert(src, image.rgb, ocioWorkingSpace());
     return;
   }
   const rgba = r.rgba!;
@@ -1411,12 +1412,50 @@ function convertRgba(r: Resource): Uint8Array {
   return out;
 }
 
+const TO_AP1 = [0.6130974293, 0.3395231366, 0.0473794527, 0.0701937228, 0.9163538814, 0.0134523986, 0.0206155926, 0.1095697731, 0.8698146343];
+
+function toWorking(rgb: Float32Array): Float32Array {
+  if (sel('d-working') !== 'acescg') return rgb;
+  const m = TO_AP1;
+  const out = new Float32Array(rgb.length);
+  for (let i = 0; i < rgb.length; i += 3) {
+    const [r, g, b] = [rgb[i], rgb[i + 1], rgb[i + 2]];
+    out[i] = m[0] * r + m[1] * g + m[2] * b;
+    out[i + 1] = m[3] * r + m[4] * g + m[5] * b;
+    out[i + 2] = m[6] * r + m[7] * g + m[8] * b;
+  }
+  return out;
+}
+
 function environmentRgb(name: string, rgb: Float32Array): Float32Array {
   const r = resources.find((x) => x.target === 'environment' && x.name === name);
   if (r && r.space.startsWith('ocio:') && r.envRgb) return r.envRgb;
-  if (!r || r.space !== 'srgb') return rgb;
-  return rgb.map((v) => Math.pow(Math.max(v, 0), 2.2));
+  if (!r || r.space !== 'srgb') return toWorking(rgb);
+  return toWorking(rgb.map((v) => Math.pow(Math.max(v, 0), 2.2)));
 }
+
+function ocioWorkingSpace(): string {
+  if (sel('d-working') !== 'acescg') return '';
+  const name = ocioInfo?.color_spaces.find((s) => s === 'ACEScg' || s.toLowerCase().includes('acescg'));
+  if (!name) throw new Error(`${ocioInfo?.name ?? 'This config'} has no ACEScg color space for the ACEScg working space`);
+  return name;
+}
+
+async function setWorkingSpace(space: string): Promise<string> {
+  const e = requireEngine();
+  const result = e.set_working_space(space);
+  for (const r of resources) {
+    if (r.target === 'environment' && r.space.startsWith('ocio:')) await ocioConvertResource(r);
+  }
+  if (sel('d-env')) useEnvironment(sel('d-env'));
+  if (sel('d-ocio')) await applyOcio();
+  refreshLayers();
+  return result;
+}
+
+$('d-working').addEventListener('change', () => {
+  setWorkingSpace(sel('d-working')).then((s) => status(`Working space is now ${s === 'acescg' ? 'ACEScg' : 'linear Rec.709'}; painted layers were converted and undo history cleared`), (error) => status(error instanceof Error ? error.message : String(error), true));
+});
 
 function addResource(next: Resource): Resource {
   const at = resources.findIndex((r) => r.name === next.name && r.target === next.target);
@@ -2627,15 +2666,21 @@ const agentLink = new AgentLink({
   undo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().undo()) n++; return { undone: n }; },
   redo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().redo()) n++; return { redone: n }; },
   screenshot: async () => ({ png_base64: await blobBase64(await viewportPng()) }),
-  color_management: async ({ config, display, view, look }) => {
+  color_management: async ({ config, display, view, look, working_space }) => {
     const list = await refreshOcioConfigs();
-    if (config === undefined || config === null) return { ...list, active: sel('d-ocio') || null, view_transform: requireEngine().view_transform() };
+    if (working_space !== undefined && working_space !== null) {
+      if (!['linear_rec709', 'acescg'].includes(String(working_space))) throw new Error('working_space is linear_rec709 or acescg');
+      const previous = sel('d-working');
+      $<HTMLSelectElement>('d-working').value = String(working_space);
+      try { await setWorkingSpace(String(working_space)); } catch (error) { $<HTMLSelectElement>('d-working').value = previous; requireEngine().set_working_space(previous); throw error; }
+    }
+    if (config === undefined || config === null) return { ...list, active: sel('d-ocio') || null, view_transform: requireEngine().view_transform(), working_space: requireEngine().working_space() };
     const name = String(config);
     if (name && !list.available) throw new Error('OpenColorIO is not installed in the FormSurface service (pip install opencolorio)');
     if (name && !list.builtin.includes(name) && !list.files.includes(name)) throw new Error(`${name} is not a built-in config or an .ocio file in the workspace ocio folder. Built-in: ${list.builtin.join(', ')}`);
     $<HTMLSelectElement>('d-ocio').value = name;
     await chooseOcioConfig(name);
-    if (!name) return { config: null, view_transform: requireEngine().view_transform() };
+    if (!name) return { config: null, view_transform: requireEngine().view_transform(), working_space: requireEngine().working_space() };
     const info = ocioInfo!;
     if (display !== undefined && display !== null) {
       if (!info.displays[String(display)]) throw new Error(`Displays: ${Object.keys(info.displays).join(', ')}`);
@@ -2651,7 +2696,7 @@ const agentLink = new AgentLink({
       if (look && !info.looks.includes(String(look))) throw new Error(`Looks: ${info.looks.join(', ') || 'none in this config'}`);
       $<HTMLSelectElement>('d-ocio-look').value = String(look);
     }
-    return { ...(await applyOcio()), displays: info.displays, looks: info.looks };
+    return { ...(await applyOcio()), displays: info.displays, looks: info.looks, working_space: requireEngine().working_space() };
   },
   path_render: async ({ width, height, samples, name }) => {
     if (!JSON.parse(requireEngine().path_trace_json()).on) throw new Error('Turn path tracing on first (path_trace on true)');
