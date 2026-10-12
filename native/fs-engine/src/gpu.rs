@@ -121,6 +121,7 @@ pub struct Gpu {
     export_pipe: wgpu::RenderPipeline,
     export16_pipe: wgpu::RenderPipeline,
     region_pipe: wgpu::RenderPipeline,
+    cover_pipe: wgpu::RenderPipeline,
     vertices: Option<wgpu::Buffer>,
     indices: Option<wgpu::Buffer>,
     range: (u32, u32),
@@ -527,6 +528,7 @@ impl Gpu {
             export_pipe: pipeline(&device, "export", shaders::EXPORT, false, &[wgpu::TextureFormat::Rgba8Unorm], None, false),
             export16_pipe: pipeline(&device, "export 16-bit", shaders::EXPORT, false, &[LAYER_FORMAT], None, false),
             region_pipe: pipeline(&device, "polygon fill", shaders::COVERAGE, true, &[LAYER_FORMAT], None, false),
+            cover_pipe: pipeline(&device, "path cover", shaders::PATH_COVER, true, &[LAYER_FORMAT], None, false),
             depth: depth_texture(&device, width, height),
             sampler: device.create_sampler(&wgpu::SamplerDescriptor {
                 mag_filter: wgpu::FilterMode::Linear,
@@ -1313,6 +1315,47 @@ impl Gpu {
         }
         drop(pass);
         self.queue.submit([encoder.finish()]);
+    }
+
+    pub fn mask_cover(&self, width: u32, height: u32, rgba: &[u8], bounds: [f32; 4], uv: bool, cull: bool, view_proj: [f32; 16], eye: Vec3) -> Result<(), String> {
+        if width == 0 || height == 0 || width > 8192 || height > 8192 || rgba.len() != (width * height * 4) as usize {
+            return Err("A path coverage image must be RGBA, 1 to 8192 pixels per side".into());
+        }
+        let extent = wgpu::Extent3d { width, height, depth_or_array_layers: 1 };
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("path coverage"),
+            size: extent,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(texture.as_image_copy(), rgba, wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(width * 4), rows_per_image: Some(height) }, extent);
+        self.queue.write_buffer(&self.camera, 0, bytemuck::cast_slice(&camera_bytes(view_proj, eye, None, 1.0, 1.0, 0.0)));
+        let params = [bounds[0], bounds[1], bounds[2], bounds[3], if uv { 1.0 } else { 0.0 }, if cull { 1.0 } else { 0.0 }, 0.0, 0.0];
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("path cover"), size: 32, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+        self.queue.write_buffer(&buffer, 0, bytemuck::cast_slice(&params));
+        let depth_view = self.depth.create_view(&wgpu::TextureViewDescriptor { aspect: wgpu::TextureAspect::DepthOnly, ..Default::default() });
+        let cover_view = view_of(&texture);
+        let group = bind(&self.device, &self.cover_pipe, &[
+            self.camera.as_entire_binding(),
+            buffer.as_entire_binding(),
+            wgpu::BindingResource::TextureView(&depth_view),
+            wgpu::BindingResource::TextureView(&cover_view),
+            wgpu::BindingResource::Sampler(&self.clamp_sampler),
+        ]);
+        let view = view_of(&self.mask);
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&view, wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT))], ..Default::default() });
+            pass.set_pipeline(&self.cover_pipe);
+            pass.set_bind_group(0, &group, &[]);
+            self.draw_mesh(&mut pass);
+        }
+        self.queue.submit([encoder.finish()]);
+        Ok(())
     }
 
     pub fn fill_mask(&self) {

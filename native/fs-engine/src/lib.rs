@@ -1525,6 +1525,39 @@ impl Engine {
         Ok(region.len() as u32)
     }
 
+    pub fn path_cover(&mut self, width: u32, height: u32, rgba: &[u8], x0: f32, y0: f32, x1: f32, y1: f32) -> Result<(), JsValue> {
+        if self.stroking {
+            return Err(JsValue::from_str("Finish the stroke first"));
+        }
+        if self.mesh.is_none() {
+            return Err(JsValue::from_str("Load a mesh first"));
+        }
+        let index = self.layer_index(self.active);
+        if self.layers[index].kind != LayerKind::Paint && !self.layers[index].mask && self.gpu.quick_mode != 1 {
+            return Err(JsValue::from_str("Fill, filter and folder layers are painted through their mask: choose a mask first"));
+        }
+        let (forward, right, up, eye) = self.basis();
+        let aspect = self.width as f32 / self.height.max(1) as f32;
+        let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
+        let view_proj = gpu::view_projection(eye, forward, right, up, self.fov, aspect, (self.distance - r * 2.0).max(r * 0.01), self.distance + r * 3.0);
+        self.gpu.begin_stroke(index);
+        if let Err(e) = self.gpu.mask_cover(width, height, rgba, [x0, y0, x1, y1], self.flat.is_some(), self.brush.backface_culling, view_proj, eye) {
+            self.gpu.end_stroke();
+            return Err(JsValue::from_str(&e));
+        }
+        let to_mask = self.paints_mask();
+        self.gpu.paint(&[], view_proj, eye, &self.brush, &self.channels, index, to_mask);
+        self.gpu.end_stroke();
+        let active = self.active;
+        self.each_sibling(|e| {
+            let i = e.layer_index(active);
+            e.gpu.begin_stroke(i);
+            e.gpu.end_stroke();
+        });
+        self.dirty = true;
+        Ok(())
+    }
+
     pub fn bake_maps(&mut self, directions: u32) -> Result<(), JsValue> {
         let (center, radius) = self.mesh.as_ref().map(|m| (m.0.center, m.0.radius)).ok_or_else(|| JsValue::from_str("Load a mesh before baking"))?;
         self.each_set(|engine| {

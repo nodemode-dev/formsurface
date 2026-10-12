@@ -1339,6 +1339,60 @@ fn fs() -> @location(0) vec4<f32> {
 }
 "#;
 
+pub const PATH_COVER: &str = r#"
+struct Camera {
+    view_proj: mat4x4<f32>,
+    eye: vec4<f32>,
+    cursor: vec4<f32>,
+    cursor_normal: vec4<f32>,
+    params: vec4<f32>,
+};
+struct Cover { bounds: vec4<f32>, params: vec4<f32>, };
+@group(0) @binding(0) var<uniform> cam: Camera;
+@group(0) @binding(1) var<uniform> cover: Cover;
+@group(0) @binding(2) var depth_tex: texture_depth_2d;
+@group(0) @binding(3) var cover_tex: texture_2d<f32>;
+@group(0) @binding(4) var clamp_samp: sampler;
+
+struct VOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) world: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) uv: vec2<f32>,
+};
+
+@vertex
+fn vs(@location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) uv: vec2<f32>) -> VOut {
+    var o: VOut;
+    o.clip = vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 0.0, 1.0);
+    o.world = p;
+    o.normal = n;
+    o.uv = uv;
+    return o;
+}
+
+@fragment
+fn fs(i: VOut) -> @location(0) vec4<f32> {
+    var at = i.uv;
+    if (cover.params.x < 0.5) {
+        let clip = cam.view_proj * vec4<f32>(i.world, 1.0);
+        if (clip.w <= 0.0) { return vec4<f32>(0.0); }
+        let ndc = clip.xyz / clip.w;
+        let size = vec2<f32>(textureDimensions(depth_tex));
+        at = vec2<f32>((ndc.x * 0.5 + 0.5) * size.x, (0.5 - ndc.y * 0.5) * size.y);
+        let px = vec2<i32>(at);
+        if (px.x < 0 || px.y < 0 || px.x >= i32(size.x) || px.y >= i32(size.y)) { return vec4<f32>(0.0); }
+        if (ndc.z > textureLoad(depth_tex, px, 0) + 0.0015) { return vec4<f32>(0.0); }
+        let facing = dot(normalize(i.normal), normalize(cam.eye.xyz - i.world)) > 0.0;
+        if (cover.params.y > 0.5 && !facing) { return vec4<f32>(0.0); }
+    }
+    let t = (at - cover.bounds.xy) / max(cover.bounds.zw - cover.bounds.xy, vec2<f32>(1e-6));
+    if (any(t < vec2<f32>(0.0)) || any(t > vec2<f32>(1.0))) { return vec4<f32>(0.0); }
+    let c = textureSampleLevel(cover_tex, clamp_samp, t, 0.0).a;
+    return vec4<f32>(c, 0.0, 0.0, 1.0);
+}
+"#;
+
 pub const BAKE_DEPTH: &str = r#"
 struct Light { view_proj: mat4x4<f32>, dir: vec4<f32>, params: vec4<f32>, };
 @group(0) @binding(0) var<uniform> light: Light;
