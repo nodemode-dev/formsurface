@@ -898,6 +898,31 @@ for (const id of ['d-exposure', 'd-normal', 'd-env-rot', 'd-env-blur']) $(id).ad
 $('d-env-bg').addEventListener('change', syncView);
 $('m-reproject').addEventListener('change', syncView);
 $('d-view').addEventListener('change', syncView);
+
+function syncPath(): void {
+  setOutput('d-path-bounces');
+  try {
+    engine?.set_path_trace(checked('d-path'), num('d-path-bounces'), Number(sel('d-path-max')));
+  } catch (error) {
+    $<HTMLInputElement>('d-path').checked = false;
+    status(error instanceof Error ? error.message : String(error), true);
+  }
+}
+
+let pathText = '';
+function showPathState(): void {
+  if (!engine) return;
+  const state = JSON.parse(engine.path_trace_json()) as { on: boolean; bounces: number; samples: number; max_samples: number };
+  if (!state.on && checked('d-path')) $<HTMLInputElement>('d-path').checked = false;
+  const text = state.on ? `${state.samples} of ${state.max_samples} samples, ${state.bounces} bounce${state.bounces === 1 ? '' : 's'}${state.samples >= state.max_samples ? ', converged' : ''}` : 'Raster viewport';
+  if (text === pathText) return;
+  pathText = text;
+  $('d-path-state').textContent = text;
+}
+
+$('d-path').addEventListener('change', syncPath);
+$('d-path-bounces').addEventListener('input', syncPath);
+$('d-path-max').addEventListener('change', syncPath);
 for (const k of POST_FIELDS) $(`p-${k}`).addEventListener('input', () => { setOutput(`p-${k}`); syncView(); });
 function resetPost(): void {
   for (const k of POST_FIELDS) {
@@ -2438,6 +2463,28 @@ const agentLink = new AgentLink({
   undo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().undo()) n++; return { undone: n }; },
   redo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().redo()) n++; return { redone: n }; },
   screenshot: async () => ({ png_base64: await blobBase64(await viewportPng()) }),
+  path_trace: async ({ on, bounces, max_samples, samples }) => {
+    const e = requireEngine();
+    if (max_samples !== undefined && max_samples !== null) {
+      if (![...$<HTMLSelectElement>('d-path-max').options].some((o) => o.value === String(max_samples))) throw new Error('max_samples is 64, 256, 1024 or 4096');
+      setControl('d-path-max', String(max_samples), 'change');
+    }
+    setControl('d-path-bounces', bounces);
+    setControl('d-path', on, 'change');
+    const state = JSON.parse(e.path_trace_json()) as { on: boolean };
+    if (on && !state.on) throw new Error('Load a mesh before path tracing');
+    if (state.on && samples !== undefined && samples !== null) {
+      const goal = Number(samples);
+      let done = 0;
+      let last = -1;
+      while (done < goal && done !== last) {
+        last = done;
+        done = e.path_trace_run(Math.min(goal, (JSON.parse(e.path_trace_json()) as { samples: number }).samples + 2));
+        await e.gpu_idle();
+      }
+    }
+    return JSON.parse(e.path_trace_json());
+  },
   export: async ({ name, template, maps: custom, bit_depth, format, padding, padding_width, padding_color }) => {
     const given = (v: unknown) => v !== undefined && v !== null;
     const choice = exportChoice(given(format) ? String(format) : sel('x-format'), given(bit_depth) ? Number(bit_depth) : Number(sel('x-depth')),
@@ -2525,6 +2572,7 @@ function tick(now: number): void {
   resize();
   engine?.frame();
   drawPathOverlay();
+  showPathState();
   frames++;
   if (now - lastFps > 1000) {
     $('fps').textContent = `${Math.round((frames * 1000) / (now - lastFps))} fps`;
