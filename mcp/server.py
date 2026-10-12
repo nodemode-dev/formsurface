@@ -387,9 +387,12 @@ def formsurface_layer_mask(
     layer_id: int,
     action: Literal["add_white", "add_black", "remove", "keep"] = "keep",
     paint_target: Literal["layer", "mask"] | None = None,
+    effects: Annotated[list[dict], Field(max_length=16)] | None = None,
 ) -> dict:
-    """Give a layer a white mask (shows everything) or a black mask (hides everything), remove it, and choose whether strokes paint the layer or its mask. On a mask, the paint material's base color brightness is the mask value: white reveals, black hides. Fill layers are always painted through their mask."""
-    return call("mask", drop_none(id=layer_id, action=action, paint_target=paint_target))
+    """Give a layer a white mask (shows everything) or a black mask (hides everything), remove it, and choose whether strokes paint the layer or its mask. On a mask, the paint material's base color brightness is the mask value: white reveals, black hides. Fill layers are always painted through their mask.
+
+    effects replaces the mask's effect stack (Painter's mask effects), applied in order over the mask and its painted strokes; [] clears it. Each effect is an object with kind fill (value 0 to 1), generator (fill: {generator: cavity, edges, thin, top, light, position, noise, dirt, metal_edge_wear or mask_builder, generator_level, generator_softness, generator_invert}), levels (in_low, in_high, out_low, out_high), invert, blur (radius 0 to 32 px) or compare (layer: another layer id whose mask is combined); fill, generator and compare take blend (normal, multiply, add, subtract, lighten, darken, screen); every effect takes opacity and visible. The result reports the stack."""
+    return call("mask", drop_none(id=layer_id, action=action, paint_target=paint_target, effects=effects))
 
 
 @server.tool()
