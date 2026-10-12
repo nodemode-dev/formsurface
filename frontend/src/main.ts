@@ -10,7 +10,8 @@ import { PADDING_MODES, applyPadding, nearestSource, uvMask, type Padding, type 
 import { TemplateEditor, loadTemplates, saveTemplate } from './ui/template-editor';
 import { api } from './ui/api';
 import { AgentLink } from './ui/agent-link';
-import { BUILT_IN_MATERIALS, SMART_MASKS, generatorPart, saveMask, saveMaterial, savedMasks, savedMaterials, type SmartMaterial } from './ui/smart';
+import { AssetBrowser, builtInThumb, slug, type AssetItem, type AssetKind } from './ui/asset-browser';
+import { BUILT_IN_MATERIALS, MASK_THUMBS, SMART_MASKS, generatorPart, saveMask, saveMaterial, savedMasks, savedMaterials, type SmartMaterial } from './ui/smart';
 import { parseHdr, type HdrImage } from './ui/hdr';
 import { clearOverlay, drawPath, filledCover, pathSamples, ribbonCover, type Vec3 } from './ui/path';
 import { newEffect, renderEffects, type MaskEffectSpec } from './ui/mask-effects';
@@ -1363,7 +1364,96 @@ async function refreshLibrary(): Promise<void> {
   const saved = await savedMaterials();
   library = [...BUILT_IN_MATERIALS, ...saved.filter((m) => !BUILT_IN_MATERIALS.some((b) => b.name === m.name))];
   fillOption($<HTMLSelectElement>('sm-list'), library.map((m) => m.name));
+  refreshAssets();
 }
+
+const assets = new AssetBrowser($('ab-grid'), (item) => {
+  if (item.kind === 'material') $<HTMLSelectElement>('sm-list').value = item.name;
+  else $<HTMLSelectElement>('sm-mask').value = item.name;
+  status(`${item.kind === 'material' ? 'Smart material' : 'Smart mask'} ${item.name} selected: Apply uses it, Share saves it to a file`);
+});
+
+function refreshAssets(): void {
+  assets.setItems([
+    ...library.map((m) => ({ kind: 'material' as const, name: m.name, thumbnail: m.thumbnail, builtIn: !!m.builtIn })),
+    ...Object.keys(smartMasks).map((name) => ({ kind: 'mask' as const, name, thumbnail: MASK_THUMBS[name], builtIn: !!SMART_MASKS[name] })),
+  ]);
+}
+
+async function viewportThumb(size = 96): Promise<string | undefined> {
+  if (!engine) return undefined;
+  try {
+    const bitmap = await createImageBitmap(await viewportPng());
+    const side = Math.min(bitmap.width, bitmap.height);
+    const canvas = new OffscreenCanvas(size, size);
+    canvas.getContext('2d')!.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, size, size);
+    const blob = await canvas.convertToBlob({ type: 'image/webp', quality: 0.85 });
+    return await new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(r.error); r.readAsDataURL(blob); });
+  } catch {
+    return undefined;
+  }
+}
+
+interface SharedAsset { format: string; version: number; kind: AssetKind; name: string; layers?: SmartMaterial['layers']; settings?: Record<string, unknown>; thumbnail?: string }
+
+function shareAsset(item: AssetItem): SharedAsset {
+  const base = { format: 'formsurface-smart-asset', version: 1, kind: item.kind, name: item.name, thumbnail: item.thumbnail };
+  if (item.kind === 'material') {
+    const material = library.find((m) => m.name === item.name);
+    if (!material) throw new Error(`No smart material ${item.name}`);
+    return { ...base, layers: material.layers };
+  }
+  const settings = smartMasks[item.name];
+  if (!settings) throw new Error(`No smart mask ${item.name}`);
+  return { ...base, settings };
+}
+
+async function importAsset(text: string): Promise<string> {
+  const data = JSON.parse(text) as SharedAsset;
+  if (data?.format !== 'formsurface-smart-asset' || (data.kind !== 'material' && data.kind !== 'mask') || typeof data.name !== 'string') throw new Error('Not a FormSurface smart asset file');
+  if (data.kind === 'material') {
+    if (!Array.isArray(data.layers) || !data.layers.length) throw new Error(`${data.name}: a smart material needs layers`);
+    await saveMaterial({ name: data.name, layers: data.layers, thumbnail: data.thumbnail });
+    await refreshLibrary();
+  } else {
+    if (!data.settings || typeof data.settings !== 'object') throw new Error(`${data.name}: a smart mask needs settings`);
+    if (SMART_MASKS[data.name]) throw new Error(`${data.name} is a built-in smart mask name`);
+    await saveMask(data.name, data.settings, data.thumbnail);
+    await refreshMasks(data.name);
+  }
+  return data.name;
+}
+
+$('ab-search').addEventListener('input', () => assets.filter($<HTMLInputElement>('ab-search').value, sel('ab-kind') as AssetKind | 'all'));
+$('ab-kind').addEventListener('change', () => assets.filter($<HTMLInputElement>('ab-search').value, sel('ab-kind') as AssetKind | 'all'));
+$('ab-apply').addEventListener('click', () => {
+  const item = assets.selection;
+  if (!item) { status('Pick a smart material or mask in the grid first', true); return; }
+  try {
+    if (item.kind === 'material') { const ids = applySmartMaterial(item.name); status(`Applied ${item.name}: ${ids.length} layers in a folder of that name${engine?.is_baked() ? '' : '. Bake mesh maps for its generators to take effect'}`); }
+    else if (engine) { const r = applySmartMask(engine.active_layer(), item.name); status(`Applied smart mask ${item.name} as ${r.applied_as}`); }
+  } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+});
+$('ab-export').addEventListener('click', () => {
+  const item = assets.selection;
+  if (!item) { status('Pick a smart material or mask in the grid first', true); return; }
+  try {
+    const shared = shareAsset({ ...item, thumbnail: item.thumbnail });
+    downloadBlob(new Blob([JSON.stringify(shared, null, 2)], { type: 'application/json' }), `${slug(item.name)}.fsasset.json`);
+    status(`${item.name} saved as ${slug(item.name)}.fsasset.json; Import it in another FormSurface workspace`);
+  } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+});
+$('ab-import').addEventListener('click', () => $<HTMLInputElement>('ab-file').click());
+$('ab-file').addEventListener('change', async () => {
+  const input = $<HTMLInputElement>('ab-file');
+  const files = Array.from(input.files ?? []);
+  input.value = '';
+  const done: string[] = [];
+  for (const file of files) {
+    try { done.push(await importAsset(await file.text())); } catch (error) { status(`${file.name}: ${error instanceof Error ? error.message : String(error)}`, true); return; }
+  }
+  if (done.length) status(`Imported ${done.join(', ')} into the workspace library`);
+});
 fillOption($<HTMLSelectElement>('sm-mask'), Object.keys(SMART_MASKS));
 let savedTemplates: Template[] = [];
 function addTemplateOption(template: Template): void {
@@ -1464,6 +1554,7 @@ async function refreshMasks(select?: string): Promise<void> {
   const list = $<HTMLSelectElement>('sm-mask');
   for (const name of Object.keys(smartMasks)) if (![...list.options].some((o) => o.value === name)) list.add(new Option(SMART_MASKS[name] ? name : `${name} (saved)`, name));
   if (select) list.value = select;
+  refreshAssets();
 }
 
 function applySmartMask(id: number, name: string): Record<string, unknown> {
@@ -1492,7 +1583,7 @@ function captureSmartMask(id: number): Record<string, unknown> {
 async function saveSmartMask(id: number, name: string): Promise<Record<string, unknown>> {
   const settings = captureSmartMask(id);
   if (SMART_MASKS[name]) throw new Error(`${name} is a built-in smart mask; choose another name`);
-  const file = await saveMask(name, settings);
+  const file = await saveMask(name, settings, await viewportThumb());
   await refreshMasks(name);
   return { file, settings };
 }
@@ -1504,7 +1595,7 @@ $('sm-save').addEventListener('click', async () => {
   try {
     const name = $<HTMLInputElement>('sm-name').value.trim();
     if (!name) throw new Error('Name the smart material first');
-    await saveMaterial(captureSmartMaterial(name));
+    await saveMaterial({ ...captureSmartMaterial(name), thumbnail: await viewportThumb() });
     await refreshLibrary();
     status(`Saved smart material ${name}`);
   } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
@@ -1978,7 +2069,7 @@ const agentLink = new AgentLink({
     refreshLayers();
     return { id, settings: JSON.parse(e.fill_settings(id)) };
   },
-  smart_list: async () => { await refreshLibrary(); await refreshMasks(); return { materials: library.map((m) => ({ name: m.name, built_in: !!m.builtIn, layers: m.layers.map((l) => l.name) })), masks: Object.keys(smartMasks), saved_masks: Object.keys(smartMasks).filter((n) => !SMART_MASKS[n]) }; },
+  smart_list: async () => { await refreshLibrary(); await refreshMasks(); return { materials: library.map((m) => ({ name: m.name, built_in: !!m.builtIn, layers: m.layers.map((l) => l.name), thumbnail: !!(m.thumbnail || builtInThumb('material', m.name)) })), masks: Object.keys(smartMasks), saved_masks: Object.keys(smartMasks).filter((n) => !SMART_MASKS[n]) }; },
   save_smart_mask: async ({ id, name }) => saveSmartMask(Number(id), String(name ?? '')),
   environment: async ({ file, studio, rotation_degrees, blur, background, exposure, view_transform }) => {
     const e = requireEngine();
@@ -2001,7 +2092,7 @@ const agentLink = new AgentLink({
   },
   smart_apply: async ({ name }) => { await refreshLibrary(); return { layer_ids: applySmartMaterial(String(name)), baked: requireEngine().is_baked(), layers: layers() }; },
   smart_mask: ({ id, name }) => ({ settings: applySmartMask(Number(id), String(name)) }),
-  smart_save: async ({ name }) => { const file = await saveMaterial(captureSmartMaterial(String(name))); await refreshLibrary(); return { file }; },
+  smart_save: async ({ name }) => { const thumbnail = await viewportThumb(); const file = await saveMaterial({ ...captureSmartMaterial(String(name)), thumbnail }); await refreshLibrary(); return { file, thumbnail: !!thumbnail }; },
   bake_high: async (args) => {
     const { file, sample, front, rear } = args;
     if (args.match_by_name !== undefined && args.match_by_name !== null) $<HTMLInputElement>('k-match').checked = Boolean(args.match_by_name);

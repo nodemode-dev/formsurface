@@ -11,7 +11,10 @@ export interface SmartMaterial {
   name: string;
   layers: SmartLayer[];
   builtIn?: boolean;
+  thumbnail?: string;
 }
+
+export const MASK_THUMBS: Record<string, string> = {};
 
 const hex = (value: string): number[] => [1, 3, 5].map((i) => Math.pow(parseInt(value.slice(i, i + 2), 16) / 255, 2.2));
 
@@ -76,16 +79,17 @@ export async function savedMasks(): Promise<Record<string, Record<string, unknow
   try {
     const response = await fetch('/api/smart-masks');
     if (!response.ok) return {};
-    const list = ((await response.json()).masks ?? []) as { name: string; settings: Record<string, unknown> }[];
+    const list = ((await response.json()).masks ?? []) as { name: string; settings: Record<string, unknown>; thumbnail?: string }[];
+    for (const m of list) if (m.thumbnail) MASK_THUMBS[m.name] = m.thumbnail;
     return Object.fromEntries(list.map((m) => [m.name, generatorPart(m.settings)]));
   } catch {
     return {};
   }
 }
 
-export async function saveMask(name: string, settings: Record<string, unknown>): Promise<string> {
+export async function saveMask(name: string, settings: Record<string, unknown>, thumbnail?: string): Promise<string> {
   if (!/^[A-Za-z0-9 _.-]{1,80}$/.test(name) || name.startsWith('.')) throw new Error('Smart mask names use letters, digits, spaces, dot, dash and underscore');
-  const response = await fetch(`/api/smart-masks/${encodeURIComponent(name)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ settings: generatorPart(settings) }) });
+  const response = await fetch(`/api/smart-masks/${encodeURIComponent(name)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ settings: generatorPart(settings), thumbnail }) });
   if (!response.ok) throw new Error(`Saving the smart mask failed (is ./formsurface running?): ${await response.text()}`);
   return (await response.json()).file as string;
 }

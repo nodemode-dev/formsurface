@@ -38,6 +38,12 @@ svg { width: var(--icon); height: var(--icon); flex: none; }
 .section h2 { margin: 0 0 var(--space-2); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); display: flex; align-items: center; justify-content: space-between; min-height: 24px; }
 .row { display: grid; grid-template-columns: 84px 1fr 44px; align-items: center; gap: var(--space-2); min-height: 28px; }
 .row label { color: var(--text-muted); }
+.asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: var(--space-2); max-height: 280px; overflow: auto; margin: var(--space-2) 0; }
+.asset-tile { display: grid; justify-items: center; gap: 4px; padding: 6px 4px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-muted); font-size: 11px; cursor: pointer; min-width: 0; }
+.asset-tile img { width: 72px; height: 72px; border-radius: var(--radius); background: var(--surface-3); object-fit: cover; }
+.asset-tile span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.asset-tile[aria-pressed="true"] { border-color: var(--accent); color: var(--text); }
+.asset-tile[hidden] { display: none; }
 .mfx { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-2); margin-top: var(--space-2); }
 .row output { font: 11px var(--mono); text-align: right; color: var(--text-muted); }
 .row input[type="range"] { width: 100%; accent-color: var(--accent); }
