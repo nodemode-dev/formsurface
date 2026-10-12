@@ -23,7 +23,7 @@ struct LayerTex {
 #[derive(Clone)]
 pub struct Effect {
     pub params: [f32; 8],
-    pub fill: Option<[f32; 68]>,
+    pub fill: Option<[f32; 72]>,
     pub source: u32,
     pub spec: fs_core::MaskEffect,
 }
@@ -40,6 +40,7 @@ struct Pair {
 
 struct SetState {
     size: u32,
+    extra_role: f32,
     base: [f32; 5],
     range: (u32, u32),
     layers: Vec<LayerTex>,
@@ -65,6 +66,7 @@ pub struct Gpu {
     resample_pipe: wgpu::RenderPipeline,
     resample_one_pipe: wgpu::RenderPipeline,
     pub base: [f32; 5],
+    pub extra_role: f32,
     _instance: wgpu::Instance,
     _adapter: wgpu::Adapter,
     device: wgpu::Device,
@@ -561,7 +563,7 @@ impl Gpu {
             }),
             camera: uniform("camera", 128),
             stamp_buffer: uniform("stamps", 64 + 32 * 64),
-            fill_uniform: uniform("fill", 272),
+            fill_uniform: uniform("fill", 288),
             bake: texture(&device, size, LAYER_FORMAT, "baked maps"),
             baked: false,
             baked_normal: rgba_texture(&device, &queue, 1, 1, &[128, 128, 255, 255]),
@@ -606,7 +608,8 @@ impl Gpu {
             clamp_sampler: device.create_sampler(&wgpu::SamplerDescriptor { mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, ..Default::default() }),
             alpha_tex: white_texture(&device, &queue),
             stencil_tex: white_texture(&device, &queue),
-            paint_uniform: uniform("paint", 64),
+            paint_uniform: uniform("paint", 80),
+            extra_role: 0.0,
             layer_uniform: uniform("layer", 96),
             export_uniform: uniform("export", 32),
             vertices: None,
@@ -697,6 +700,7 @@ impl Gpu {
         let size = self.default_size;
         SetState {
             size,
+            extra_role: 0.0,
             base: self.base,
             range,
             layers: Vec::new(),
@@ -724,6 +728,13 @@ impl Gpu {
         self.ping = new_pair(&self.device, self.size);
         self.pong = new_pair(&self.device, self.size);
         self.scratch = new_set(&self.device, self.size);
+    }
+
+    pub fn set_extra_role(&self, index: usize) -> f32 {
+        if index == self.current {
+            return self.extra_role;
+        }
+        self.parked.get(index).and_then(|s| s.as_ref()).map(|s| s.extra_role).unwrap_or(0.0)
     }
 
     pub fn set_size(&self, index: usize) -> u32 {
@@ -801,6 +812,7 @@ impl Gpu {
 
     fn exchange(&mut self, s: &mut SetState) {
         std::mem::swap(&mut self.size, &mut s.size);
+        std::mem::swap(&mut self.extra_role, &mut s.extra_role);
         std::mem::swap(&mut self.base, &mut s.base);
         std::mem::swap(&mut self.range, &mut s.range);
         std::mem::swap(&mut self.layers, &mut s.layers);
@@ -939,11 +951,11 @@ impl Gpu {
         self.queue.submit([encoder.finish()]);
     }
 
-    pub fn fill_layer_content(&mut self, index: usize, uniform: &[f32; 68]) {
+    pub fn fill_layer_content(&mut self, index: usize, uniform: &[f32; 72]) {
         self.fill_target(self.layers[index].id, &self.layers[index].set, uniform);
     }
 
-    pub fn mask_from_fill(&mut self, index: usize, uniform: &[f32; 68]) {
+    pub fn mask_from_fill(&mut self, index: usize, uniform: &[f32; 72]) {
         self.fill_target(self.layers[index].id, &self.scratch, uniform);
         let extent = wgpu::Extent3d { width: self.size, height: self.size, depth_or_array_layers: 1 };
         let mut encoder = self.device.create_command_encoder(&Default::default());
@@ -1158,7 +1170,7 @@ impl Gpu {
         read_rgba(buffer, size, size, size * 4, false, false)
     }
 
-    fn fill_target(&self, id: u32, set: &Set, uniform: &[f32; 68]) {
+    fn fill_target(&self, id: u32, set: &Set, uniform: &[f32; 72]) {
         let Some(geometry) = &self.geometry else { return };
         self.queue.write_buffer(&self.fill_uniform, 0, bytemuck::cast_slice(uniform));
         let (pv, nv) = (view_of(&geometry.0), view_of(&geometry.1));
@@ -1632,6 +1644,7 @@ impl Gpu {
             channels.roughness, channels.metallic, channels.height, 0.0,
             flag(channels.use_color), flag(channels.use_roughness), flag(channels.use_metallic), flag(channels.use_height),
             flag(erase), brush.opacity, 0.0, 0.0,
+            channels.extra.clamp(0.0, 1.0), flag(channels.use_extra && self.extra_role > 0.5), 0.0, 0.0,
         ];
         if to_mask {
             paint[0] = if quick_edit { 1.0 } else { (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]).max(0.0).powf(1.0 / 2.2) };
@@ -1789,7 +1802,8 @@ impl Gpu {
     pub fn composite(&mut self, infos: &[LayerInfo], filters: &std::collections::HashMap<u32, FilterSettings>) {
         let results: Vec<Option<usize>> = (0..self.layers.len()).map(|i| if infos.get(i).map(|l| l.mask).unwrap_or(false) { self.run_effects(i) } else { None }).collect();
         let b = self.base;
-        let base_uniform = [0.0, 0.0, 0.0, 0.0, f32::from_bits(0), f32::from_bits(1), 0.0, 0.0, b[0], b[1], b[2], 1.0, b[3], b[4], 0.5, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
+        let extra_base = if self.extra_role > 1.5 && self.extra_role < 3.5 { 1.0 } else { 0.0 };
+        let base_uniform = [0.0, 0.0, 0.0, 0.0, f32::from_bits(0), f32::from_bits(1), 0.0, 0.0, b[0], b[1], b[2], 1.0, b[3], b[4], 0.5, extra_base, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
         self.layer_pass(base_uniform, &self.pong, &self.ping, &self.scratch, &self.scratch.mask);
         let mut current_is_ping = true;
         for (info, layer) in infos.iter().zip(self.layers.iter()) {
@@ -1891,8 +1905,10 @@ impl Gpu {
         self.queue.write_buffer(&self.camera, 0, bytemuck::cast_slice(&bytes));
         self.queue.write_buffer(&self.env_uniform, 0, bytemuck::cast_slice(&self.env_params));
         let (e0, e1, e2) = (view_of(&self.env_textures[0]), view_of(&self.env_textures[1]), view_of(&self.env_textures[2]));
-        let set_group = |final_set: &Pair, baked_normal: &wgpu::Texture, quick: &wgpu::Texture| {
+        let set_group = |final_set: &Pair, baked_normal: &wgpu::Texture, quick: &wgpu::Texture, role: f32| {
             let (fc, fm, bn, qm) = (view_of(&final_set.color), view_of(&final_set.mat), view_of(baked_normal), view_of(quick));
+            let look = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("set look"), size: 16, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+            self.queue.write_buffer(&look, 0, bytemuck::cast_slice(&[role, 0.0f32, 0.0, 0.0]));
             bind(&self.device, &self.view_pipe, &[
                 self.camera.as_entire_binding(),
                 wgpu::BindingResource::TextureView(&fc),
@@ -1904,6 +1920,7 @@ impl Gpu {
                 wgpu::BindingResource::TextureView(&e0),
                 wgpu::BindingResource::TextureView(&e1),
                 wgpu::BindingResource::TextureView(&e2),
+                look.as_entire_binding(),
             ])
         };
         let background = bind(&self.device, &self.background_pipe, &[
@@ -1913,9 +1930,9 @@ impl Gpu {
             wgpu::BindingResource::TextureView(&e2),
             wgpu::BindingResource::Sampler(&self.sampler),
         ]);
-        let mut draws = vec![(set_group(&self.final_set, &self.baked_normal, &self.quick), self.range)];
+        let mut draws = vec![(set_group(&self.final_set, &self.baked_normal, &self.quick, self.extra_role), self.range)];
         for state in self.parked.iter().flatten().filter(|_| !self.flat) {
-            draws.push((set_group(&state.final_set, &state.baked_normal, &self.white), state.range));
+            draws.push((set_group(&state.final_set, &state.baked_normal, &self.white, state.extra_role), state.range));
         }
         let post = self.post_params[19] > 0.5 && !self.flat;
         let view = if post { view_of(&self.scene) } else { view_of(target) };

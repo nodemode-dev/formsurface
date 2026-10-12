@@ -407,6 +407,7 @@ struct Camera {
 @group(0) @binding(7) var env_sharp: texture_2d<f32>;
 @group(0) @binding(8) var env_mid: texture_2d<f32>;
 @group(0) @binding(9) var env_small: texture_2d<f32>;
+@group(0) @binding(10) var<uniform> look: vec4<f32>;
 
 struct VOut {
     @builtin(position) clip: vec4<f32>,
@@ -447,6 +448,7 @@ fn fs(i: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
             var gray = fm.r;
             if (flat_channel > 1.5) { gray = fm.g; }
             if (flat_channel > 2.5) { gray = fm.b; }
+            if (flat_channel > 3.5) { gray = fm.a; }
             flat_color = vec3<f32>(pow(clamp(gray, 0.0, 1.0), 2.2));
         }
         if (cam.cursor.w > 0.0) {
@@ -506,6 +508,13 @@ fn fs(i: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
         let env_spec = mix(sky(r), sky(n) * 0.6, rough * rough);
         color = color + (1.0 - metal) * base * sky(n) * 0.35 + env_spec * fe * 0.9;
     }
+    let extra = clamp(m.a, 0.0, 1.0);
+    if (look.x > 1.5 && look.x < 2.5) {
+        let t = fract(sin(dot(floor(i.clip.xy), vec2<f32>(12.9898, 78.233))) * 43758.5453);
+        if (extra < t) { discard; }
+    }
+    if (look.x > 2.5 && look.x < 3.5) { color = color * extra; }
+    if (look.x > 3.5) { color = color + base * extra * 4.0; }
     color = color * cam.params.x;
     color = view_transform(color);
     if (cam.cursor.w > 0.0) {
@@ -699,6 +708,7 @@ struct Paint {
     values: vec4<f32>,
     flags: vec4<f32>,
     mode: vec4<f32>,
+    extra: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> paint: Paint;
 @group(0) @binding(1) var snap_color: texture_2d<f32>;
@@ -728,10 +738,13 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
         let k = 1.0 - a;
         o.color = vec4<f32>(sc.rgb * select(1.0, k, paint.flags.x > 0.5), sc.a * select(1.0, k, paint.flags.x > 0.5));
         let ks = vec3<f32>(select(1.0, k, paint.flags.y > 0.5), select(1.0, k, paint.flags.z > 0.5), select(1.0, k, paint.flags.w > 0.5));
-        o.val = vec4<f32>(sv.rgb * ks, 0.0);
-        o.cov = vec4<f32>(sk.rgb * ks, 0.0);
+        let ke = select(1.0, k, paint.extra.y > 0.5);
+        o.val = vec4<f32>(sv.rgb * ks, sv.a * ke);
+        o.cov = vec4<f32>(sk.rgb * ks, sk.a * ke);
         return o;
     }
+    var src_extra = paint.extra.x;
+    var extra_cov = 1.0;
     var src_color = paint.color.rgb;
     var src_values = paint.values.rgb;
     if (paint.mode.z > 0.5) {
@@ -741,18 +754,22 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
         let cm = textureLoad(clone_mat, q, 0);
         src_color = cc.rgb;
         src_values = cm.rgb;
+        src_extra = cm.a;
         if (paint.mode.w > 0.5) {
             let ck = textureLoad(clone_cov, q, 0);
             source_cov = vec4<f32>(cc.a, ck.rgb);
             src_color = cc.rgb / max(cc.a, 1e-4);
             src_values = cm.rgb / max(ck.rgb, vec3<f32>(1e-4));
+            extra_cov = ck.a;
+            src_extra = cm.a / max(ck.a, 1e-4);
         }
     }
     let ac = a * paint.flags.x * source_cov.x;
     o.color = vec4<f32>(src_color * ac + sc.rgb * (1.0 - ac), ac + sc.a * (1.0 - ac));
     let am = a * paint.flags.yzw * source_cov.yzw;
-    o.val = vec4<f32>(src_values * am + sv.rgb * (1.0 - am), 0.0);
-    o.cov = vec4<f32>(am + sk.rgb * (1.0 - am), 0.0);
+    let ae = a * paint.extra.y * extra_cov;
+    o.val = vec4<f32>(src_values * am + sv.rgb * (1.0 - am), src_extra * ae + sv.a * (1.0 - ae));
+    o.cov = vec4<f32>(am + sk.rgb * (1.0 - am), ae + sk.a * (1.0 - ae));
     return o;
 }
 "#;
@@ -867,7 +884,7 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     var o: Out;
     if (layer.mode.y == 1u) {
         o.color = vec4<f32>(layer.base_color.rgb, 1.0);
-        o.mat = vec4<f32>(layer.base_values.rgb, 1.0);
+        o.mat = layer.base_values;
         return o;
     }
     let p = vec2<i32>(pos.xy);
@@ -933,7 +950,7 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
         c = pow(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(2.2 * layer.base_values.x));
         o.color = vec4<f32>(mix(pc.rgb, c, op), 1.0);
         let v = clamp(pmb + vec3<f32>(layer.base_values.y, layer.base_values.z, 0.0), vec3<f32>(0.0), vec3<f32>(1.0));
-        o.mat = vec4<f32>(mix(pm.rgb, v, op), 1.0);
+        o.mat = vec4<f32>(mix(pm.rgb, v, op), pm.a);
         return o;
     }
     var col = pc.rgb;
@@ -944,8 +961,12 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     var vals = pm.rgb;
     let straight_v = select(vec3<f32>(0.0), lv.rgb / max(lk.rgb, vec3<f32>(1e-5)), lk.rgb > vec3<f32>(1e-5));
     vals = mix(pm.rgb, clamp(blend_any(layer.mode.x, pm.rgb, straight_v, true), vec3<f32>(0.0), vec3<f32>(1.0)), lk.rgb * op);
+    var extra = pm.a;
+    if (lk.a > 1e-5) {
+        extra = mix(pm.a, clamp(lv.a / lk.a, 0.0, 1.0), clamp(lk.a, 0.0, 1.0) * op);
+    }
     o.color = vec4<f32>(col, 1.0);
-    o.mat = vec4<f32>(vals, 1.0);
+    o.mat = vec4<f32>(vals, extra);
     return o;
 }
 "#;
@@ -1008,6 +1029,7 @@ struct Fill {
     builder: vec4<f32>,
     direction: vec4<f32>,
     warp: array<vec4<f32>, 8>,
+    extra: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> fill: Fill;
 
@@ -1218,8 +1240,9 @@ fn fs(@builtin(position) frag: vec4<f32>) -> Out {
     let ac = a * fill.flags.x;
     o.color = vec4<f32>(base * ac, ac);
     let am = a * fill.flags.yzw;
-    o.val = vec4<f32>(fill.values.xyz * am, 0.0);
-    o.cov = vec4<f32>(am, 0.0);
+    let ae = a * fill.extra.y;
+    o.val = vec4<f32>(fill.values.xyz * am, fill.extra.x * ae);
+    o.cov = vec4<f32>(am, ae);
     if (wp.w < 0.5) {
         o.color = vec4<f32>(0.0);
         o.val = vec4<f32>(0.0);
@@ -1297,8 +1320,11 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     let bottom_v = bv.rgb / max(bk.rgb, vec3<f32>(1e-4));
     var o: Out;
     o.color = vec4<f32>(color_pm, color_a);
-    o.val = vec4<f32>(vt * top_v + (1.0 - vt) * vb * bottom_v, 0.0);
-    o.cov = vec4<f32>(vt + vb * (1.0 - vt), 0.0);
+    let et = clamp(tk.a, 0.0, 1.0) * kt;
+    let eb = clamp(bk.a, 0.0, 1.0) * kb;
+    let extra = et * (tv.a / max(tk.a, 1e-4)) + (1.0 - et) * eb * (bv.a / max(bk.a, 1e-4));
+    o.val = vec4<f32>(vt * top_v + (1.0 - vt) * vb * bottom_v, extra);
+    o.cov = vec4<f32>(vt + vb * (1.0 - vt), et + eb * (1.0 - et));
     return o;
 }
 "#;
@@ -1314,8 +1340,8 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     let p = vec2<i32>(pos.xy);
     var o: Out;
     o.color = vec4<f32>(textureLoad(final_color, p, 0).rgb, 1.0);
-    o.val = vec4<f32>(textureLoad(final_mat, p, 0).rgb, 0.0);
-    o.cov = vec4<f32>(1.0, 1.0, 1.0, 0.0);
+    o.val = textureLoad(final_mat, p, 0);
+    o.cov = vec4<f32>(1.0, 1.0, 1.0, 1.0);
     return o;
 }
 "#;
@@ -1662,6 +1688,7 @@ fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         case 1u: { return vec4<f32>(vec3<f32>(m.r), 1.0); }
         case 2u: { return vec4<f32>(vec3<f32>(m.g), 1.0); }
         case 3u: { return vec4<f32>(vec3<f32>(m.b), 1.0); }
+        case 12u: { return vec4<f32>(vec3<f32>(clamp(m.a, 0.0, 1.0)), 1.0); }
         default: {
             let hx = textureLoad(mat_tex, clamp(p + vec2<i32>(1, 0), vec2<i32>(0), size - 1), 0).b - textureLoad(mat_tex, clamp(p - vec2<i32>(1, 0), vec2<i32>(0), size - 1), 0).b;
             let hy = textureLoad(mat_tex, clamp(p + vec2<i32>(0, 1), vec2<i32>(0), size - 1), 0).b - textureLoad(mat_tex, clamp(p - vec2<i32>(0, 1), vec2<i32>(0), size - 1), 0).b;

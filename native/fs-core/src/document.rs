@@ -94,6 +94,43 @@ pub struct ChannelValues {
     pub use_roughness: bool,
     pub use_metallic: bool,
     pub use_height: bool,
+    #[serde(default = "one")]
+    pub extra: f32,
+    #[serde(default)]
+    pub use_extra: bool,
+}
+
+fn one() -> f32 {
+    1.0
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExtraRole {
+    Off,
+    User,
+    Opacity,
+    AmbientOcclusion,
+    Emissive,
+}
+
+impl ExtraRole {
+    pub fn code(self) -> f32 {
+        match self {
+            ExtraRole::Off => 0.0,
+            ExtraRole::User => 1.0,
+            ExtraRole::Opacity => 2.0,
+            ExtraRole::AmbientOcclusion => 3.0,
+            ExtraRole::Emissive => 4.0,
+        }
+    }
+
+    pub fn base(self) -> f32 {
+        match self {
+            ExtraRole::Opacity | ExtraRole::AmbientOcclusion => 1.0,
+            _ => 0.0,
+        }
+    }
 }
 
 impl Default for ChannelValues {
@@ -107,6 +144,8 @@ impl Default for ChannelValues {
             use_roughness: true,
             use_metallic: true,
             use_height: false,
+            extra: 1.0,
+            use_extra: false,
         }
     }
 }
@@ -377,6 +416,8 @@ pub struct FillSettings {
     pub builder_curvature: f32,
     pub builder_noise: f32,
     pub warp: [f32; 32],
+    pub extra: f32,
+    pub use_extra: bool,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -548,12 +589,14 @@ impl Default for FillSettings {
             builder_curvature: 0.0,
             builder_noise: 0.0,
             warp: warp_rest(),
+            extra: 1.0,
+            use_extra: false,
         }
     }
 }
 
 impl FillSettings {
-    pub fn uniform(&self, center: [f32; 3], radius: f32) -> [f32; 68] {
+    pub fn uniform(&self, center: [f32; 3], radius: f32) -> [f32; 72] {
         let generator = match self.generator {
             Generator::None => 0.0,
             Generator::Cavity => 1.0,
@@ -598,11 +641,13 @@ impl FillSettings {
             self.builder_ao.clamp(0.0, 1.0), self.builder_curvature.clamp(0.0, 1.0), self.builder_noise.clamp(0.0, 1.0), self.noise_scale.clamp(0.1, 64.0),
             d[0] / len, d[1] / len, d[2] / len, self.generator_noise.clamp(0.0, 1.0),
         ];
-        let mut out = [0.0; 68];
+        let mut out = [0.0; 72];
         out[..36].copy_from_slice(&head);
-        for (o, w) in out[36..].iter_mut().zip(self.warp.iter()) {
+        for (o, w) in out[36..68].iter_mut().zip(self.warp.iter()) {
             *o = if w.is_finite() { w.clamp(-2.0, 3.0) } else { 0.0 };
         }
+        out[68] = self.extra.clamp(0.0, 1.0);
+        out[69] = flag(self.use_extra);
         out
     }
 }

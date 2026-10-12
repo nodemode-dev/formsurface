@@ -1066,7 +1066,27 @@ impl Engine {
     }
 
     pub fn set_view_2d_channel(&mut self, channel: u32) {
-        self.gpu.flat_channel = channel.min(3);
+        self.gpu.flat_channel = channel.min(4);
+    }
+
+    pub fn set_extra_channel(&mut self, index: u32, role: &str) -> Result<(), JsValue> {
+        let parsed: fs_core::ExtraRole = serde_json::from_str(&format!("\"{role}\"")).map_err(|_| JsValue::from_str("Extra channel is off, user, opacity, ambient_occlusion or emissive"))?;
+        let index = index as usize;
+        if index >= self.sets.len() {
+            return Err(JsValue::from_str("No texture set with that index"));
+        }
+        let original = self.set_index;
+        self.switch_set(index);
+        self.gpu.extra_role = parsed.code();
+        self.flush_set();
+        self.switch_set(original);
+        self.dirty = true;
+        Ok(())
+    }
+
+    pub fn extra_channel(&self, index: u32) -> String {
+        let code = self.gpu.set_extra_role(index as usize);
+        ["off", "user", "opacity", "ambient_occlusion", "emissive"][(code.round() as usize).min(4)].to_string()
     }
 
     pub fn uv_at(&self, x: f32, y: f32) -> Vec<f32> {
