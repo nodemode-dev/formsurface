@@ -73,10 +73,12 @@ def processor(config, display: str, view: str, look: str = "", source: str = "")
     return source, config.getProcessor(group)
 
 
-def convert(config, src: str, rgb: list[float]) -> list[float]:
-    if src not in [cs.getName() for cs in config.getColorSpaces()]:
-        raise ValueError(f"{src} is not a color space in {config.getName()}")
-    proc = config.getProcessor(src, viewport_space(config))
+def convert(config, src: str, rgb: list[float], dst: str = "") -> list[float]:
+    names = [cs.getName() for cs in config.getColorSpaces()]
+    for space in (src, dst):
+        if space and space not in names:
+            raise ValueError(f"{space} is not a color space in {config.getName()}")
+    proc = config.getProcessor(src, dst or viewport_space(config))
     return list(proc.getDefaultCPUProcessor().applyRGB(rgb))
 
 

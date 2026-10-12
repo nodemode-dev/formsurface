@@ -384,7 +384,7 @@ def describe_ocio(name: str):
 
 
 @app.post("/api/ocio/{name}/convert")
-async def ocio_convert(name: str, request: Request, src: str):
+async def ocio_convert(name: str, request: Request, src: str, dst: str = ""):
     config = ocio_config(name)
     body = await request.body()
     if not body or len(body) % 12:
@@ -392,10 +392,10 @@ async def ocio_convert(name: str, request: Request, src: str):
     rgb = array("f")
     rgb.frombytes(body)
     try:
-        out = ocio.convert(config, src, list(rgb))
+        out = ocio.convert(config, src, list(rgb), dst)
     except Exception as error:
         raise HTTPException(422, f"OpenColorIO could not convert from {src}: {error}")
-    return Response(array("f", out).tobytes(), media_type="application/octet-stream", headers={"X-Space": ocio.viewport_space(config)})
+    return Response(array("f", out).tobytes(), media_type="application/octet-stream", headers={"X-Space": dst or ocio.viewport_space(config)})
 
 
 @app.get("/api/ocio/{name}/lut")
