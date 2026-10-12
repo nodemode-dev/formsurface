@@ -391,6 +391,12 @@ def formsurface_path_trace(
 
 
 @server.tool()
+def formsurface_texture_memory(page_out_idle: bool = False, auto: bool | None = None) -> dict:
+    """GPU memory of each texture set's layer stack and undo history: resident_bytes on the GPU and paged_bytes held in the editor's memory instead. page_out_idle moves every texture set except the active one out of GPU memory now; auto true does that after every texture set switch. A paged set keeps its finished look in the viewport and path tracer and is paged back in when selected, exported or baked."""
+    return call("texture_memory", drop_none(page_out_idle=page_out_idle or None, auto=auto), timeout=300)
+
+
+@server.tool()
 def formsurface_color_management(
     config: Annotated[str, Field(pattern=r"^[A-Za-z0-9 _.-]{0,80}$")] | None = None,
     display: str | None = None,
