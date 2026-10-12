@@ -2179,14 +2179,20 @@ interface ExportChoice {
   format: Format;
   depth: number;
   padding: Padding;
+  size: number;
 }
 
-function exportChoice(format = sel('x-format'), depth = Number(sel('x-depth')), mode = sel('x-pad'), width = num('x-pad-width'), color = hex('x-pad-color')): ExportChoice {
+const EXPORT_SIZES = [0, 128, 256, 512, 1024, 2048, 4096, 8192];
+
+function exportChoice(format = sel('x-format'), depth = Number(sel('x-depth')), mode = sel('x-pad'), width = num('x-pad-width'), color = hex('x-pad-color'), size = Number(sel('x-size'))): ExportChoice {
   const checked = checkFormat(format, depth);
+  if (!EXPORT_SIZES.includes(size)) throw new Error('size is 0 (each texture set\'s own) or 128, 256, 512, 1024, 2048, 4096 or 8192');
+  const limit = engine?.max_texture_size() ?? 8192;
+  if (size > limit) throw new Error(`This GPU's largest texture is ${limit} px, so ${size} px maps cannot be exported here`);
   if (!PADDING_MODES.includes(mode as PaddingMode)) throw new Error(`padding is one of ${PADDING_MODES.join(', ')}`);
   if (mode === 'transparent' && !FORMAT_ALPHA[checked]) throw new Error(`${checked.toUpperCase()} has no alpha channel, so transparent padding cannot be written; choose infinite, color or diffusion`);
   const gamma = color.map((v) => Math.pow(v, 1 / 2.2)) as [number, number, number];
-  return { format: checked, depth, padding: { mode: mode as PaddingMode, width: Math.max(0, Math.min(256, Math.round(width))), color: gamma } };
+  return { format: checked, depth, padding: { mode: mode as PaddingMode, width: Math.max(0, Math.min(256, Math.round(width))), color: gamma }, size };
 }
 
 function allTemplates(): Template[] {
@@ -2211,7 +2217,12 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
   };
   try {
     for (const set of sets) {
+      e.export_size_end();
       if (!e.select_texture_set(set.index)) throw new Error('Finish the stroke before exporting');
+      if (choice.size && choice.size !== e.texture_size()) {
+        document.body.inert = true;
+        e.export_size_begin(choice.size);
+      }
       size = e.texture_size();
       const prefix = sets.length > 1 ? `${set.material.replace(/[^A-Za-z0-9_-]/g, '_')}_` : '';
       const suffix = set.tiled ? `.${set.udim}` : '';
@@ -2256,6 +2267,8 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
       }
     }
   } finally {
+    e.export_size_end();
+    document.body.inert = false;
     e.select_texture_set(original);
   }
   return maps;
@@ -2837,15 +2850,15 @@ const agentLink = new AgentLink({
     }
     return JSON.parse(e.path_trace_json());
   },
-  export: async ({ name, template, maps: custom, bit_depth, format, padding, padding_width, padding_color }) => {
+  export: async ({ name, template, maps: custom, bit_depth, format, padding, padding_width, padding_color, size }) => {
     const given = (v: unknown) => v !== undefined && v !== null;
     const choice = exportChoice(given(format) ? String(format) : sel('x-format'), given(bit_depth) ? Number(bit_depth) : Number(sel('x-depth')),
       given(padding) ? String(padding) : sel('x-pad'), given(padding_width) ? Number(padding_width) : num('x-pad-width'),
-      given(padding_color) ? hexColor(String(padding_color)) : hex('x-pad-color'));
+      given(padding_color) ? hexColor(String(padding_color)) : hex('x-pad-color'), given(size) ? Number(size) : Number(sel('x-size')));
     const maps = await renderMaps(template ? String(template) : sel('x-template'), custom ? validateMaps(custom) : undefined, choice);
     const folder = await api.saveMaps(String(name || meshName.replace(/\.[^.]+$/, '')), maps);
     emitPython('export_finished', { folder, maps: [...maps.keys()] });
-    return { folder, template: custom ? 'custom' : template ?? sel('x-template'), format: choice.format, bit_depth: choice.depth, padding: choice.padding.mode, padding_width: choice.padding.width, maps: [...maps.keys()] };
+    return { folder, template: custom ? 'custom' : template ?? sel('x-template'), format: choice.format, bit_depth: choice.depth, size: choice.size || 'texture set', padding: choice.padding.mode, padding_width: choice.padding.width, maps: [...maps.keys()] };
   },
   export_templates: () => ({ templates: allTemplates().map((t) => ({ name: t.name, label: t.label, maps: t.maps, saved: !TEMPLATES.includes(t) })) }),
   save_export_template: async ({ name, label, maps: list }) => {
