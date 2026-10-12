@@ -15,9 +15,11 @@ usage: ./formsurface [command]
   mcp             FormSurface over MCP's stdio transport (starts the service if needed)
   batch FILE      run a JSON batch script of formsurface_* tool calls against the linked editor
                   (--wait SECONDS for the Agent link, --out DIR for screenshots, --pause SECONDS
-                  between steps, --keep-going)
+                  between steps, --keep-going; --headless [--size 1024|2048|4096] starts the
+                  service, the editor and a windowless Chrome, Chromium or Edge, then stops them)
   script FILE     run a Python script that imports formsurface_api (project, textureset,
                   layerstack, baking, export, resource, display) against the linked editor
+                  (script --headless [--size N] FILE runs it without an open editor)
   help            this text
 EOF2
 }

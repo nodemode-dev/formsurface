@@ -97,6 +97,10 @@ When `post_params[19]` is set (any effect away from its default, computed in `pu
 
 Every color in the stack is linear and every export encodes with gamma 2.2, so anything decoded on the way in must use gamma 2.2 too. Fill images are `Rgba8Unorm` and FILL's `pattern` decodes them with `pow(rgb, 2.2)`; an `Rgba8UnormSrgb` texture would use the exact sRGB curve and shift the darks (8/255 came back as 0.065). Per-resource color space lives in the editor: it converts the bytes before upload (linear-marked colors are encoded, srgb-marked data is decoded) and re-uploads on change.
 
+## Reprojection and view transforms (v0.21.0)
+
+`set_mesh` with `reproject` on takes the old mesh and BVH before they are replaced, rasterizes the new first set (`Mesh::subset`) and, per texel, casts along the normal from both sides within 5 percent of the radius onto the old first set's triangles (`bake::reproject_map`), giving an Rgba32Float map of old UV plus a found flag. `Gpu::reproject_layers` resamples every layer's color, values, coverage and mask through that map (REPROJECT, four targets, textureLoad on the map) into a pooled set and copies back; texels not found get no coverage and a white mask. It clears undo and redo because old snapshots are in the old UV layout. The view transform is `env.look.x` (the Env uniform is 80 bytes now): `view_transform` in ENV_COMMON serves VIEW and BACKGROUND; 0 is the old ACES fit, so the default picture is unchanged.
+
 ## Next capabilities, in plan order
 
 Per-tile resolution; isolated folder blending; the whole engine in a Worker with OffscreenCanvas (also what a headless batch needs); tile paging for 4K and 8K; color management; stacked mask effects; warp and stylization filters.

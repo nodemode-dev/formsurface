@@ -23,6 +23,10 @@ MCP client, then `mcp/server.py` (stdio, MCPServer from mcp 2.3.0), then `POST /
 
 `./formsurface script FILE.py` runs `mcp/run_script.py`, which puts `mcp/` on the path and runs the file as `__main__`. Results come back as dicts (structured content, or parsed JSON text) and screenshots as PNG bytes; a refusal or a validation error raises `FormSurfaceError`.
 
+## Headless runs
+
+`mcp/headless.py` `Headless` starts only what is missing (uvicorn with the current interpreter, `npx vite --strictPort`, then the browser at `/?agent=1&size=N`), each in its own process group so the whole tree stops afterwards, and waits for `editor_linked`. The editor turns its Agent link on by itself after the engine boots when `agent=1` is in the URL. On Linux it uses `xvfb-run` when present: Chrome's `--headless=new` failed every texture readback on lavapipe. It adds `--no-sandbox` only when running as root on Linux, where Chrome refuses to start otherwise.
+
 ## Rules
 
 - Local only: the HTTP middleware and the WebSocket both refuse non-local clients; the MCP server refuses a non-local service URL.

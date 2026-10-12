@@ -20,7 +20,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_view_2d` | on, channel (base_color, roughness, metallic, height), center_u, center_v, zoom (frame part of the layout) | view (2d or 3d); in 2D, paint_stroke, paint_path and polygon_fill points land on the UV layout |
 | `formsurface_paint_path` | points (2 to 64 [x, y] in 0 to 1, kept on the surface), closed, smooth, erase | control points, missed points, samples; one undo step; 3D view only |
 | `formsurface_text_resource` | text, target (alpha, stencil, fill), font (sans-serif, serif, monospace or a loaded font), bold | image size, brush |
-| `formsurface_load_mesh` | file (glb, gltf, obj, fbx in workspace/meshes) | status; bakes reset, first set keeps its layers |
+| `formsurface_load_mesh` | file (glb, gltf, obj, fbx, usd, usda, usdc, usdz, ply, dae in workspace/meshes), reproject (carry the first set's painting over by surface position; stays on until false) | status; bakes reset, first set keeps its layers (reprojected when asked, undo cleared) |
 | `formsurface_instance_layer` | layer_id (fill or filter on the active set), texture_set (name or index) | new layer id in the target set; edits to any copy update all copies |
 | `formsurface_list_smart_materials` | none | materials with layer names, smart mask names, saved smart mask names |
 | `formsurface_apply_smart_material` | name | new layer ids, baked flag |
@@ -28,7 +28,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_apply_smart_mask` | layer_id, name (Edge wear, Cavity dirt, Dust from top, Thin parts, Protect edges, Grunge dirt, Metal edge wear, Sun bleached or a saved name) | applied_as (fill generator or layer mask) and settings |
 | `formsurface_save_smart_mask` | layer_id, name | file and the saved generator settings |
 | `formsurface_set_generator` | layer_id, generator (none, cavity, edges, thin, top, light, position, noise, mask_builder, dirt, metal_edge_wear), level, softness, invert, noise, noise_scale, direction [x, y, z], builder_ao, builder_curvature, builder_noise | fill settings |
-| `formsurface_set_environment` | file (.hdr in workspace/environments), studio, rotation_degrees, blur, background, exposure | environment, rotation, blur, background, exposure |
+| `formsurface_set_environment` | file (.hdr in workspace/environments), studio, rotation_degrees, blur, background, exposure, view_transform (aces, standard, agx, filmic) | environment, rotation, blur, background, exposure, view transform |
 | `formsurface_add_filter_layer` | name, brightness, contrast, hue_degrees, saturation, gamma, roughness_offset, metallic_offset, blur, sharpen | id and settings |
 | `formsurface_layer_mask` | layer_id, action (add_white, add_black, remove, keep), paint_target (layer, mask) | layers and whether strokes paint the mask |
 | `formsurface_update_layer` | layer_id, name, visible, opacity, blend (normal, multiply, screen, overlay, add, subtract, inverse_subtract, darken, lighten, disable, replace, divide, inverse_divide, difference, exclusion, signed_addition, linear_burn, color_burn, color_dodge, soft_light, hard_light, vivid_light, linear_light, pin_light, tint, saturation, color, value, normal_map_combine, normal_map_detail, normal_map_inverse_detail; the normal map modes combine height), make_active | layers and active layer |
