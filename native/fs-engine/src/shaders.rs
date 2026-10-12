@@ -4,7 +4,37 @@ struct Env {
     right: vec4<f32>,
     up: vec4<f32>,
     forward: vec4<f32>,
+    look: vec4<f32>,
 };
+
+fn agx_curve(x: vec3<f32>) -> vec3<f32> {
+    let x2 = x * x;
+    let x4 = x2 * x2;
+    return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232;
+}
+
+fn hable(x: vec3<f32>) -> vec3<f32> {
+    return ((x * (0.15 * x + 0.05) + 0.004) / (x * (0.15 * x + 0.5) + 0.06)) - 0.02 / 0.3;
+}
+
+fn view_transform(c: vec3<f32>) -> vec3<f32> {
+    let mode = env.look.x;
+    if (mode < 0.5) {
+        return (c * (2.51 * c + 0.03)) / (c * (2.43 * c + 0.59) + 0.14);
+    }
+    if (mode < 1.5) {
+        return clamp(c, vec3<f32>(0.0), vec3<f32>(1.0));
+    }
+    if (mode < 2.5) {
+        let inset = mat3x3<f32>(0.842479062253094, 0.0423282422610123, 0.0423756549057051, 0.0784335999999992, 0.878468636469772, 0.0784336, 0.0792237451477643, 0.0791661274605434, 0.879142973793104);
+        let outset = mat3x3<f32>(1.19687900512017, -0.0528968517574562, -0.0529716355144438, -0.0980208811401368, 1.15190312990417, -0.0980434501171241, -0.0990297440797205, -0.0989611768448433, 1.15107367264116);
+        var v = inset * max(c, vec3<f32>(1e-10));
+        v = (clamp(log2(v), vec3<f32>(-12.47393), vec3<f32>(4.026069)) + 12.47393) / 16.500999;
+        v = outset * agx_curve(v);
+        return pow(clamp(v, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(2.2));
+    }
+    return hable(c * 2.0) / hable(vec3<f32>(11.2));
+}
 
 fn env_uv(d: vec3<f32>) -> vec2<f32> {
     let c = cos(env.a.y);
@@ -41,10 +71,44 @@ fn fs(i: FOut) -> BOut {
     let ndc = vec2<f32>(i.uv.x * 2.0 - 1.0, 1.0 - i.uv.y * 2.0);
     let d = normalize(env.forward.xyz + env.right.xyz * ndc.x * env.right.w + env.up.xyz * ndc.y * env.up.w);
     var color = env_sample(d, env.a.z * 2.0) * env.forward.w;
-    color = (color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14);
+    color = view_transform(color);
     var o: BOut;
     o.color = vec4<f32>(pow(clamp(color, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / 2.2)), 1.0);
     o.depth = 0.99999;
+    return o;
+}
+"#;
+
+pub const REPROJECT: &str = r#"
+@group(0) @binding(0) var map: texture_2d<f32>;
+@group(0) @binding(1) var src_color: texture_2d<f32>;
+@group(0) @binding(2) var src_val: texture_2d<f32>;
+@group(0) @binding(3) var src_cov: texture_2d<f32>;
+@group(0) @binding(4) var src_mask: texture_2d<f32>;
+@group(0) @binding(5) var samp: sampler;
+
+struct ROut {
+    @location(0) color: vec4<f32>,
+    @location(1) val: vec4<f32>,
+    @location(2) cov: vec4<f32>,
+    @location(3) mask: vec4<f32>,
+};
+
+@fragment
+fn fs(i: FOut) -> ROut {
+    var o: ROut;
+    let m = textureLoad(map, vec2<i32>(i.clip.xy), 0);
+    if (m.z < 0.5) {
+        o.color = vec4<f32>(0.0);
+        o.val = vec4<f32>(0.0);
+        o.cov = vec4<f32>(0.0);
+        o.mask = vec4<f32>(1.0);
+        return o;
+    }
+    o.color = textureSampleLevel(src_color, samp, m.xy, 0.0);
+    o.val = textureSampleLevel(src_val, samp, m.xy, 0.0);
+    o.cov = textureSampleLevel(src_cov, samp, m.xy, 0.0);
+    o.mask = textureSampleLevel(src_mask, samp, m.xy, 0.0);
     return o;
 }
 "#;
@@ -332,7 +396,7 @@ fn fs(i: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
         color = color + (1.0 - metal) * base * sky(n) * 0.35 + env_spec * fe * 0.9;
     }
     color = color * cam.params.x;
-    color = (color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14);
+    color = view_transform(color);
     if (cam.cursor.w > 0.0) {
         let d = distance(i.world, cam.cursor.xyz) / cam.cursor.w;
         let ring = smoothstep(0.90, 0.95, d) * (1.0 - smoothstep(0.98, 1.03, d));

@@ -105,6 +105,38 @@ pub fn bake_high(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[u32], si
     bake_high_matched(low, high, high_bvh, high_parts, size, front, rear, None, 0, None)
 }
 
+pub struct Reprojection {
+    pub map: Vec<f32>,
+    pub texels: usize,
+    pub found: usize,
+}
+
+pub fn reproject_map(new_low: &Mesh, old: &Mesh, old_bvh: &Bvh, old_triangles: (u32, u32), size: usize, reach: f32) -> Reprojection {
+    let texels = rasterize(new_low, size);
+    let mut map = vec![0.0f32; size * size * 4];
+    let (mut count, mut found) = (0usize, 0usize);
+    let keep = |t: u32| t >= old_triangles.0 && t < old_triangles.1;
+    for (index, texel) in texels.iter().enumerate() {
+        let Some(tx) = texel else { continue };
+        count += 1;
+        let front = old_bvh.raycast_filter(old, add(tx.p, scale(tx.n, reach)), scale(tx.n, -1.0), &keep).filter(|h| h.t <= reach * 2.0);
+        let back = old_bvh.raycast_filter(old, sub(tx.p, scale(tx.n, reach)), tx.n, &keep).filter(|h| h.t <= reach * 2.0);
+        let best = match (front, back) {
+            (Some(a), Some(b)) => Some(if (a.t - reach).abs() <= (b.t - reach).abs() { a } else { b }),
+            (a, b) => a.or(b),
+        };
+        if let Some(hit) = best {
+            found += 1;
+            let o = index * 4;
+            let tile = |x: f32| if x > 1.0 { x - x.floor() } else { x };
+            map[o] = tile(hit.uv[0]);
+            map[o + 1] = tile(hit.uv[1]);
+            map[o + 2] = 1.0;
+        }
+    }
+    Reprojection { map, texels: count, found }
+}
+
 fn cage_ray(cage: Option<&[f32]>, tx: &Texel, front: f32) -> (Vec3, Vec3, f32) {
     let fallback = (add(tx.p, scale(tx.n, front)), scale(tx.n, -1.0), front);
     let Some(c) = cage else { return fallback };

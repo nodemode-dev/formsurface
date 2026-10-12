@@ -20,6 +20,7 @@ struct SetEntry {
     parked: Option<Parked>,
 }
 
+const VIEW_TRANSFORMS: [&str; 4] = ["aces", "standard", "agx", "filmic"];
 const POST_KEYS: [&str; 16] = ["bloom", "bloom_threshold", "glare", "lens_flare", "vignette", "vignette_softness", "grain", "sharpen", "aberration", "dof_aperture", "dof_focus", "contrast", "saturation", "temperature", "tint", "gain"];
 const POST_DEFAULTS: [f32; 16] = [0.0, 0.8, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
 const POST_RANGES: [(f32, f32); 16] = [(0.0, 2.0), (0.0, 0.99), (0.0, 2.0), (0.0, 2.0), (0.0, 1.0), (0.0, 1.0), (0.0, 1.0), (0.0, 2.0), (0.0, 1.0), (0.0, 24.0), (-1.0, 1.0), (-1.0, 1.0), (0.0, 2.0), (-1.0, 1.0), (-1.0, 1.0), (0.0, 2.0)];
@@ -57,6 +58,9 @@ pub struct Engine {
     post: [f32; 16],
     post_seed: f32,
     cage: Option<Vec<f32>>,
+    reproject: bool,
+    reprojected: Option<(usize, usize)>,
+    view_transform: u32,
     normal_strength: f32,
     uv_tiles: bool,
     relaying: bool,
@@ -113,6 +117,9 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         post: POST_DEFAULTS,
         post_seed: 0.0,
         cage: None,
+        reproject: false,
+        reprojected: None,
+        view_transform: 0,
         normal_strength: 1.0,
         uv_tiles: false,
         relaying: false,
@@ -177,6 +184,9 @@ impl Engine {
         let mesh = Mesh::from_flat(&split.positions, &split.normals, &split.uvs, &split.indices).map_err(|e| JsValue::from_str(&e))?;
         let bvh = Bvh::build(&mesh);
         self.select_texture_set(0);
+        let old_first = self.sets.first().map(|s| (s.info.start / 3, (s.info.start + s.info.count) / 3));
+        let previous = if self.reproject { self.mesh.take().zip(old_first) } else { None };
+        self.reprojected = None;
         let ranges: Vec<(u32, u32)> = split.sets.iter().map(|s| (s.start, s.count)).collect();
         self.gpu.upload_mesh(&mesh, &ranges);
         self.sets = split.sets.into_iter().map(|info| SetEntry { info, parked: None }).collect();
@@ -189,7 +199,16 @@ impl Engine {
         self.target = mesh.center;
         self.distance = mesh.radius * 2.8;
         let count = self.sets.len();
-        let info = format!("{} vertices, {} triangles, {} texture set{}", mesh.positions.len(), mesh.triangle_count(), count, if count == 1 { "" } else { "s" });
+        let mut info = format!("{} vertices, {} triangles, {} texture set{}", mesh.positions.len(), mesh.triangle_count(), count, if count == 1 { "" } else { "s" });
+        if let (Some(((old, old_bvh), range)), Some(first)) = (previous, self.sets.first()) {
+            let low = mesh.subset(first.info.start as usize, first.info.count as usize);
+            let reach = old.radius.max(mesh.radius) * 0.05;
+            let result = fs_core::bake::reproject_map(&low, &old, &old_bvh, range, self.gpu.size as usize, reach);
+            self.gpu.reproject_layers(&result.map).map_err(|e| JsValue::from_str(&e))?;
+            self.reprojected = Some((result.found, result.texels));
+            info.push_str(&format!("; reprojected the first texture set's layers onto {} of {} texels", result.found, result.texels));
+            self.dirty = true;
+        }
         self.mesh = Some((mesh, bvh));
         self.each_set(|engine| {
             engine.render_fills();
@@ -782,6 +801,16 @@ impl Engine {
         .to_string()
     }
 
+    pub fn set_view_transform(&mut self, name: &str) -> Result<String, JsValue> {
+        let index = VIEW_TRANSFORMS.iter().position(|n| *n == name).ok_or_else(|| JsValue::from_str(&format!("view transform is one of {}", VIEW_TRANSFORMS.join(", "))))?;
+        self.view_transform = index as u32;
+        Ok(VIEW_TRANSFORMS[index].to_string())
+    }
+
+    pub fn view_transform(&self) -> String {
+        VIEW_TRANSFORMS[self.view_transform as usize].to_string()
+    }
+
     pub fn set_post(&mut self, json: &str) -> Result<String, JsValue> {
         let value: serde_json::Value = serde_json::from_str(json).map_err(|e| JsValue::from_str(&format!("Post effect settings are not JSON: {e}")))?;
         let object = value.as_object().ok_or_else(|| JsValue::from_str("Post effect settings must be an object"))?;
@@ -813,6 +842,7 @@ impl Engine {
             right[0], right[1], right[2], t * aspect,
             up[0], up[1], up[2], t,
             forward[0], forward[1], forward[2], self.exposure,
+            self.view_transform as f32, 0.0, 0.0, 0.0,
         ];
         let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
         let active = self.post.iter().zip(POST_DEFAULTS.iter()).enumerate().any(|(k, (v, d))| k != 1 && k != 5 && k != 10 && (v - d).abs() > 1e-4);
@@ -1404,6 +1434,14 @@ impl Engine {
         }
         self.cage = Some(corners);
         Ok(format!("Custom cage set: {triangles} triangles, at most {:.3} of the mesh radius from the low-poly surface", offset / low.radius.max(1e-6)))
+    }
+
+    pub fn set_reproject(&mut self, on: bool) {
+        self.reproject = on;
+    }
+
+    pub fn reproject_on(&self) -> bool {
+        self.reproject
     }
 
     pub fn clear_cage(&mut self) {

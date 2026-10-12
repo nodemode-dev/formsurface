@@ -103,9 +103,10 @@ pub struct Gpu {
     background_pipe: wgpu::RenderPipeline,
     env_uniform: wgpu::Buffer,
     env_textures: [wgpu::Texture; 3],
-    pub env_params: [f32; 16],
+    pub env_params: [f32; 20],
     post_pipe: wgpu::RenderPipeline,
     bloom_pipe: wgpu::RenderPipeline,
+    reproject_pipe: wgpu::RenderPipeline,
     post_uniform: wgpu::Buffer,
     pub post_params: [f32; 24],
     scene: wgpu::Texture,
@@ -504,11 +505,12 @@ impl Gpu {
             base: [0.5, 0.5, 0.5, 0.6, 0.0],
             view_pipe: pipeline(&device, "view", &format!("{}{}", shaders::ENV_COMMON, shaders::VIEW), true, &[format], None, true),
             background_pipe: pipeline(&device, "background", &format!("{}{}", shaders::ENV_COMMON, shaders::BACKGROUND), false, &[format], None, true),
-            env_uniform: uniform("environment", 64),
+            env_uniform: uniform("environment", 80),
             env_textures: [half_texture(&device, &queue, 1, 1, &[0.0; 3]), half_texture(&device, &queue, 1, 1, &[0.0; 3]), half_texture(&device, &queue, 1, 1, &[0.0; 3])],
-            env_params: [0.0; 16],
+            env_params: [0.0; 20],
             post_pipe: pipeline(&device, "post", &format!("{}{}", shaders::POST_COMMON, shaders::POST), false, &[format], None, false),
             bloom_pipe: pipeline(&device, "bloom", &format!("{}{}", shaders::POST_COMMON, shaders::BLOOM), false, &[LAYER_FORMAT], None, false),
+            reproject_pipe: pipeline(&device, "reproject", shaders::REPROJECT, false, &[LAYER_FORMAT; 4], None, false),
             post_uniform: uniform("post", 96),
             post_params: [0.0; 24],
             scene: scene_texture(&device, format, width, height),
@@ -887,6 +889,55 @@ impl Gpu {
             self.queue.submit([encoder.finish()]);
         }
         self.pool.push(out);
+    }
+
+    pub fn reproject_layers(&mut self, map: &[f32]) -> Result<(), String> {
+        let size = self.size;
+        if map.len() != (size * size * 4) as usize {
+            return Err("Reprojection map does not match the texture size".into());
+        }
+        let map_tex = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("reprojection map"),
+            size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba32Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(map_tex.as_image_copy(), bytemuck::cast_slice(map), wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(size * 16), rows_per_image: Some(size) }, wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 });
+        let map_view = view_of(&map_tex);
+        let extent = wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 };
+        for index in 0..self.layers.len() {
+            let out = self.take_set();
+            {
+                let s = &self.layers[index].set;
+                let views = [&s.color, &s.val, &s.cov, &s.mask].map(view_of);
+                let mut entries = vec![wgpu::BindingResource::TextureView(&map_view)];
+                entries.extend(views.iter().map(wgpu::BindingResource::TextureView));
+                entries.push(wgpu::BindingResource::Sampler(&self.clamp_sampler));
+                let group = bind(&self.device, &self.reproject_pipe, &entries);
+                let targets = [&out.color, &out.val, &out.cov, &out.mask].map(view_of);
+                let mut encoder = self.device.create_command_encoder(&Default::default());
+                {
+                    let clear = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&targets[0], clear), attach(&targets[1], clear), attach(&targets[2], clear), attach(&targets[3], clear)], ..Default::default() });
+                    pass.set_pipeline(&self.reproject_pipe);
+                    pass.set_bind_group(0, &group, &[]);
+                    pass.draw(0..3, 0..1);
+                }
+                let dest = &self.layers[index].set;
+                for (a, b) in [(&out.color, &dest.color), (&out.val, &dest.val), (&out.cov, &dest.cov), (&out.mask, &dest.mask)] {
+                    encoder.copy_texture_to_texture(a.as_image_copy(), b.as_image_copy(), extent);
+                }
+                self.queue.submit([encoder.finish()]);
+            }
+            self.pool.push(out);
+        }
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        Ok(())
     }
 
     pub fn copy_mask(&mut self, from: usize, to: usize) {
