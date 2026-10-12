@@ -1171,8 +1171,13 @@ fn fs(@builtin(position) frag: vec4<f32>) -> Out {
         s = pattern(vec2<f32>(atan2(d.z, d.x) / 6.2831853 + 0.5, acos(clamp(d.y, -1.0, 1.0)) / 3.1415927));
     } else if (mode < 4.5) {
         s = pattern(vec2<f32>(atan2(local.z, local.x) / 6.2831853 + 0.5, local.y * 0.5 + 0.5));
-    } else {
+    } else if (mode < 5.5) {
         s = pattern(unwarp(axis_coords(local, fill.proj2.w) * vec2<f32>(0.5, -0.5) + 0.5));
+    } else if (fill.proj.y > 3.5) {
+        let image = textureSampleLevel(pattern_tex, repeat_samp, uv, 0.0);
+        s = vec4<f32>(pow(image.rgb, vec3<f32>(2.2)), image.a);
+    } else {
+        s = pattern(uv);
     }
     var lum = dot(s.rgb, vec3<f32>(0.2126, 0.7152, 0.0722)) * s.a;
     if (fill.color.w > 0.5) { lum = s.a; }

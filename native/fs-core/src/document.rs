@@ -318,6 +318,7 @@ pub enum Projection {
     Spherical,
     Cylindrical,
     Warp,
+    TileMatch,
 }
 
 pub const WARP_SIDE: usize = 4;
@@ -485,6 +486,7 @@ impl FillSettings {
             Projection::Spherical => 3.0,
             Projection::Cylindrical => 4.0,
             Projection::Warp => 5.0,
+            Projection::TileMatch => 6.0,
         };
         let pattern = match self.pattern {
             Pattern::Solid => 0.0,

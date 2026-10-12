@@ -92,6 +92,7 @@ pub struct Gpu {
     geometry_pipe: wgpu::RenderPipeline,
     geometry: Option<(wgpu::Texture, wgpu::Texture)>,
     patterns: std::collections::HashMap<u32, wgpu::Texture>,
+    tile_patterns: std::collections::HashMap<(usize, u32), wgpu::Texture>,
     white: wgpu::Texture,
     clamp_sampler: wgpu::Sampler,
     alpha_tex: wgpu::Texture,
@@ -579,6 +580,7 @@ impl Gpu {
             geometry_pipe: pipeline(&device, "geometry", shaders::GEOMETRY, true, &[wgpu::TextureFormat::Rgba32Float, LAYER_FORMAT], None, false),
             geometry: None,
             patterns: std::collections::HashMap::new(),
+            tile_patterns: std::collections::HashMap::new(),
             white: white_texture(&device, &queue),
             clamp_sampler: device.create_sampler(&wgpu::SamplerDescriptor { mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, ..Default::default() }),
             alpha_tex: white_texture(&device, &queue),
@@ -623,6 +625,7 @@ impl Gpu {
     }
 
     pub fn upload_mesh(&mut self, mesh: &Mesh, ranges: &[(u32, u32)], carry: &[Option<usize>]) {
+        self.tile_patterns.clear();
         let data = mesh.interleaved();
         let upload = |label: &str, bytes: &[u8], usage: wgpu::BufferUsages| {
             let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size: bytes.len().next_multiple_of(4) as u64, usage: usage | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
@@ -1050,7 +1053,8 @@ impl Gpu {
         let Some(geometry) = &self.geometry else { return };
         self.queue.write_buffer(&self.fill_uniform, 0, bytemuck::cast_slice(uniform));
         let (pv, nv) = (view_of(&geometry.0), view_of(&geometry.1));
-        let pattern = view_of(self.patterns.get(&id).unwrap_or(&self.white));
+        let tile = if uniform[12] > 5.5 { self.tile_patterns.get(&(self.current, id)) } else { None };
+        let pattern = view_of(tile.or(self.patterns.get(&id)).unwrap_or(&self.white));
         let bake = view_of(&self.bake);
         let group = bind(&self.device, &self.fill_pipe, &[
             self.fill_uniform.as_entire_binding(),
@@ -1234,6 +1238,18 @@ impl Gpu {
         Ok(())
     }
 
+    pub fn set_tile_pattern(&mut self, id: u32, width: u32, height: u32, rgba: &[u8]) -> Result<(), String> {
+        let shared = self.patterns.remove(&id);
+        let result = self.set_pattern(id, width, height, rgba);
+        if let Some(texture) = self.patterns.remove(&id) {
+            self.tile_patterns.insert((self.current, id), texture);
+        }
+        if let Some(texture) = shared {
+            self.patterns.insert(id, texture);
+        }
+        result
+    }
+
     fn take_set(&mut self) -> Set {
         self.pool.pop().unwrap_or_else(|| new_set(&self.device, self.size))
     }
@@ -1254,6 +1270,7 @@ impl Gpu {
     pub fn remove_layer(&mut self, index: usize, id: u32) {
         let layer = self.layers.remove(index);
         self.patterns.remove(&id);
+        self.tile_patterns.remove(&(self.current, id));
         self.pool.push(layer.set);
         let (keep_u, drop_u): (Vec<_>, Vec<_>) = std::mem::take(&mut self.undo_stack).into_iter().partition(|s| s.layer != id);
         let (keep_r, drop_r): (Vec<_>, Vec<_>) = std::mem::take(&mut self.redo_stack).into_iter().partition(|s| s.layer != id);

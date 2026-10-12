@@ -1410,6 +1410,35 @@ impl Engine {
         Ok(())
     }
 
+    pub fn set_fill_image_tile(&mut self, id: u32, udim: u32, width: u32, height: u32, rgba: &[u8]) -> Result<String, JsValue> {
+        let entry = self.sets.get(self.set_index).ok_or_else(|| JsValue::from_str("Load a mesh first"))?;
+        if !entry.info.tiled {
+            return Err(JsValue::from_str("The active texture set has no UV tiles"));
+        }
+        let material = entry.info.material.clone();
+        let target = (0..self.sets.len())
+            .find(|&k| self.sets[k].info.tiled && self.sets[k].info.material == material && self.sets[k].info.udim == udim)
+            .ok_or_else(|| JsValue::from_str(&format!("Material {material} has no UV tile {udim}")))?;
+        let original = self.set_index;
+        if target != original {
+            self.switch_set(target);
+        }
+        let result = if !self.layers.iter().any(|l| l.id == id && l.kind == LayerKind::Fill) {
+            Err(format!("Layer {id} is not a fill layer on tile {udim}; turn on UV tiles so the material's tiles share one stack"))
+        } else {
+            self.gpu.set_tile_pattern(id, width, height, rgba).map(|_| {
+                self.render_fill(id);
+            })
+        };
+        let name = self.sets[target].info.name();
+        if target != original {
+            self.flush_set();
+            self.switch_set(original);
+        }
+        self.dirty = true;
+        result.map(|_| name).map_err(|e| JsValue::from_str(&e))
+    }
+
     pub fn set_mask(&mut self, id: u32, enabled: bool) {
         if self.relay(|e| e.set_mask(id, enabled)).is_some() {
             return;
