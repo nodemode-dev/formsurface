@@ -38,6 +38,18 @@ struct Pair {
     mat: wgpu::Texture,
 }
 
+struct PathScene {
+    nodes: wgpu::Buffer,
+    tris: wgpu::Buffer,
+    attrs: wgpu::Buffer,
+    roles: wgpu::Buffer,
+    arrays: Option<[wgpu::Texture; 3]>,
+    accum: Option<[wgpu::Texture; 2]>,
+    cur: usize,
+    samples: u32,
+    seed: u32,
+}
+
 struct SetState {
     size: u32,
     extra_role: f32,
@@ -126,6 +138,14 @@ pub struct Gpu {
     reproject_pipe: wgpu::RenderPipeline,
     trace_pipe: wgpu::RenderPipeline,
     trace_job: Option<(wgpu::BindGroup, u32)>,
+    path_pipe: wgpu::RenderPipeline,
+    path_show_pipe: wgpu::RenderPipeline,
+    path_gather_pipe: wgpu::RenderPipeline,
+    path_uniform: wgpu::Buffer,
+    path_show_uniform: wgpu::Buffer,
+    path: Option<PathScene>,
+    pub path_view: bool,
+    path_inflight: std::sync::Arc<std::sync::atomic::AtomicU32>,
     post_uniform: wgpu::Buffer,
     pub post_params: [f32; 24],
     scene: wgpu::Texture,
@@ -538,6 +558,14 @@ impl Gpu {
             reproject_pipe: pipeline(&device, "reproject", shaders::REPROJECT, false, &[LAYER_FORMAT; 4], None, false),
             trace_pipe: pipeline(&device, "ray traced bake", shaders::TRACE, false, &[LAYER_FORMAT], None, false),
             trace_job: None,
+            path_pipe: pipeline(&device, "path trace", &format!("{}{}", shaders::ENV_COMMON, shaders::PATH), false, &[wgpu::TextureFormat::Rgba32Float], None, false),
+            path_show_pipe: pipeline(&device, "path show", &format!("{}{}", shaders::ENV_COMMON, shaders::PATH_SHOW), false, &[format], None, false),
+            path_gather_pipe: pipeline(&device, "path gather", shaders::PATH_GATHER, false, &[LAYER_FORMAT; 3], None, false),
+            path_uniform: uniform("path trace", 32),
+            path_show_uniform: uniform("path show", 32),
+            path: None,
+            path_view: false,
+            path_inflight: std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0)),
             post_uniform: uniform("post", 96),
             post_params: [0.0; 24],
             scene: scene_texture(&device, format, width, height),
@@ -650,6 +678,7 @@ impl Gpu {
 
     pub fn upload_mesh(&mut self, mesh: &Mesh, ranges: &[(u32, u32)], carry: &[Option<usize>]) {
         self.tile_patterns.clear();
+        self.path = None;
         let data = mesh.interleaved();
         let upload = |label: &str, bytes: &[u8], usage: wgpu::BufferUsages| {
             let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size: bytes.len().next_multiple_of(4) as u64, usage: usage | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
@@ -1336,6 +1365,178 @@ impl Gpu {
         true
     }
 
+    pub fn path_scene(&mut self, nodes: &[f32], tris: &[f32], attrs: &[f32]) {
+        let storage = |label: &str, data: &[f32]| {
+            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some(label), size: (data.len().max(4) * 4) as u64, usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+            self.queue.write_buffer(&buffer, 0, bytemuck::cast_slice(data));
+            buffer
+        };
+        let roles = storage("path roles", &vec![0.0f32; self.parked.len().max(4)]);
+        self.path = Some(PathScene { nodes: storage("path nodes", nodes), tris: storage("path triangles", tris), attrs: storage("path attributes", attrs), roles, arrays: None, accum: None, cur: 0, samples: 0, seed: 0 });
+    }
+
+    pub fn idle(&self) -> js_sys::Promise {
+        js_sys::Promise::new(&mut |resolve, _| {
+            self.queue.on_submitted_work_done(move || {
+                let _ = resolve.call0(&JsValue::NULL);
+            });
+        })
+    }
+
+    pub fn has_path_scene(&self) -> bool {
+        self.path.is_some()
+    }
+
+    pub fn drop_path(&mut self) {
+        self.path = None;
+    }
+
+    pub fn path_samples(&self) -> u32 {
+        self.path.as_ref().map(|p| p.samples).unwrap_or(0)
+    }
+
+    pub fn path_side(&self) -> u32 {
+        self.path.as_ref().and_then(|p| p.arrays.as_ref()).map(|a| a[0].width()).unwrap_or(0)
+    }
+
+    pub fn path_reset(&mut self, normal_strength: f32) {
+        let Some(mut scene) = self.path.take() else { return };
+        let count = self.parked.len().max(1);
+        let biggest = (0..count).map(|k| self.set_size(k)).max().unwrap_or(self.size);
+        let side = biggest.min(if count <= 2 { 2048 } else { 1024 });
+        let fits = scene.arrays.as_ref().map(|a| a[0].width() == side && a[0].depth_or_array_layers() == count as u32).unwrap_or(false);
+        if !fits {
+            let array = |label: &str| self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size: wgpu::Extent3d { width: side, height: side, depth_or_array_layers: count as u32 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: LAYER_FORMAT,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            });
+            scene.arrays = Some([array("path color"), array("path material"), array("path normal")]);
+        }
+        let roles: Vec<f32> = (0..count).map(|k| self.set_extra_role(k)).collect();
+        self.queue.write_buffer(&scene.roles, 0, bytemuck::cast_slice(&roles));
+        let gather = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("path gather"), size: 16, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+        self.queue.write_buffer(&gather, 0, bytemuck::cast_slice(&[normal_strength, 0.0f32, 0.0, 0.0]));
+        let (width, height) = (self.config.width.max(1), self.config.height.max(1));
+        let sized = scene.accum.as_ref().map(|a| a[0].width() == width && a[0].height() == height).unwrap_or(false);
+        if !sized {
+            let accum = |label: &str| self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba32Float,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            });
+            scene.accum = Some([accum("path accumulation"), accum("path accumulation")]);
+        }
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        if let Some(arrays) = scene.arrays.as_ref() {
+            for k in 0..count {
+                let source = if k == self.current { Some((&self.final_set, &self.baked_normal)) } else { self.parked.get(k).and_then(|s| s.as_ref()).map(|s| (&s.final_set, &s.baked_normal)) };
+                let Some((pair, normal)) = source else { continue };
+                let (fc, fm, bn) = (view_of(&pair.color), view_of(&pair.mat), view_of(normal));
+                let group = bind(&self.device, &self.path_gather_pipe, &[
+                    gather.as_entire_binding(),
+                    wgpu::BindingResource::TextureView(&fc),
+                    wgpu::BindingResource::TextureView(&fm),
+                    wgpu::BindingResource::TextureView(&bn),
+                    wgpu::BindingResource::Sampler(&self.sampler),
+                ]);
+                let layer = |t: &wgpu::Texture| t.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2), base_array_layer: k as u32, array_layer_count: Some(1), ..Default::default() });
+                let (lc, lm, ln) = (layer(&arrays[0]), layer(&arrays[1]), layer(&arrays[2]));
+                let clear = wgpu::LoadOp::Clear(wgpu::Color::BLACK);
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&lc, clear), attach(&lm, clear), attach(&ln, clear)], ..Default::default() });
+                pass.set_pipeline(&self.path_gather_pipe);
+                pass.set_bind_group(0, &group, &[]);
+                pass.draw(0..3, 0..1);
+            }
+        }
+        if let Some(accum) = scene.accum.as_ref() {
+            let target = view_of(&accum[scene.cur]);
+            encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&target, wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT))], ..Default::default() });
+        }
+        self.queue.submit([encoder.finish()]);
+        scene.samples = 0;
+        self.path = Some(scene);
+    }
+
+    pub fn path_sample(&mut self, eye: Vec3, bounces: u32, radius: f32) {
+        let Some(scene) = self.path.as_mut() else { return };
+        let (Some(arrays), Some(accum)) = (scene.arrays.as_ref(), scene.accum.as_ref()) else { return };
+        scene.seed = scene.seed.wrapping_add(1) % 16_000_000;
+        self.queue.write_buffer(&self.path_uniform, 0, bytemuck::cast_slice(&[eye[0], eye[1], eye[2], scene.seed as f32, bounces as f32, radius.max(1e-6) * 2e-4, 0.0, 0.0]));
+        self.queue.write_buffer(&self.env_uniform, 0, bytemuck::cast_slice(&self.env_params));
+        let (e0, e1, e2) = (view_of(&self.env_textures[0]), view_of(&self.env_textures[1]), view_of(&self.env_textures[2]));
+        let array_view = |t: &wgpu::Texture| t.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
+        let (ca, ma, na) = (array_view(&arrays[0]), array_view(&arrays[1]), array_view(&arrays[2]));
+        let (prev, next) = (view_of(&accum[scene.cur]), view_of(&accum[1 - scene.cur]));
+        let group = bind(&self.device, &self.path_pipe, &[
+            self.path_uniform.as_entire_binding(),
+            self.env_uniform.as_entire_binding(),
+            wgpu::BindingResource::TextureView(&e0),
+            wgpu::BindingResource::TextureView(&e1),
+            wgpu::BindingResource::TextureView(&e2),
+            wgpu::BindingResource::Sampler(&self.sampler),
+            scene.nodes.as_entire_binding(),
+            scene.tris.as_entire_binding(),
+            scene.attrs.as_entire_binding(),
+            scene.roles.as_entire_binding(),
+            wgpu::BindingResource::TextureView(&ca),
+            wgpu::BindingResource::TextureView(&ma),
+            wgpu::BindingResource::TextureView(&na),
+            wgpu::BindingResource::TextureView(&prev),
+        ]);
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&next, wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT))], ..Default::default() });
+            pass.set_pipeline(&self.path_pipe);
+            pass.set_bind_group(0, &group, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        self.queue.submit([encoder.finish()]);
+        scene.cur = 1 - scene.cur;
+        scene.samples += 1;
+        let inflight = self.path_inflight.clone();
+        inflight.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.queue.on_submitted_work_done(move || {
+            inflight.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        });
+    }
+
+    pub fn path_ready(&self) -> bool {
+        self.path_inflight.load(std::sync::atomic::Ordering::Relaxed) < 2
+    }
+
+    fn encode_path(&self, encoder: &mut wgpu::CommandEncoder, target: &wgpu::Texture) -> bool {
+        let Some(scene) = self.path.as_ref() else { return false };
+        let Some(accum) = scene.accum.as_ref() else { return false };
+        if accum[0].width() != target.width() || accum[0].height() != target.height() {
+            return false;
+        }
+        self.queue.write_buffer(&self.path_show_uniform, 0, bytemuck::cast_slice(&[scene.samples as f32, 0.0f32, 0.0, 0.0, 0.075, 0.078, 0.086, 1.0]));
+        self.queue.write_buffer(&self.env_uniform, 0, bytemuck::cast_slice(&self.env_params));
+        let shown = view_of(&accum[scene.cur]);
+        let group = bind(&self.device, &self.path_show_pipe, &[
+            self.path_show_uniform.as_entire_binding(),
+            self.env_uniform.as_entire_binding(),
+            wgpu::BindingResource::TextureView(&shown),
+        ]);
+        let out = view_of(target);
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&out, wgpu::LoadOp::Clear(wgpu::Color::BLACK))], ..Default::default() });
+        pass.set_pipeline(&self.path_show_pipe);
+        pass.set_bind_group(0, &group, &[]);
+        pass.draw(0..3, 0..1);
+        true
+    }
+
     pub fn trace_progress(&self) -> f32 {
         self.trace_job.as_ref().map(|(_, y)| *y as f32 / self.size as f32).unwrap_or(1.0)
     }
@@ -1894,6 +2095,9 @@ impl Gpu {
     }
 
     fn encode_view(&self, encoder: &mut wgpu::CommandEncoder, target: &wgpu::Texture, view_proj: [f32; 16], eye: Vec3, cursor: Option<(Vec3, Vec3, f32)>, exposure: f32, normal_strength: f32) {
+        if self.path_view && !self.flat && self.encode_path(encoder, target) {
+            return;
+        }
         let overlay = if self.quick_mode == 0 { 0.0 } else { 1.0 };
         let mut bytes = camera_bytes(view_proj, eye, cursor, exposure, normal_strength, overlay);
         if let Some(last) = bytes.last_mut() {

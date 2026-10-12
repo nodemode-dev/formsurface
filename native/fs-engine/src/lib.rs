@@ -89,6 +89,9 @@ pub struct Engine {
     environment: Option<String>,
     env_view: [f32; 3],
     clone_layer: Option<u32>,
+    path_bounces: u32,
+    path_limit: u32,
+    path_key: Vec<f32>,
 }
 
 #[wasm_bindgen]
@@ -150,6 +153,9 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         environment: None,
         env_view: [0.0, 0.0, 1.0],
         clone_layer: None,
+        path_bounces: 0,
+        path_limit: 1024,
+        path_key: Vec::new(),
     };
     engine.add_layer("Layer 1".into());
     Ok(engine)
@@ -964,11 +970,66 @@ impl Engine {
     pub fn set_environment(&mut self, name: String, width: u32, height: u32, rgb: &[f32]) -> Result<(), JsValue> {
         self.gpu.set_environment(width, height, rgb).map_err(|e| JsValue::from_str(&e))?;
         self.environment = Some(name);
+        self.path_key.clear();
         Ok(())
     }
 
     pub fn clear_environment(&mut self) {
         self.environment = None;
+        self.path_key.clear();
+    }
+
+    pub fn set_path_trace(&mut self, on: bool, bounces: u32, max_samples: u32) -> Result<(), JsValue> {
+        if on && self.mesh.is_none() {
+            return Err(JsValue::from_str("Load a mesh before path tracing"));
+        }
+        self.path_bounces = if on { bounces.clamp(1, 12) } else { 0 };
+        self.path_limit = max_samples.clamp(1, 65536);
+        self.gpu.path_view = on;
+        if !on {
+            self.gpu.drop_path();
+        }
+        self.path_key.clear();
+        Ok(())
+    }
+
+    pub fn path_trace_json(&self) -> String {
+        serde_json::json!({
+            "on": self.path_bounces > 0,
+            "bounces": self.path_bounces,
+            "samples": self.gpu.path_samples(),
+            "max_samples": self.path_limit,
+            "texture_side": self.gpu.path_side(),
+        })
+        .to_string()
+    }
+
+    pub fn gpu_idle(&self) -> js_sys::Promise {
+        self.gpu.idle()
+    }
+
+    pub fn path_trace_run(&mut self, samples: u32) -> Result<u32, JsValue> {
+        if self.path_bounces == 0 {
+            return Err(JsValue::from_str("Turn path tracing on first"));
+        }
+        if self.stroking {
+            return Err(JsValue::from_str("Finish the stroke first"));
+        }
+        self.flush();
+        let composited = self.dirty;
+        if self.dirty {
+            self.gpu.composite(&self.layers, &self.filters);
+            self.dirty = false;
+        }
+        self.push_env_params();
+        self.path_prepare(composited);
+        let (_, _, _, eye) = self.basis();
+        let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
+        let goal = samples.min(self.path_limit);
+        while self.gpu.path_samples() < goal {
+            self.gpu.path_sample(eye, self.path_bounces, r);
+        }
+        Ok(self.gpu.path_samples())
     }
 
     pub fn set_environment_view(&mut self, rotation_degrees: f32, blur: f32, background: bool) {
@@ -1562,6 +1623,7 @@ impl Engine {
 
     pub fn frame(&mut self) {
         self.flush();
+        let composited = self.dirty;
         if self.dirty {
             self.gpu.composite(&self.layers, &self.filters);
             self.dirty = false;
@@ -1571,6 +1633,13 @@ impl Engine {
         let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
         let view_proj = gpu::view_projection(eye, forward, right, up, self.fov, aspect, (self.distance - r * 2.0).max(r * 0.01), self.distance + r * 3.0);
         self.push_env_params();
+        self.gpu.path_view = self.path_bounces > 0 && !self.stroking;
+        if self.path_bounces > 0 && self.flat.is_none() && !self.stroking {
+            self.path_prepare(composited);
+            if self.gpu.path_samples() < self.path_limit && self.gpu.path_ready() {
+                self.gpu.path_sample(eye, self.path_bounces, r);
+            }
+        }
         if self.flat.is_some() {
             let cursor = self.flat_cursor.map(|uv| ([uv[0], uv[1], 0.0], [0.0, 0.0, 1.0], self.flat_radius(1.0)));
             self.gpu.render(self.flat_matrix(), eye, cursor, self.exposure, self.normal_strength);
@@ -2087,6 +2156,7 @@ impl Engine {
 
     pub fn snapshot(&mut self) -> js_sys::Promise {
         self.flush();
+        let composited = self.dirty;
         if self.dirty {
             self.gpu.composite(&self.layers, &self.filters);
             self.dirty = false;
@@ -2095,6 +2165,12 @@ impl Engine {
         let aspect = self.width as f32 / self.height as f32;
         let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
         self.push_env_params();
+        if self.path_bounces > 0 && self.flat.is_none() {
+            self.path_prepare(composited);
+            if self.gpu.path_samples() == 0 {
+                self.gpu.path_sample(eye, self.path_bounces, r);
+            }
+        }
         let view_proj = if self.flat.is_some() { self.flat_matrix() } else { gpu::view_projection(eye, forward, right, up, self.fov, aspect, (self.distance - r * 2.0).max(r * 0.01), self.distance + r * 3.0) };
         self.gpu.snapshot(view_proj, eye, self.exposure, self.normal_strength)
     }
@@ -2328,6 +2404,24 @@ impl Engine {
     fn paints_mask(&self) -> bool {
         let layer = &self.layers[self.layer_index(self.active)];
         layer.kind != LayerKind::Paint || (self.mask_target && layer.mask)
+    }
+
+    fn path_prepare(&mut self, composited: bool) {
+        if !self.gpu.has_path_scene() {
+            let Some((mesh, bvh)) = &self.mesh else { return };
+            let (nodes, tris) = bvh.gpu_buffers(mesh);
+            let ranges: Vec<(u32, u32)> = self.sets.iter().map(|s| (s.info.start / 3, (s.info.start + s.info.count) / 3)).collect();
+            let attrs = bvh.gpu_attributes(mesh, &|t| ranges.iter().position(|r| t >= r.0 && t < r.1).unwrap_or(0) as f32);
+            self.gpu.path_scene(&nodes, &tris, &attrs);
+            self.path_key.clear();
+        }
+        let (forward, _, _, eye) = self.basis();
+        let mut key = vec![eye[0], eye[1], eye[2], forward[0], forward[1], forward[2], self.fov, self.width as f32, self.height as f32, self.normal_strength, self.path_bounces as f32];
+        key.extend_from_slice(&self.gpu.env_params[..15]);
+        if composited || key != self.path_key {
+            self.gpu.path_reset(self.normal_strength);
+            self.path_key = key;
+        }
     }
 
     fn export_any(&mut self, channel: u32, wide: bool) -> js_sys::Promise {

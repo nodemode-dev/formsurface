@@ -104,6 +104,36 @@ impl Bvh {
         (nodes, tris)
     }
 
+    pub fn gpu_attributes(&self, mesh: &Mesh, layer_of: &dyn Fn(u32) -> f32) -> Vec<f32> {
+        let mut out = Vec::with_capacity(self.order.len() * 24);
+        for &t in &self.order {
+            let i = &mesh.indices[t as usize * 3..t as usize * 3 + 3];
+            let (a, b, c) = (i[0] as usize, i[1] as usize, i[2] as usize);
+            let (n0, n1, n2) = (mesh.normals[a], mesh.normals[b], mesh.normals[c]);
+            let (uv0, uv1, uv2) = (mesh.uvs[a], mesh.uvs[b], mesh.uvs[c]);
+            let e1 = sub(mesh.positions[b], mesh.positions[a]);
+            let e2 = sub(mesh.positions[c], mesh.positions[a]);
+            let (du1, dv1) = (uv1[0] - uv0[0], uv1[1] - uv0[1]);
+            let (du2, dv2) = (uv2[0] - uv0[0], uv2[1] - uv0[1]);
+            let det = du1 * dv2 - du2 * dv1;
+            let (tangent, bitangent) = if det.abs() > 1e-12 {
+                let r = 1.0 / det;
+                (scale(sub(scale(e1, dv2), scale(e2, dv1)), r), scale(sub(scale(e2, du1), scale(e1, du2)), r))
+            } else {
+                let n = normalize(cross(e1, e2));
+                let up = if n[1].abs() > 0.9 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
+                let tt = normalize(cross(up, n));
+                (tt, cross(n, tt))
+            };
+            out.extend_from_slice(&[n0[0], n0[1], n0[2], uv0[0], n1[0], n1[1], n1[2], uv0[1], n2[0], n2[1], n2[2], uv1[0]]);
+            out.extend_from_slice(&[uv1[1], uv2[0], uv2[1], layer_of(t), tangent[0], tangent[1], tangent[2], 0.0, bitangent[0], bitangent[1], bitangent[2], 0.0]);
+        }
+        if out.is_empty() {
+            out.resize(24, 0.0);
+        }
+        out
+    }
+
     pub fn raycast(&self, mesh: &Mesh, origin: Vec3, direction: Vec3) -> Option<Hit> {
         self.raycast_filter(mesh, origin, direction, &|_| true)
     }

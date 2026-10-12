@@ -1656,6 +1656,307 @@ fn fs(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
 }
 "#;
 
+pub const PATH_GATHER: &str = r#"
+struct Gather { params: vec4<f32>, };
+@group(0) @binding(0) var<uniform> g: Gather;
+@group(0) @binding(1) var color_tex: texture_2d<f32>;
+@group(0) @binding(2) var mat_tex: texture_2d<f32>;
+@group(0) @binding(3) var baked_normal: texture_2d<f32>;
+@group(0) @binding(4) var samp: sampler;
+
+struct GOut {
+    @location(0) color: vec4<f32>,
+    @location(1) mat: vec4<f32>,
+    @location(2) normal: vec4<f32>,
+};
+
+@fragment
+fn fs(i: FOut) -> GOut {
+    let dims = vec2<f32>(textureDimensions(mat_tex));
+    let texel = 1.0 / dims;
+    let hx = textureSampleLevel(mat_tex, samp, i.uv + vec2<f32>(texel.x, 0.0), 0.0).b - textureSampleLevel(mat_tex, samp, i.uv - vec2<f32>(texel.x, 0.0), 0.0).b;
+    let hy = textureSampleLevel(mat_tex, samp, i.uv + vec2<f32>(0.0, texel.y), 0.0).b - textureSampleLevel(mat_tex, samp, i.uv - vec2<f32>(0.0, texel.y), 0.0).b;
+    let s = g.params.x * dims.x / 256.0;
+    let bn = textureSampleLevel(baked_normal, samp, i.uv, 0.0).xyz * 2.0 - 1.0;
+    var o: GOut;
+    o.color = vec4<f32>(textureSampleLevel(color_tex, samp, i.uv, 0.0).rgb, 1.0);
+    o.mat = textureSampleLevel(mat_tex, samp, i.uv, 0.0);
+    o.normal = vec4<f32>(normalize(vec3<f32>(bn.x - hx * s, bn.y - hy * s, max(bn.z, 0.05))), 1.0);
+    return o;
+}
+"#;
+
+pub const PATH: &str = r#"
+struct Path { eye: vec4<f32>, params: vec4<f32>, };
+@group(0) @binding(0) var<uniform> pt: Path;
+@group(0) @binding(1) var<uniform> env: Env;
+@group(0) @binding(2) var env_sharp: texture_2d<f32>;
+@group(0) @binding(3) var env_mid: texture_2d<f32>;
+@group(0) @binding(4) var env_small: texture_2d<f32>;
+@group(0) @binding(5) var samp: sampler;
+@group(0) @binding(6) var<storage, read> nodes: array<vec4<u32>>;
+@group(0) @binding(7) var<storage, read> tris: array<vec4<f32>>;
+@group(0) @binding(8) var<storage, read> attrs: array<vec4<f32>>;
+@group(0) @binding(9) var<storage, read> roles: array<f32>;
+@group(0) @binding(10) var color_arr: texture_2d_array<f32>;
+@group(0) @binding(11) var mat_arr: texture_2d_array<f32>;
+@group(0) @binding(12) var nrm_arr: texture_2d_array<f32>;
+@group(0) @binding(13) var prev: texture_2d<f32>;
+
+const NONE: u32 = 0xffffffffu;
+const PI: f32 = 3.14159265;
+
+var<private> seed: u32;
+
+fn pcg(v: u32) -> u32 {
+    let s = v * 747796405u + 2891336453u;
+    let w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+    return (w >> 22u) ^ w;
+}
+
+fn rnd() -> f32 {
+    seed = pcg(seed);
+    return f32(seed >> 8u) / 16777216.0;
+}
+
+struct Hit { t: f32, tri: u32, u: f32, v: f32, };
+
+fn slab(lo: vec3<f32>, hi: vec3<f32>, o: vec3<f32>, inv: vec3<f32>, tmax: f32) -> bool {
+    let t0 = (lo - o) * inv;
+    let t1 = (hi - o) * inv;
+    let near = max(max(min(t0.x, t1.x), min(t0.y, t1.y)), min(t0.z, t1.z));
+    let far = min(min(max(t0.x, t1.x), max(t0.y, t1.y)), max(t0.z, t1.z));
+    return far >= max(near, 0.0) && near <= tmax;
+}
+
+fn trace(o: vec3<f32>, d: vec3<f32>, tmax: f32, any_hit: bool) -> Hit {
+    var h: Hit;
+    h.t = tmax;
+    h.tri = NONE;
+    h.u = 0.0;
+    h.v = 0.0;
+    let inv = 1.0 / select(d, vec3<f32>(1e-12), abs(d) < vec3<f32>(1e-12));
+    let total = nodes[2u].y;
+    var i = 0u;
+    var guard = 0u;
+    loop {
+        if (i >= total || guard > total * 2u) { break; }
+        guard = guard + 1u;
+        let lo = nodes[i * 3u];
+        let hi = nodes[i * 3u + 1u];
+        let miss = nodes[i * 3u + 2u].x;
+        if (!slab(bitcast<vec3<f32>>(lo.xyz), bitcast<vec3<f32>>(hi.xyz), o, inv, h.t)) {
+            i = miss;
+            continue;
+        }
+        let count = hi.w;
+        let link = lo.w;
+        if (count == 0u) {
+            i = i + 1u;
+            continue;
+        }
+        i = miss;
+        for (var t = link; t < link + count; t = t + 1u) {
+            let a = tris[t * 3u].xyz;
+            let e1 = tris[t * 3u + 1u].xyz - a;
+            let e2 = tris[t * 3u + 2u].xyz - a;
+            let pv = cross(d, e2);
+            let det = dot(e1, pv);
+            if (abs(det) < 1e-12) { continue; }
+            let id = 1.0 / det;
+            let tv = o - a;
+            let u = dot(tv, pv) * id;
+            if (u < 0.0 || u > 1.0) { continue; }
+            let qv = cross(tv, e1);
+            let v = dot(d, qv) * id;
+            if (v < 0.0 || u + v > 1.0) { continue; }
+            let dist = dot(e2, qv) * id;
+            if (dist > 0.0 && dist < h.t) {
+                h.t = dist;
+                h.tri = t;
+                h.u = u;
+                h.v = v;
+                if (any_hit) { return h; }
+            }
+        }
+    }
+    return h;
+}
+
+fn sky(dir: vec3<f32>) -> vec3<f32> {
+    let t = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
+    return mix(vec3<f32>(0.10, 0.10, 0.11), vec3<f32>(0.62, 0.68, 0.78), t) + vec3<f32>(1.2, 1.1, 1.0) * pow(max(dot(dir, normalize(vec3<f32>(0.5, 0.8, 0.3))), 0.0), 64.0);
+}
+
+fn ggx_d(nh: f32, a: f32) -> f32 {
+    let a2 = a * a;
+    let d = nh * nh * (a2 - 1.0) + 1.0;
+    return a2 / (PI * d * d);
+}
+
+fn brdf(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, base: vec3<f32>, rough: f32, metal: f32) -> vec3<f32> {
+    let h = normalize(l + v);
+    let nl = max(dot(n, l), 0.0);
+    let nv = max(dot(n, v), 1e-4);
+    let f0 = mix(vec3<f32>(0.04), base, metal);
+    let f = f0 + (1.0 - f0) * pow(1.0 - max(dot(h, v), 0.0), 5.0);
+    let a = rough * rough;
+    let k2 = a * 0.5;
+    let g = (nl / (nl * (1.0 - k2) + k2)) * (nv / (nv * (1.0 - k2) + k2));
+    let spec = ggx_d(max(dot(n, h), 0.0), a) * g * f / (4.0 * nl * nv + 1e-4);
+    let diff = (1.0 - f) * (1.0 - metal) * base / PI;
+    return diff + spec;
+}
+
+fn basis(n: vec3<f32>) -> mat3x3<f32> {
+    let up = select(vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0), abs(n.y) > 0.9);
+    let t = normalize(cross(up, n));
+    return mat3x3<f32>(t, cross(n, t), n);
+}
+
+@fragment
+fn fs(i: FOut) -> @location(0) vec4<f32> {
+    let px = vec2<i32>(i.clip.xy);
+    let old = textureLoad(prev, px, 0);
+    let dims = vec2<f32>(textureDimensions(prev));
+    seed = pcg(u32(px.x) + pcg(u32(px.y) + pcg(u32(pt.eye.w))));
+    let q = (floor(i.clip.xy) + vec2<f32>(rnd(), rnd())) / dims;
+    let ndc = vec2<f32>(q.x * 2.0 - 1.0, 1.0 - q.y * 2.0);
+    var d = normalize(env.forward.xyz + env.right.xyz * ndc.x * env.right.w + env.up.xyz * ndc.y * env.up.w);
+    var o = pt.eye.xyz;
+    let eps = pt.params.y;
+    let bounces = u32(pt.params.x);
+    let hdr = env.a.x > 0.5;
+    let lights = array<vec3<f32>, 2>(normalize(vec3<f32>(0.5, 0.8, 0.3)), normalize(vec3<f32>(-0.6, 0.2, -0.7)));
+    let power = array<f32, 2>(2.6, 0.8);
+    var radiance = vec3<f32>(0.0);
+    var thr = vec3<f32>(1.0);
+    var cover = 0.0;
+    var depth = 0u;
+    var passes = 0u;
+    loop {
+        let h = trace(o, d, 1e30, false);
+        if (h.tri == NONE) {
+            if (depth == 0u) {
+                if (hdr && env.a.w > 0.5) {
+                    radiance = env_sample(d, env.a.z * 2.0);
+                    cover = 1.0;
+                }
+            } else if (hdr) {
+                radiance = radiance + thr * env_sample(d, 0.0);
+            } else {
+                radiance = radiance + thr * sky(d) * 0.5;
+            }
+            break;
+        }
+        let a0 = tris[h.tri * 3u].xyz;
+        var ng = normalize(cross(tris[h.tri * 3u + 1u].xyz - a0, tris[h.tri * 3u + 2u].xyz - a0));
+        let w = 1.0 - h.u - h.v;
+        let k = h.tri * 6u;
+        let r0 = attrs[k];
+        let r1 = attrs[k + 1u];
+        let r2 = attrs[k + 2u];
+        let r3 = attrs[k + 3u];
+        var n = normalize(r0.xyz * w + r1.xyz * h.u + r2.xyz * h.v);
+        let uv = vec2<f32>(r0.w, r1.w) * w + vec2<f32>(r2.w, r3.x) * h.u + vec2<f32>(r3.y, r3.z) * h.v;
+        let layer = i32(r3.w + 0.5);
+        let role = roles[u32(layer)];
+        let p = o + d * h.t;
+        let base = textureSampleLevel(color_arr, samp, uv, layer, 0.0).rgb;
+        let m = textureSampleLevel(mat_arr, samp, uv, layer, 0.0);
+        let extra = clamp(m.a, 0.0, 1.0);
+        if (role > 1.5 && role < 2.5 && rnd() >= extra) {
+            passes = passes + 1u;
+            if (passes > 32u) { break; }
+            o = p + d * eps;
+            continue;
+        }
+        if (depth == 0u) { cover = 1.0; }
+        if (dot(ng, d) > 0.0) { ng = -ng; }
+        if (dot(n, ng) < 0.0) { n = -n; }
+        let nt = textureSampleLevel(nrm_arr, samp, uv, layer, 0.0).xyz;
+        let ta = attrs[k + 4u].xyz;
+        let ba = attrs[k + 5u].xyz;
+        let t1 = ta - n * dot(n, ta);
+        let b1 = ba - n * dot(n, ba);
+        let invmax = inverseSqrt(max(dot(t1, t1), dot(b1, b1)) + 1e-20);
+        let v = -d;
+        var ns = normalize(t1 * invmax * nt.x + b1 * invmax * nt.y + n * nt.z);
+        if (dot(ns, v) < 1e-3) { ns = n; }
+        let rough = clamp(m.r, 0.04, 1.0);
+        let metal = clamp(m.g, 0.0, 1.0);
+        if (role > 3.5) { radiance = radiance + thr * base * extra * 4.0; }
+        let po = p + ng * eps;
+        if (!hdr) {
+            for (var s = 0; s < 2; s = s + 1) {
+                let l = lights[s];
+                let nl = dot(ns, l);
+                if (nl > 0.0 && dot(ng, l) > 0.0) {
+                    if (trace(po, l, 1e30, true).tri == NONE) {
+                        radiance = radiance + thr * brdf(ns, v, l, base, rough, metal) * nl * power[s];
+                    }
+                }
+            }
+        }
+        if (depth >= bounces) { break; }
+        let a = rough * rough;
+        let ps = mix(0.3, 0.95, metal);
+        let tb = basis(ns);
+        var l: vec3<f32>;
+        let u1 = rnd();
+        let u2 = rnd();
+        if (rnd() < ps) {
+            let phi = 6.2831853 * u1;
+            let ct = sqrt((1.0 - u2) / (1.0 + (a * a - 1.0) * u2));
+            let st = sqrt(max(1.0 - ct * ct, 0.0));
+            l = reflect(-v, normalize(tb * vec3<f32>(st * cos(phi), st * sin(phi), ct)));
+        } else {
+            let rr = sqrt(u1);
+            let phi = 6.2831853 * u2;
+            l = tb * vec3<f32>(rr * cos(phi), rr * sin(phi), sqrt(max(1.0 - u1, 0.0)));
+        }
+        let nl = dot(ns, l);
+        if (nl <= 0.0 || dot(ng, l) <= 0.0) { break; }
+        let hv = normalize(l + v);
+        let nh = max(dot(ns, hv), 0.0);
+        let vh = max(dot(v, hv), 1e-4);
+        let pdf = ps * ggx_d(nh, a) * nh / (4.0 * vh) + (1.0 - ps) * nl / PI;
+        thr = thr * brdf(ns, v, l, base, rough, metal) * nl / max(pdf, 1e-6);
+        depth = depth + 1u;
+        if (depth >= 2u) {
+            let keep = clamp(max(thr.x, max(thr.y, thr.z)), 0.05, 0.95);
+            if (rnd() > keep) { break; }
+            thr = thr / keep;
+        }
+        o = po;
+        d = l;
+    }
+    let lum = dot(radiance, vec3<f32>(0.2126, 0.7152, 0.0722));
+    if (lum > 64.0) { radiance = radiance * (64.0 / lum); }
+    if (any(radiance != radiance)) { radiance = vec3<f32>(0.0); }
+    return old + vec4<f32>(radiance, cover);
+}
+"#;
+
+pub const PATH_SHOW: &str = r#"
+struct Show { params: vec4<f32>, clear: vec4<f32>, };
+@group(0) @binding(0) var<uniform> sh: Show;
+@group(0) @binding(1) var<uniform> env: Env;
+@group(0) @binding(2) var accum: texture_2d<f32>;
+@group(0) @binding(3) var env_sharp: texture_2d<f32>;
+@group(0) @binding(4) var env_mid: texture_2d<f32>;
+@group(0) @binding(5) var env_small: texture_2d<f32>;
+@group(0) @binding(6) var samp: sampler;
+
+@fragment
+fn fs(i: FOut) -> @location(0) vec4<f32> {
+    let a = textureLoad(accum, vec2<i32>(i.clip.xy), 0);
+    let n = max(sh.params.x, 1.0);
+    let c = pow(clamp(view_transform(a.rgb / n * env.forward.w), vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / 2.2));
+    return vec4<f32>(mix(sh.clear.rgb, c, clamp(a.a / n, 0.0, 1.0)), 1.0);
+}
+"#;
+
 pub const EXPORT: &str = r#"
 struct Sel { channel: vec4<u32>, params: vec4<f32>, };
 @group(0) @binding(0) var<uniform> sel: Sel;
