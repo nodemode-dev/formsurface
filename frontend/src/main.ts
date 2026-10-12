@@ -151,8 +151,17 @@ function layers(): LayerInfo[] {
 
 const setList = new TextureSetList($('texture-sets'), (index) => { selectTextureSet(index); });
 
-function textureSets(): TextureSetInfo[] {
-  return engine ? JSON.parse(engine.texture_sets_json()) as TextureSetInfo[] : [];
+function textureSets(): (TextureSetInfo & { size: number })[] {
+  const e = engine;
+  return e ? (JSON.parse(e.texture_sets_json()) as TextureSetInfo[]).map((s) => ({ ...s, size: e.texture_set_size(s.index) })) : [];
+}
+
+function resizeTextureSet(index: number, size: number): string {
+  const name = requireEngine().set_texture_set_size(index, size);
+  refreshSets();
+  refreshLayers();
+  $('gpu-info').textContent = `${requireEngine().backend()} · ${requireEngine().texture_size()} px`;
+  return name;
 }
 
 function refreshSets(): void {
@@ -160,6 +169,8 @@ function refreshSets(): void {
   const sets = textureSets();
   const active = engine.active_texture_set();
   setList.render(sets, active);
+  $<HTMLSelectElement>('ts-size').value = String(engine.texture_set_size(active));
+  $('gpu-info').textContent = `${engine.backend()} · ${engine.texture_size()} px`;
   $<HTMLInputElement>('uv-tiles').checked = engine.uv_tiles();
   const select = $<HTMLSelectElement>('l-instance');
   const wanted = [['', 'Choose a texture set'], ...sets.filter((s) => s.index !== active).map((s) => [String(s.index), s.name])];
@@ -174,6 +185,18 @@ function instanceLayer(id: number, target: number): number {
   refreshLayers();
   return created;
 }
+
+$('ts-size').addEventListener('change', () => {
+  if (!engine) return;
+  const size = Number(sel('ts-size'));
+  try {
+    const name = resizeTextureSet(engine.active_texture_set(), size);
+    status(`${name} is now ${size} px: its layers were resampled, undo cleared; bake again for generators`);
+  } catch (error) {
+    $<HTMLSelectElement>('ts-size').value = String(engine.texture_size());
+    status(error instanceof Error ? error.message : String(error), true);
+  }
+});
 
 $('l-instance').addEventListener('change', () => {
   if (!engine) return;
@@ -969,17 +992,29 @@ async function exportMesh(name = meshName.replace(/\.[^.]+$/, ''), ngons = check
   let heights = new Uint8Array();
   let size = 0;
   if (subdivide > 0 || displacement > 0) {
-    size = e.texture_size();
     const original = e.active_texture_set();
-    const parts: Uint8Array[] = [];
+    const raw: [Uint8Array, number][] = [];
     try {
       for (const set of textureSets()) {
         if (!e.select_texture_set(set.index)) throw new Error('Finish the stroke before exporting');
-        parts.push(await e.export_channel(3) as Uint8Array);
+        raw.push([await e.export_channel(3) as Uint8Array, e.texture_size()]);
       }
     } finally {
       e.select_texture_set(original);
     }
+    size = Math.max(...raw.map(([, s]) => s));
+    const parts = raw.map(([p, s]) => {
+      if (s === size) return p;
+      const out = new Uint8Array(size * size * 4);
+      for (let y = 0; y < size; y++) {
+        const sy = Math.min(s - 1, Math.floor((y * s) / size));
+        for (let x = 0; x < size; x++) {
+          const sx = Math.min(s - 1, Math.floor((x * s) / size));
+          out.set(p.subarray((sy * s + sx) * 4, (sy * s + sx) * 4 + 4), (y * size + x) * 4);
+        }
+      }
+      return out;
+    });
     heights = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
     let at = 0;
     for (const p of parts) { heights.set(p, at); at += p.length; }
@@ -1682,7 +1717,7 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
   const e = engine;
   const template = custom ? { name: 'custom', label: 'Custom', maps: custom } : allTemplates().find((t) => t.name === templateName);
   if (!template) throw new Error(`Unknown export template ${templateName}. Templates: ${allTemplates().map((t) => t.name).join(', ')}`);
-  const size = e.texture_size();
+  let size = e.texture_size();
   const sets = textureSets();
   const original = e.active_texture_set();
   const write = async (name: string, px: Pixels, alpha: boolean, linearize: boolean, src: Int32Array) => {
@@ -1693,6 +1728,7 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
   try {
     for (const set of sets) {
       if (!e.select_texture_set(set.index)) throw new Error('Finish the stroke before exporting');
+      size = e.texture_size();
       const prefix = sets.length > 1 ? `${set.material.replace(/[^A-Za-z0-9_-]/g, '_')}_` : '';
       const suffix = set.tiled ? `.${set.udim}` : '';
       const [, , uvs, indices] = e.texture_set_mesh(set.index) as [Float32Array, Float32Array, Float32Array, Uint32Array, number];
@@ -2133,12 +2169,13 @@ const agentLink = new AgentLink({
     return { filled_triangles: filled, mode: modes[code], layer: e.active_layer() };
   },
   texture_sets: () => ({ texture_sets: textureSets(), active_texture_set: requireEngine().active_texture_set() }),
-  select_texture_set: ({ index, name }) => {
+  select_texture_set: ({ index, name, size }) => {
     const all = textureSets();
     const match = name !== undefined && name !== null ? all.find((s) => s.name === String(name) || s.material === String(name)) : all.find((s) => s.index === Number(index));
     if (!match) throw new Error(`No texture set ${name ?? index}. Sets: ${all.map((s) => s.name).join(', ')}`);
     const set = selectTextureSet(match.index);
-    return { active_texture_set: set, layers: layers(), active_layer: requireEngine().active_layer() };
+    if (size !== undefined && size !== null) resizeTextureSet(match.index, Number(size));
+    return { active_texture_set: set, size: requireEngine().texture_set_size(match.index), layers: layers(), active_layer: requireEngine().active_layer() };
   },
   add_folder: ({ name, layer_ids }) => {
     const e = requireEngine();

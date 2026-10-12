@@ -162,6 +162,7 @@
       <h2>Texture sets</h2>
       <div class="sets" id="texture-sets"></div>
       <label class="check" style="margin-top:6px" title="Painter's UV tiles workflow: the UDIM tiles of a material share one layer stack and a stroke paints across them"><input type="checkbox" id="uv-tiles"> UV tiles: one layer stack per material</label>
+      <div class="row" style="grid-template-columns:84px 1fr"><label for="ts-size">Set size</label><select id="ts-size" title="Resolution of the active texture set or UV tile; its layers are resampled, undo is cleared and bakes need re-running"><option value="256">256</option><option value="512">512</option><option value="1024">1024</option><option value="2048">2048</option><option value="4096">4096</option></select></div>
       <label class="check" title="When you open a new version of the mesh, carry the first texture set's paint and masks over by surface position instead of by UV"><input type="checkbox" id="m-reproject"> Reproject layers on mesh reload</label>
     </section>
     <section class="section">
