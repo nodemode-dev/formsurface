@@ -88,8 +88,15 @@ def main() -> None:
     parser.add_argument("--out", default="workspace/batch", help="folder for screenshots")
     parser.add_argument("--keep-going", action="store_true", help="continue after a failed step")
     parser.add_argument("--pause", type=float, default=0, help="seconds to wait between steps")
+    parser.add_argument("--headless", action="store_true", help="start the service, the editor and a windowless Chrome, Chromium or Edge as needed, run, then stop them")
+    parser.add_argument("--size", type=int, choices=[1024, 2048, 4096], help="texture size for a headless run (the editor's default otherwise)")
     options = parser.parse_args()
     steps = steps_of(json.loads(Path(options.script).read_text()))
+    if options.headless:
+        from headless import Headless
+        with Headless(size=options.size):
+            code = asyncio.run(run(steps, Path(options.out), options.keep_going, options.pause))
+        sys.exit(code)
     wait_for_editor(options.wait)
     sys.exit(asyncio.run(run(steps, Path(options.out), options.keep_going, options.pause)))
 

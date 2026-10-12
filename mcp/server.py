@@ -62,9 +62,9 @@ def formsurface_instance_layer(layer_id: int, texture_set: str) -> dict:
 
 
 @server.tool()
-def formsurface_load_mesh(file: str) -> dict:
-    """Replace the mesh with a glb, gltf, obj, fbx, usd, usda, usdc, usdz, ply or dae from the workspace meshes folder (the mesh update step of a batch). The first texture set keeps its layers in UV space; bakes are reset."""
-    return call("load_mesh", {"file": file}, timeout=180)
+def formsurface_load_mesh(file: str, reproject: bool | None = None) -> dict:
+    """Replace the mesh with a glb, gltf, obj, fbx, usd, usda, usdc, usdz, ply or dae from the workspace meshes folder (the mesh update step of a batch). By default the first texture set keeps its layers in UV space. With reproject true (it stays on until set false), the first texture set's paint, fill masks and painted masks are carried to the new mesh by surface position, so an edited or re-unwrapped version of the same model keeps its painting; texels with no old surface within 5 percent of the mesh radius come out empty, and undo history is cleared. Other texture sets start fresh and bakes are reset either way."""
+    return call("load_mesh", drop_none(file=file, reproject=reproject), timeout=180)
 
 
 @server.tool()
@@ -338,9 +338,10 @@ def formsurface_set_environment(
     blur: Unit | None = None,
     background: bool | None = None,
     exposure: Annotated[float, Field(ge=0.2, le=3)] | None = None,
+    view_transform: Literal["aces", "standard", "agx", "filmic"] | None = None,
 ) -> dict:
-    """Light the viewport with an HDR environment: file is a Radiance .hdr (equirectangular) in the workspace environments folder; studio true returns to the built-in sky and two lights. rotation_degrees turns the environment around the vertical axis, blur softens the background (lighting is unchanged), background shows or hides it behind the model, exposure scales everything. Only the viewport changes, never the exported maps."""
-    return call("environment", drop_none(file=file, studio=studio or None, rotation_degrees=rotation_degrees, blur=blur, background=background, exposure=exposure), timeout=120)
+    """Light the viewport with an HDR environment: file is a Radiance .hdr (equirectangular) in the workspace environments folder; studio true returns to the built-in sky and two lights. rotation_degrees turns the environment around the vertical axis, blur softens the background (lighting is unchanged), background shows or hides it behind the model, exposure scales everything. view_transform is the display transform from scene light to screen: aces (filmic fit, the default), standard (sRGB, highlights clip), agx or filmic (Hable). Only the viewport changes, never the exported maps."""
+    return call("environment", drop_none(file=file, studio=studio or None, rotation_degrees=rotation_degrees, blur=blur, background=background, exposure=exposure, view_transform=view_transform), timeout=120)
 
 
 @server.tool()

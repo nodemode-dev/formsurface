@@ -13,9 +13,9 @@ def load_sample(kind: str = "sphere") -> dict:
     return tool("load_sample", kind=kind)
 
 
-def load_mesh(file: str) -> dict:
-    """Load a mesh from the workspace meshes folder (glb, gltf, obj, fbx, usd, usda, usdc, usdz, ply or dae)."""
-    return tool("load_mesh", file=file)
+def load_mesh(file: str, reproject: bool | None = None) -> dict:
+    """Load a mesh from the workspace meshes folder (glb, gltf, obj, fbx, usd, usda, usdc, usdz, ply or dae); reproject carries the first texture set's painting over by surface position."""
+    return tool("load_mesh", file=file, reproject=reproject)
 
 
 def export_mesh(name: str | None = None) -> dict:
