@@ -112,6 +112,8 @@ function syncView(): void {
   engine?.set_view(num('d-exposure'), num('d-normal'));
   engine?.set_environment_view(num('d-env-rot'), num('d-env-blur'), checked('d-env-bg'));
   engine?.set_post(JSON.stringify(Object.fromEntries(POST_FIELDS.map((k) => [k, num(`p-${k}`)]))));
+  engine?.set_reproject(checked('m-reproject'));
+  engine?.set_view_transform(sel('d-view'));
 }
 
 const environments = new Map<string, HdrImage>();
@@ -519,6 +521,7 @@ async function boot(): Promise<void> {
     applyMesh(mesh ?? sampleMesh('sphere'), mesh ? meshName : 'sphere');
     refreshLayers();
     notice.hidden = true;
+    if (new URLSearchParams(location.search).get('agent') === '1' && $('agent-link').getAttribute('aria-pressed') !== 'true') agentLink.toggle();
   } catch (error) {
     notice.hidden = false;
     notice.textContent = `The GPU engine could not start: ${error instanceof Error ? error.message : String(error)}. FormSurface needs a browser with WebGPU (Chrome, Edge, Safari 26 or Firefox on Windows and macOS).`;
@@ -643,6 +646,8 @@ for (const id of ['m-rough', 'm-metal']) $(id).addEventListener('input', () => {
 $('m-color').addEventListener('input', syncBase);
 for (const id of ['d-exposure', 'd-normal', 'd-env-rot', 'd-env-blur']) $(id).addEventListener('input', () => { setOutput(id); syncView(); });
 $('d-env-bg').addEventListener('change', syncView);
+$('m-reproject').addEventListener('change', syncView);
+$('d-view').addEventListener('change', syncView);
 for (const k of POST_FIELDS) $(`p-${k}`).addEventListener('input', () => { setOutput(`p-${k}`); syncView(); });
 function resetPost(): void {
   for (const k of POST_FIELDS) {
@@ -1592,8 +1597,9 @@ async function blobBase64(blob: Blob): Promise<string> {
 
 const agentLink = new AgentLink({
   status: () => snapshotState(),
-  load_mesh: async ({ file }) => {
+  load_mesh: async ({ file, reproject }) => {
     const name = String(file);
+    if (reproject !== undefined && reproject !== null) setControl('m-reproject', Boolean(reproject), 'change');
     const response = await fetch(`/api/meshes/${encodeURIComponent(name)}`);
     if (!response.ok) throw new Error(`${name} is not in the workspace meshes folder`);
     applyMesh(await loadMeshFile(new File([await response.arrayBuffer()], name)), name);
@@ -1654,8 +1660,12 @@ const agentLink = new AgentLink({
   },
   smart_list: async () => { await refreshLibrary(); await refreshMasks(); return { materials: library.map((m) => ({ name: m.name, built_in: !!m.builtIn, layers: m.layers.map((l) => l.name) })), masks: Object.keys(smartMasks), saved_masks: Object.keys(smartMasks).filter((n) => !SMART_MASKS[n]) }; },
   save_smart_mask: async ({ id, name }) => saveSmartMask(Number(id), String(name ?? '')),
-  environment: async ({ file, studio, rotation_degrees, blur, background, exposure }) => {
+  environment: async ({ file, studio, rotation_degrees, blur, background, exposure, view_transform }) => {
     const e = requireEngine();
+    if (view_transform !== undefined && view_transform !== null) {
+      if (![...$<HTMLSelectElement>('d-view').options].some((o) => o.value === view_transform)) throw new Error('view_transform is aces, standard, agx or filmic');
+      setControl('d-view', view_transform, 'change');
+    }
     if (studio) useEnvironment('');
     else if (file) {
       const name = String(file);
@@ -1667,7 +1677,7 @@ const agentLink = new AgentLink({
       }
     }
     setControl('d-env-rot', rotation_degrees); setControl('d-env-blur', blur); setControl('d-env-bg', background, 'change'); setControl('d-exposure', exposure);
-    return JSON.parse(e.environment_json()) as Record<string, unknown>;
+    return { ...(JSON.parse(e.environment_json()) as Record<string, unknown>), view_transform: e.view_transform() };
   },
   smart_apply: async ({ name }) => { await refreshLibrary(); return { layer_ids: applySmartMaterial(String(name)), baked: requireEngine().is_baked(), layers: layers() }; },
   smart_mask: ({ id, name }) => ({ settings: applySmartMask(Number(id), String(name)) }),
@@ -1951,5 +1961,7 @@ function tick(now: number): void {
 }
 
 await init();
+const startSize = new URLSearchParams(location.search).get('size');
+if (startSize && [...$<HTMLSelectElement>('tex-size').options].some((o) => o.value === startSize)) $<HTMLSelectElement>('tex-size').value = startSize;
 await boot();
 requestAnimationFrame(tick);
