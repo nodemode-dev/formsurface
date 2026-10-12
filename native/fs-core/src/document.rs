@@ -98,6 +98,14 @@ pub struct ChannelValues {
     pub extra: f32,
     #[serde(default)]
     pub use_extra: bool,
+    #[serde(default = "one")]
+    pub extra2: f32,
+    #[serde(default)]
+    pub use_extra2: bool,
+    #[serde(default = "one")]
+    pub extra3: f32,
+    #[serde(default)]
+    pub use_extra3: bool,
 }
 
 fn one() -> f32 {
@@ -150,6 +158,10 @@ impl Default for ChannelValues {
             use_height: false,
             extra: 1.0,
             use_extra: false,
+            extra2: 1.0,
+            use_extra2: false,
+            extra3: 1.0,
+            use_extra3: false,
         }
     }
 }
@@ -422,6 +434,10 @@ pub struct FillSettings {
     pub warp: [f32; 32],
     pub extra: f32,
     pub use_extra: bool,
+    pub extra2: f32,
+    pub use_extra2: bool,
+    pub extra3: f32,
+    pub use_extra3: bool,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -595,12 +611,16 @@ impl Default for FillSettings {
             warp: warp_rest(),
             extra: 1.0,
             use_extra: false,
+            extra2: 1.0,
+            use_extra2: false,
+            extra3: 1.0,
+            use_extra3: false,
         }
     }
 }
 
 impl FillSettings {
-    pub fn uniform(&self, center: [f32; 3], radius: f32) -> [f32; 72] {
+    pub fn uniform(&self, center: [f32; 3], radius: f32) -> [f32; 76] {
         let generator = match self.generator {
             Generator::None => 0.0,
             Generator::Cavity => 1.0,
@@ -645,13 +665,17 @@ impl FillSettings {
             self.builder_ao.clamp(0.0, 1.0), self.builder_curvature.clamp(0.0, 1.0), self.builder_noise.clamp(0.0, 1.0), self.noise_scale.clamp(0.1, 64.0),
             d[0] / len, d[1] / len, d[2] / len, self.generator_noise.clamp(0.0, 1.0),
         ];
-        let mut out = [0.0; 72];
+        let mut out = [0.0; 76];
         out[..36].copy_from_slice(&head);
         for (o, w) in out[36..68].iter_mut().zip(self.warp.iter()) {
             *o = if w.is_finite() { w.clamp(-2.0, 3.0) } else { 0.0 };
         }
         out[68] = self.extra.clamp(0.0, 1.0);
         out[69] = flag(self.use_extra);
+        out[72] = self.extra2.clamp(0.0, 1.0);
+        out[73] = flag(self.use_extra2);
+        out[74] = self.extra3.clamp(0.0, 1.0);
+        out[75] = flag(self.use_extra3);
         out
     }
 }

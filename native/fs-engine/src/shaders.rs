@@ -431,6 +431,7 @@ struct Camera {
 @group(0) @binding(10) var<uniform> look: vec4<f32>;
 @group(0) @binding(11) var display_lut: texture_3d<f32>;
 @group(0) @binding(12) var lut_samp: sampler;
+@group(0) @binding(13) var aux_tex: texture_2d<f32>;
 
 struct VOut {
     @builtin(position) clip: vec4<f32>,
@@ -472,6 +473,8 @@ fn fs(i: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
             if (flat_channel > 1.5) { gray = fm.g; }
             if (flat_channel > 2.5) { gray = fm.b; }
             if (flat_channel > 3.5) { gray = fm.a; }
+            if (flat_channel > 4.5) { gray = textureSampleLevel(aux_tex, samp, i.uv, 0.0).x; }
+            if (flat_channel > 5.5) { gray = textureSampleLevel(aux_tex, samp, i.uv, 0.0).z; }
             flat_color = vec3<f32>(pow(clamp(gray, 0.0, 1.0), 2.2));
         }
         if (cam.cursor.w > 0.0) {
@@ -737,6 +740,7 @@ struct Paint {
     flags: vec4<f32>,
     mode: vec4<f32>,
     extra: vec4<f32>,
+    aux: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> paint: Paint;
 @group(0) @binding(1) var snap_color: texture_2d<f32>;
@@ -746,12 +750,18 @@ struct Paint {
 @group(0) @binding(5) var clone_color: texture_2d<f32>;
 @group(0) @binding(6) var clone_mat: texture_2d<f32>;
 @group(0) @binding(7) var clone_cov: texture_2d<f32>;
+@group(0) @binding(8) var snap_aux: texture_2d<f32>;
 
 struct Out {
     @location(0) color: vec4<f32>,
     @location(1) val: vec4<f32>,
     @location(2) cov: vec4<f32>,
+    @location(3) aux: vec4<f32>,
 };
+
+fn paint_pair(s: vec2<f32>, value: f32, a: f32) -> vec2<f32> {
+    return vec2<f32>(value * a + s.x * (1.0 - a), a + s.y * (1.0 - a));
+}
 
 @fragment
 fn fs(@builtin(position) pos: vec4<f32>) -> Out {
@@ -761,9 +771,13 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     let sv = textureLoad(snap_val, p, 0);
     let sk = textureLoad(snap_cov, p, 0);
     let a = clamp(textureLoad(mask, p, 0).r, 0.0, 1.0) * paint.mode.y;
+    let sa = textureLoad(snap_aux, p, 0);
     var o: Out;
     if (paint.mode.x > 0.5) {
         let k = 1.0 - a;
+        let k2 = select(1.0, k, paint.aux.y > 0.5);
+        let k3 = select(1.0, k, paint.aux.w > 0.5);
+        o.aux = vec4<f32>(sa.xy * k2, sa.zw * k3);
         o.color = vec4<f32>(sc.rgb * select(1.0, k, paint.flags.x > 0.5), sc.a * select(1.0, k, paint.flags.x > 0.5));
         let ks = vec3<f32>(select(1.0, k, paint.flags.y > 0.5), select(1.0, k, paint.flags.z > 0.5), select(1.0, k, paint.flags.w > 0.5));
         let ke = select(1.0, k, paint.extra.y > 0.5);
@@ -798,6 +812,7 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     let ae = a * paint.extra.y * extra_cov;
     o.val = vec4<f32>(src_values * am + sv.rgb * (1.0 - am), src_extra * ae + sv.a * (1.0 - ae));
     o.cov = vec4<f32>(am + sk.rgb * (1.0 - am), ae + sk.a * (1.0 - ae));
+    o.aux = vec4<f32>(paint_pair(sa.xy, paint.aux.x, a * paint.aux.y), paint_pair(sa.zw, paint.aux.z, a * paint.aux.w));
     return o;
 }
 "#;
@@ -904,8 +919,15 @@ struct Layer {
 @group(0) @binding(5) var l_cov: texture_2d<f32>;
 @group(0) @binding(6) var l_mask: texture_2d<f32>;
 @group(0) @binding(7) var uv_cover: texture_2d<f32>;
+@group(0) @binding(8) var prev_aux: texture_2d<f32>;
+@group(0) @binding(9) var l_aux: texture_2d<f32>;
 
-struct Out { @location(0) color: vec4<f32>, @location(1) mat: vec4<f32>, };
+struct Out { @location(0) color: vec4<f32>, @location(1) mat: vec4<f32>, @location(2) aux: vec4<f32>, };
+
+fn over(prev: f32, pair: vec2<f32>, op: f32) -> f32 {
+    if (pair.y <= 1e-5) { return prev; }
+    return mix(prev, clamp(pair.x / pair.y, 0.0, 1.0), clamp(pair.y, 0.0, 1.0) * op);
+}
 
 @fragment
 fn fs(@builtin(position) pos: vec4<f32>) -> Out {
@@ -913,11 +935,14 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     if (layer.mode.y == 1u) {
         o.color = vec4<f32>(layer.base_color.rgb, 1.0);
         o.mat = layer.base_values;
+        o.aux = vec4<f32>(0.0);
         return o;
     }
     let p = vec2<i32>(pos.xy);
     let pc = textureLoad(prev_color, p, 0);
     let pm = textureLoad(prev_mat, p, 0);
+    let pa = textureLoad(prev_aux, p, 0);
+    o.aux = pa;
     let lc = textureLoad(l_color, p, 0);
     let lv = textureLoad(l_val, p, 0);
     let lk = textureLoad(l_cov, p, 0);
@@ -995,6 +1020,8 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     }
     o.color = vec4<f32>(col, 1.0);
     o.mat = vec4<f32>(vals, extra);
+    let la = textureLoad(l_aux, p, 0);
+    o.aux = vec4<f32>(over(pa.x, la.xy, op), 0.0, over(pa.z, la.zw, op), 0.0);
     return o;
 }
 "#;
@@ -1058,6 +1085,7 @@ struct Fill {
     direction: vec4<f32>,
     warp: array<vec4<f32>, 8>,
     extra: vec4<f32>,
+    aux: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> fill: Fill;
 
@@ -1153,6 +1181,7 @@ struct Out {
     @location(0) color: vec4<f32>,
     @location(1) val: vec4<f32>,
     @location(2) cov: vec4<f32>,
+    @location(3) aux: vec4<f32>,
 };
 
 fn hash(p: vec2<f32>) -> f32 {
@@ -1279,10 +1308,14 @@ fn fs(@builtin(position) frag: vec4<f32>) -> Out {
     let ae = a * fill.extra.y;
     o.val = vec4<f32>(fill.values.xyz * am, fill.extra.x * ae);
     o.cov = vec4<f32>(am, ae);
+    let a2 = a * fill.aux.y;
+    let a3 = a * fill.aux.w;
+    o.aux = vec4<f32>(fill.aux.x * a2, a2, fill.aux.z * a3, a3);
     if (wp.w < 0.5) {
         o.color = vec4<f32>(0.0);
         o.val = vec4<f32>(0.0);
         o.cov = vec4<f32>(0.0);
+        o.aux = vec4<f32>(0.0);
     }
     return o;
 }
@@ -1330,8 +1363,17 @@ struct Merge {
 @group(0) @binding(6) var bottom_val: texture_2d<f32>;
 @group(0) @binding(7) var bottom_cov: texture_2d<f32>;
 @group(0) @binding(8) var bottom_mask: texture_2d<f32>;
+@group(0) @binding(9) var top_aux: texture_2d<f32>;
+@group(0) @binding(10) var bottom_aux: texture_2d<f32>;
 
-struct Out { @location(0) color: vec4<f32>, @location(1) val: vec4<f32>, @location(2) cov: vec4<f32>, };
+struct Out { @location(0) color: vec4<f32>, @location(1) val: vec4<f32>, @location(2) cov: vec4<f32>, @location(3) aux: vec4<f32>, };
+
+fn merge_pair(t: vec2<f32>, b: vec2<f32>, kt: f32, kb: f32) -> vec2<f32> {
+    let ct = clamp(t.y, 0.0, 1.0) * kt;
+    let cb = clamp(b.y, 0.0, 1.0) * kb;
+    let value = ct * (t.x / max(t.y, 1e-4)) + (1.0 - ct) * cb * (b.x / max(b.y, 1e-4));
+    return vec2<f32>(value, ct + cb * (1.0 - ct));
+}
 
 @fragment
 fn fs(@builtin(position) pos: vec4<f32>) -> Out {
@@ -1364,6 +1406,9 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     let extra = et * (tv.a / max(tk.a, 1e-4)) + (1.0 - et) * eb * (bv.a / max(bk.a, 1e-4));
     o.val = vec4<f32>(vt * top_v + (1.0 - vt) * vb * bottom_v, extra);
     o.cov = vec4<f32>(vt + vb * (1.0 - vt), et + eb * (1.0 - et));
+    let ta = textureLoad(top_aux, p, 0);
+    let ba = textureLoad(bottom_aux, p, 0);
+    o.aux = vec4<f32>(merge_pair(ta.xy, ba.xy, kt, kb), merge_pair(ta.zw, ba.zw, kt, kb));
     return o;
 }
 "#;
@@ -1371,8 +1416,9 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
 pub const PAIR_TO_SET: &str = r#"
 @group(0) @binding(0) var final_color: texture_2d<f32>;
 @group(0) @binding(1) var final_mat: texture_2d<f32>;
+@group(0) @binding(2) var final_aux: texture_2d<f32>;
 
-struct Out { @location(0) color: vec4<f32>, @location(1) val: vec4<f32>, @location(2) cov: vec4<f32>, };
+struct Out { @location(0) color: vec4<f32>, @location(1) val: vec4<f32>, @location(2) cov: vec4<f32>, @location(3) aux: vec4<f32>, };
 
 @fragment
 fn fs(@builtin(position) pos: vec4<f32>) -> Out {
@@ -1381,6 +1427,8 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     o.color = vec4<f32>(textureLoad(final_color, p, 0).rgb, 1.0);
     o.val = textureLoad(final_mat, p, 0);
     o.cov = vec4<f32>(1.0, 1.0, 1.0, 1.0);
+    let a = textureLoad(final_aux, p, 0);
+    o.aux = vec4<f32>(a.x, 1.0, a.z, 1.0);
     return o;
 }
 "#;
@@ -1519,8 +1567,9 @@ pub const DILATE: &str = r#"
 @group(0) @binding(0) var src_color: texture_2d<f32>;
 @group(0) @binding(1) var src_mat: texture_2d<f32>;
 @group(0) @binding(2) var coverage: texture_2d<f32>;
+@group(0) @binding(3) var src_aux: texture_2d<f32>;
 
-struct Out { @location(0) color: vec4<f32>, @location(1) mat: vec4<f32>, };
+struct Out { @location(0) color: vec4<f32>, @location(1) mat: vec4<f32>, @location(2) aux: vec4<f32>, };
 
 @fragment
 fn fs(@builtin(position) pos: vec4<f32>) -> Out {
@@ -1529,6 +1578,7 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
     var o: Out;
     o.color = textureLoad(src_color, p, 0);
     o.mat = textureLoad(src_mat, p, 0);
+    o.aux = textureLoad(src_aux, p, 0);
     if (textureLoad(coverage, p, 0).r > 0.5) { return o; }
     let dirs = array<vec2<i32>, 8>(vec2<i32>(1, 0), vec2<i32>(-1, 0), vec2<i32>(0, 1), vec2<i32>(0, -1), vec2<i32>(1, 1), vec2<i32>(-1, 1), vec2<i32>(1, -1), vec2<i32>(-1, -1));
     for (var r = 1; r <= 16; r = r + 1) {
@@ -1537,6 +1587,7 @@ fn fs(@builtin(position) pos: vec4<f32>) -> Out {
             if (textureLoad(coverage, q, 0).r > 0.5) {
                 o.color = textureLoad(src_color, q, 0);
                 o.mat = textureLoad(src_mat, q, 0);
+                o.aux = textureLoad(src_aux, q, 0);
                 return o;
             }
         }
@@ -2263,6 +2314,7 @@ struct Sel { channel: vec4<u32>, params: vec4<f32>, };
 @group(0) @binding(6) var baked_normal: texture_2d<f32>;
 @group(0) @binding(7) var baked_id: texture_2d<f32>;
 @group(0) @binding(8) var lin: sampler;
+@group(0) @binding(9) var aux_tex: texture_2d<f32>;
 
 @fragment
 fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
@@ -2289,6 +2341,8 @@ fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         case 2u: { return vec4<f32>(vec3<f32>(m.g), 1.0); }
         case 3u: { return vec4<f32>(vec3<f32>(m.b), 1.0); }
         case 12u: { return vec4<f32>(vec3<f32>(clamp(m.a, 0.0, 1.0)), 1.0); }
+        case 13u: { return vec4<f32>(vec3<f32>(clamp(textureLoad(aux_tex, p, 0).x, 0.0, 1.0)), 1.0); }
+        case 14u: { return vec4<f32>(vec3<f32>(clamp(textureLoad(aux_tex, p, 0).z, 0.0, 1.0)), 1.0); }
         default: {
             let hx = textureLoad(mat_tex, clamp(p + vec2<i32>(1, 0), vec2<i32>(0), size - 1), 0).b - textureLoad(mat_tex, clamp(p - vec2<i32>(1, 0), vec2<i32>(0), size - 1), 0).b;
             let hy = textureLoad(mat_tex, clamp(p + vec2<i32>(0, 1), vec2<i32>(0), size - 1), 0).b - textureLoad(mat_tex, clamp(p - vec2<i32>(0, 1), vec2<i32>(0), size - 1), 0).b;

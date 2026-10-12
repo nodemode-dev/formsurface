@@ -1251,7 +1251,7 @@ impl Engine {
     }
 
     pub fn set_view_2d_channel(&mut self, channel: u32) {
-        self.gpu.flat_channel = channel.min(4);
+        self.gpu.flat_channel = channel.min(6);
     }
 
     pub fn set_extra_channel(&mut self, index: u32, role: &str) -> Result<(), JsValue> {
@@ -1267,6 +1267,29 @@ impl Engine {
         self.switch_set(original);
         self.dirty = true;
         Ok(())
+    }
+
+    pub fn set_user_channel(&mut self, index: u32, slot: u32, on: bool) -> Result<(), JsValue> {
+        if !(2..=3).contains(&slot) {
+            return Err(JsValue::from_str("User channel slots beyond the extra channel are 2 and 3"));
+        }
+        let index = index as usize;
+        if index >= self.sets.len() {
+            return Err(JsValue::from_str("No texture set with that index"));
+        }
+        let original = self.set_index;
+        self.switch_set(index);
+        self.gpu.aux_roles[slot as usize - 2] = if on { 1.0 } else { 0.0 };
+        self.render_fills();
+        self.flush_set();
+        self.switch_set(original);
+        self.dirty = true;
+        Ok(())
+    }
+
+    pub fn user_channels(&self, index: u32) -> Vec<u32> {
+        let roles = self.gpu.set_aux_roles(index as usize);
+        (0..2).filter(|k| roles[*k] > 0.5).map(|k| k as u32 + 2).collect()
     }
 
     pub fn extra_channel(&self, index: u32) -> String {
