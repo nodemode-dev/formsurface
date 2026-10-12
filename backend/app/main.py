@@ -181,8 +181,23 @@ async def save_library(name: str, request: Request):
     root = DATA / "library"
     root.mkdir(parents=True, exist_ok=True)
     path = root / f"{name}.json"
-    path.write_text(json.dumps({"name": name, "layers": layers}, indent=2))
+    entry = {"name": name, "layers": layers}
+    thumbnail = clean_thumbnail(body.get("thumbnail"))
+    if thumbnail:
+        entry["thumbnail"] = thumbnail
+    path.write_text(json.dumps(entry, indent=2))
     return {"file": str(path)}
+
+
+THUMBNAIL = re.compile(r"^data:image/(png|webp|jpeg);base64,[A-Za-z0-9+/=]+$")
+
+
+def clean_thumbnail(value):
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value) > 200_000 or not THUMBNAIL.match(value):
+        raise HTTPException(400, "A thumbnail is a base64 PNG, WebP or JPEG data URL under 200 KB")
+    return value
 
 
 TEMPLATE_SOURCES = {"basecolor", "normal_gl", "normal_dx", "roughness", "smoothness", "metallic", "height", "ao", "curvature", "thickness", "ao_high", "height_high", "opacity", "diffuse", "specular", "one", "zero"}
@@ -274,7 +289,11 @@ async def save_smart_mask(name: str, request: Request):
     root = DATA / "smart_masks"
     root.mkdir(parents=True, exist_ok=True)
     path = root / f"{name}.json"
-    path.write_text(json.dumps({"name": name, "settings": clean}, indent=2))
+    entry = {"name": name, "settings": clean}
+    thumbnail = clean_thumbnail(body.get("thumbnail"))
+    if thumbnail:
+        entry["thumbnail"] = thumbnail
+    path.write_text(json.dumps(entry, indent=2))
     return {"file": str(path)}
 
 
