@@ -904,6 +904,7 @@ function syncPath(): void {
   try {
     engine?.set_path_trace(checked('d-path'), num('d-path-bounces'), Number(sel('d-path-max')));
     engine?.set_path_denoise(checked('d-path-denoise'));
+    engine?.set_path_lens(num('d-path-aperture'), num('d-path-focus'));
   } catch (error) {
     $<HTMLInputElement>('d-path').checked = false;
     status(error instanceof Error ? error.message : String(error), true);
@@ -925,6 +926,11 @@ $('d-path').addEventListener('change', syncPath);
 $('d-path-bounces').addEventListener('input', syncPath);
 $('d-path-max').addEventListener('change', syncPath);
 $('d-path-denoise').addEventListener('change', () => engine?.set_path_denoise(checked('d-path-denoise')));
+for (const id of ['d-path-aperture', 'd-path-focus']) $(id).addEventListener('input', () => { setOutput(id); engine?.set_path_lens(num('d-path-aperture'), num('d-path-focus')); });
+$('d-render').addEventListener('click', () => {
+  if (!checked('d-path')) { status('Turn on path tracing first, then render', true); return; }
+  renderPath(num('d-render-w'), num('d-render-h'), Number(sel('d-render-samples'))).then((r) => status(`Render written to ${r.folder} as ${r.file}`), (error) => status(error instanceof Error ? error.message : String(error), true));
+});
 for (const k of POST_FIELDS) $(`p-${k}`).addEventListener('input', () => { setOutput(`p-${k}`); syncView(); });
 function resetPost(): void {
   for (const k of POST_FIELDS) {
@@ -2029,6 +2035,35 @@ async function viewportPng(): Promise<Blob> {
   return surface.convertToBlob({ type: 'image/png' });
 }
 
+let rendering = false;
+async function renderPath(width: number, height: number, samples: number, name = meshName.replace(/\.[^.]+$/, '')): Promise<{ folder: string; file: string; samples: number }> {
+  const e = requireEngine();
+  if (rendering) throw new Error('A render is already running');
+  rendering = true;
+  try {
+    e.path_render_begin(Math.round(width), Math.round(height));
+    let done = 0;
+    let last = -1;
+    while (done < samples && done !== last) {
+      last = done;
+      done = e.path_trace_run(Math.min(samples, (JSON.parse(e.path_trace_json()) as { samples: number }).samples + 2));
+      await e.gpu_idle();
+      status(`Rendering ${Math.round(width)} by ${Math.round(height)}: ${done} of ${samples} samples`);
+    }
+    const bytes = await (e.path_render_read() as Promise<Uint8Array>);
+    const surface = new OffscreenCanvas(Math.round(width), Math.round(height));
+    surface.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength), Math.round(width), Math.round(height)), 0, 0);
+    const blob = await surface.convertToBlob({ type: 'image/png' });
+    const file = `render_${Math.round(width)}x${Math.round(height)}_${done}spp.png`;
+    if (await api.alive()) return { folder: await api.saveMaps(name, new Map([[file, blob]])), file, samples: done };
+    downloadBlob(blob, `${name}_${file}`);
+    return { folder: 'your downloads', file, samples: done };
+  } finally {
+    e.path_render_end();
+    rendering = false;
+  }
+}
+
 $('screenshot').addEventListener('click', async () => {
   if (!engine) return;
   try {
@@ -2465,9 +2500,15 @@ const agentLink = new AgentLink({
   undo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().undo()) n++; return { undone: n }; },
   redo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().redo()) n++; return { redone: n }; },
   screenshot: async () => ({ png_base64: await blobBase64(await viewportPng()) }),
-  path_trace: async ({ on, bounces, max_samples, samples, denoise }) => {
+  path_render: async ({ width, height, samples, name }) => {
+    if (!JSON.parse(requireEngine().path_trace_json()).on) throw new Error('Turn path tracing on first (path_trace on true)');
+    return { width: Number(width), height: Number(height), ...(await renderPath(Number(width), Number(height), Number(samples ?? 256), name ? String(name) : undefined)) };
+  },
+  path_trace: async ({ on, bounces, max_samples, samples, denoise, aperture, focus }) => {
     const e = requireEngine();
     setControl('d-path-denoise', denoise, 'change');
+    setControl('d-path-aperture', aperture);
+    setControl('d-path-focus', focus);
     if (max_samples !== undefined && max_samples !== null) {
       if (![...$<HTMLSelectElement>('d-path-max').options].some((o) => o.value === String(max_samples))) throw new Error('max_samples is 64, 256, 1024 or 4096');
       setControl('d-path-max', String(max_samples), 'change');

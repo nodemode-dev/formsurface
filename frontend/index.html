@@ -327,7 +327,12 @@ print(project.status()["mesh"])</textarea>
       <div class="row"><label for="d-path-bounces">Bounces</label><input id="d-path-bounces" type="range" min="1" max="12" step="1" value="4"><output for="d-path-bounces">4</output></div>
       <div class="row" style="grid-template-columns:84px 1fr"><label for="d-path-max">Samples</label><select id="d-path-max"><option value="64">64</option><option value="256">256</option><option value="1024" selected>1024</option><option value="4096">4096</option></select></div>
       <label class="check" title="Edge-aware filter guided by the traced albedo, normals and depth; it smooths noise while samples are few and keeps texture detail"><input type="checkbox" id="d-path-denoise">Denoise the traced image</label>
+      <div class="row"><label for="d-path-aperture">Lens aperture</label><input id="d-path-aperture" type="range" min="0" max="1" step="0.01" value="0"><output for="d-path-aperture">0.00</output></div>
+      <div class="row"><label for="d-path-focus">Focus offset</label><input id="d-path-focus" type="range" min="-1" max="1" step="0.01" value="0"><output for="d-path-focus">0.00</output></div>
       <p class="check" id="d-path-state" style="margin:2px 0 0">Raster viewport</p>
+      <div class="row" style="grid-template-columns:84px 1fr 1fr"><label for="d-render-w">Render size</label><input id="d-render-w" type="number" min="16" max="3840" step="1" value="1920"><input id="d-render-h" type="number" min="16" max="3840" step="1" value="1080" aria-label="Render height"></div>
+      <div class="row" style="grid-template-columns:84px 1fr"><label for="d-render-samples">Render samples</label><select id="d-render-samples"><option value="64">64</option><option value="256" selected>256</option><option value="1024">1024</option><option value="4096">4096</option></select></div>
+      <button class="btn" id="d-render" style="width:100%;justify-content:center;margin-top:6px" title="Path trace the current view at this size and save it as a PNG">Render to file</button>
       <div class="row" style="grid-template-columns:84px 1fr"><label for="d-2d-channel">2D view shows</label><select id="d-2d-channel"><option value="0">Base color</option><option value="1">Roughness</option><option value="2">Metallic</option><option value="3">Height</option><option value="4">Extra channel</option></select></div>
       <input type="file" id="env-file" accept=".hdr" hidden>
     </section>
