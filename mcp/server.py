@@ -382,9 +382,22 @@ def formsurface_path_trace(
     max_samples: Literal[64, 256, 1024, 4096] | None = None,
     samples: Annotated[int, Field(ge=1, le=4096)] | None = None,
     denoise: bool | None = None,
+    aperture: Unit | None = None,
+    focus: Annotated[float, Field(ge=-1, le=1)] | None = None,
 ) -> dict:
-    """Progressive path tracing of the viewport: the painted texture sets (base color, roughness, metallic, height and normal, the extra channel as opacity cut-out or emissive) lit by the HDR environment, or by the studio sky with its two lights and traced shadows, with light bouncing up to bounces times. It keeps refining every frame until max_samples and restarts when the camera, lighting or paint changes; strokes show the raster view while painting. samples renders that many before returning, so a screenshot right after shows a converged image. HDR lighting is importance-sampled, so small bright sources such as a sun converge quickly. denoise smooths the traced image with an edge-aware filter guided by albedo, normals and depth, useful below a few hundred samples. Viewport and screenshots only, never the exported maps."""
-    return call("path_trace", drop_none(on=on, bounces=bounces, max_samples=max_samples, samples=samples, denoise=denoise), timeout=600)
+    """Progressive path tracing of the viewport: the painted texture sets (base color, roughness, metallic, height and normal, the extra channel as opacity cut-out or emissive) lit by the HDR environment, or by the studio sky with its two lights and traced shadows, with light bouncing up to bounces times. It keeps refining every frame until max_samples and restarts when the camera, lighting or paint changes; strokes show the raster view while painting. samples renders that many before returning, so a screenshot right after shows a converged image. HDR lighting is importance-sampled, so small bright sources such as a sun converge quickly. denoise smooths the traced image with an edge-aware filter guided by albedo, normals and depth, useful below a few hundred samples. aperture (0 to 1) opens a thin lens for depth of field and focus (-1 to 1, in mesh radii) moves the focal plane in front of or behind the orbit target. Viewport and screenshots only, never the exported maps."""
+    return call("path_trace", drop_none(on=on, bounces=bounces, max_samples=max_samples, samples=samples, denoise=denoise, aperture=aperture, focus=focus), timeout=600)
+
+
+@server.tool()
+def formsurface_path_render(
+    width: Annotated[int, Field(ge=16, le=3840)] = 1920,
+    height: Annotated[int, Field(ge=16, le=3840)] = 1080,
+    samples: Annotated[int, Field(ge=1, le=4096)] = 256,
+    name: Annotated[str, Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")] | None = None,
+) -> dict:
+    """Path trace the current camera view at width by height with that many samples and save it as a PNG in the workspace exports folder (named render_WxH_Nspp.png), using the path tracer's bounces, denoise and lens settings. Turn path tracing on first with formsurface_path_trace. The viewport shows the raster view while it renders."""
+    return call("path_render", drop_none(width=width, height=height, samples=samples, name=name), timeout=3600)
 
 
 @server.tool()
