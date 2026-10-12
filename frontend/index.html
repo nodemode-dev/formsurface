@@ -165,12 +165,14 @@ print(project.status()["mesh"])</textarea>
       <div class="channel"><input type="checkbox" id="c-use-rough" checked aria-label="Paint roughness"><label for="c-rough">Roughness</label><input id="c-rough" type="range" min="0" max="1" step="0.01" value="0.45"><output for="c-rough">0.45</output></div>
       <div class="channel"><input type="checkbox" id="c-use-metal" checked aria-label="Paint metallic"><label for="c-metal">Metallic</label><input id="c-metal" type="range" min="0" max="1" step="0.01" value="0"><output for="c-metal">0.00</output></div>
       <div class="channel"><input type="checkbox" id="c-use-height" aria-label="Paint height"><label for="c-height">Height</label><input id="c-height" type="range" min="0" max="1" step="0.01" value="0.75"><output for="c-height">0.75</output></div>
+      <div class="channel"><input type="checkbox" id="c-use-extra" aria-label="Paint the extra channel" disabled><label for="c-extra" id="c-extra-label">Extra channel</label><input id="c-extra" type="range" min="0" max="1" step="0.01" value="1" disabled><output for="c-extra">1.00</output></div>
     </section>
     <section class="section">
       <h2>Texture sets</h2>
       <div class="sets" id="texture-sets"></div>
       <label class="check" style="margin-top:6px" title="Painter's UV tiles workflow: the UDIM tiles of a material share one layer stack and a stroke paints across them"><input type="checkbox" id="uv-tiles"> UV tiles: one layer stack per material</label>
       <div class="row" style="grid-template-columns:84px 1fr"><label for="ts-size">Set size</label><select id="ts-size" title="Resolution of the active texture set or UV tile; its layers are resampled, undo is cleared and bakes need re-running"><option value="256">256</option><option value="512">512</option><option value="1024">1024</option><option value="2048">2048</option><option value="4096">4096</option></select></div>
+      <div class="row" style="grid-template-columns:84px 1fr 96px"><label for="ts-extra">Extra channel</label><select id="ts-extra" title="A fifth channel for the active texture set: a named user channel, opacity, ambient occlusion or emissive strength"><option value="off">Off</option><option value="user">User (named)</option><option value="opacity">Opacity</option><option value="ambient_occlusion">Ambient occlusion</option><option value="emissive">Emissive</option></select><input id="ts-extra-name" type="text" value="user0" aria-label="User channel name" hidden style="min-width:0;height:28px;padding:0 8px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius)"></div>
       <label class="check" title="When you open a new version of the mesh, carry the first texture set's paint and masks over by surface position instead of by UV"><input type="checkbox" id="m-reproject"> Reproject layers on mesh reload</label>
     </section>
     <section class="section">
@@ -245,6 +247,7 @@ print(project.status()["mesh"])</textarea>
       <div class="channel"><input type="checkbox" id="f-use-rough" checked aria-label="Fill roughness"><label for="f-rough">Roughness</label><input id="f-rough" type="range" min="0" max="1" step="0.01" value="0.55"><output for="f-rough">0.55</output></div>
       <div class="channel"><input type="checkbox" id="f-use-metal" checked aria-label="Fill metallic"><label for="f-metal">Metallic</label><input id="f-metal" type="range" min="0" max="1" step="0.01" value="0"><output for="f-metal">0.00</output></div>
       <div class="channel"><input type="checkbox" id="f-use-height" aria-label="Fill height"><label for="f-height">Height</label><input id="f-height" type="range" min="0" max="1" step="0.01" value="0.5"><output for="f-height">0.50</output></div>
+      <div class="channel"><input type="checkbox" id="f-use-extra" aria-label="Fill the extra channel" disabled><label for="f-extra" id="f-extra-label">Extra channel</label><input id="f-extra" type="range" min="0" max="1" step="0.01" value="1" disabled><output for="f-extra">1.00</output></div>
       <div class="row"><label for="f-opacity">Fill amount</label><input id="f-opacity" type="range" min="0" max="1" step="0.01" value="1"><output for="f-opacity">1.00</output></div>
       <div class="row"><label for="f-gen">Generator</label><select id="f-gen">
         <option value="none">None</option><option value="cavity">Cavity dirt (AO)</option><option value="edges">Edge wear (curvature)</option><option value="thin">Thin areas (thickness)</option><option value="top">From top (position)</option>
@@ -320,7 +323,7 @@ print(project.status()["mesh"])</textarea>
       <div class="row"><label for="d-env-rot">Rotation</label><input id="d-env-rot" type="range" min="-180" max="180" step="1" value="0"><output for="d-env-rot">0</output></div>
       <div class="row"><label for="d-env-blur">Background blur</label><input id="d-env-blur" type="range" min="0" max="1" step="0.01" value="0"><output for="d-env-blur">0.00</output></div>
       <label class="check"><input type="checkbox" id="d-env-bg" checked>Show environment as background</label>
-      <div class="row" style="grid-template-columns:84px 1fr"><label for="d-2d-channel">2D view shows</label><select id="d-2d-channel"><option value="0">Base color</option><option value="1">Roughness</option><option value="2">Metallic</option><option value="3">Height</option></select></div>
+      <div class="row" style="grid-template-columns:84px 1fr"><label for="d-2d-channel">2D view shows</label><select id="d-2d-channel"><option value="0">Base color</option><option value="1">Roughness</option><option value="2">Metallic</option><option value="3">Height</option><option value="4">Extra channel</option></select></div>
       <input type="file" id="env-file" accept=".hdr" hidden>
     </section>
     <section class="section">
