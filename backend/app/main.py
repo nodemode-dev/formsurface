@@ -3,10 +3,13 @@ import json
 import os
 import re
 import uuid
+from array import array
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
+
+from app import ocio
 
 VERSION = "0.35.0"
 ROOT = Path(__file__).resolve().parents[2]
@@ -353,3 +356,53 @@ def read_project(name: str):
     if not SAFE.match(name) or not (path / "project.json").exists():
         raise HTTPException(404, "No such project")
     return {"folder": str(path), "document": json.loads((path / "project.json").read_text()), "maps": sorted(p.name for p in path.glob("*.png"))}
+
+
+def ocio_config(name: str):
+    if not SAFE.match(name) or name.startswith("."):
+        raise HTTPException(400, "Config names may use letters, digits, spaces, dot, dash and underscore")
+    try:
+        return ocio.load(name, DATA / "ocio")
+    except RuntimeError as error:
+        raise HTTPException(501, str(error))
+    except FileNotFoundError as error:
+        raise HTTPException(404, str(error))
+    except Exception as error:
+        raise HTTPException(422, f"OpenColorIO could not read {name}: {error}")
+
+
+@app.get("/api/ocio")
+def list_ocio():
+    folder = DATA / "ocio"
+    files = sorted(p.name for p in folder.glob("*.ocio") if p.is_file() and SAFE.match(p.name)) if folder.is_dir() else []
+    return {"available": ocio.available(), "version": ocio.version(), "builtin": ocio.builtin_names(), "files": files}
+
+
+@app.get("/api/ocio/{name}")
+def describe_ocio(name: str):
+    return ocio.describe(ocio_config(name))
+
+
+@app.post("/api/ocio/{name}/convert")
+async def ocio_convert(name: str, request: Request, src: str):
+    config = ocio_config(name)
+    body = await request.body()
+    if not body or len(body) % 12:
+        raise HTTPException(400, "Send RGB float32 triples")
+    rgb = array("f")
+    rgb.frombytes(body)
+    try:
+        out = ocio.convert(config, src, list(rgb))
+    except Exception as error:
+        raise HTTPException(422, f"OpenColorIO could not convert from {src}: {error}")
+    return Response(array("f", out).tobytes(), media_type="application/octet-stream", headers={"X-Space": ocio.viewport_space(config)})
+
+
+@app.get("/api/ocio/{name}/lut")
+def ocio_lut(name: str, display: str, view: str, look: str = "", source: str = ""):
+    config = ocio_config(name)
+    try:
+        data, meta = ocio.bake(config, display, view, look, source)
+    except Exception as error:
+        raise HTTPException(422, f"OpenColorIO could not build {display} / {view}: {error}")
+    return Response(array("f", data).tobytes(), media_type="application/octet-stream", headers={"X-Lut": json.dumps(meta)})
