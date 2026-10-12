@@ -151,7 +151,7 @@ def formsurface_add_layer(name: str = "Agent layer") -> dict:
     return call("add_layer", {"name": name})
 
 
-Projection = Literal["uv", "triplanar", "planar", "spherical", "cylindrical"]
+Projection = Literal["uv", "triplanar", "planar", "spherical", "cylindrical", "warp"]
 PatternKind = Literal["solid", "checker", "stripes", "noise"]
 
 
@@ -203,10 +203,20 @@ def formsurface_set_fill(
     planar_axis: Literal["x", "y", "z"] | None = None,
     sharpness: Annotated[float | None, Field(ge=1, le=32)] = None,
     amount: Unit | None = None,
+    warp_points: Annotated[list[tuple[float, float]], Field(min_length=16, max_length=16)] | None = None,
+    reset_warp: bool = False,
 ) -> dict:
-    """Change a fill layer's projection, pattern or values. Only the values you pass change."""
+    """Change a fill layer's projection, pattern or values. Only the values you pass change. projection warp is a planar projection along planar_axis whose 4 by 4 grid bends the pattern: warp_points gives the 16 grid points row by row (top row first, left to right) as [x, y] in the projection square, where 0 to 1 spans the mesh's bounds across the axis (x right, y down) and the rest grid is i/3, j/3; a pattern point stays attached to its grid cell, so moving a point drags that part of the pattern with it. reset_warp restores the rest grid."""
+    warp = [0.0] * 32
+    if reset_warp:
+        warp = [c for k in range(16) for c in ((k % 4) / 3, (k // 4) / 3)]
+    elif warp_points is not None:
+        if any(not (-2 <= c <= 3) for p in warp_points for c in p):
+            raise ValueError("warp_points coordinates must be between -2 and 3")
+        warp = [float(c) for p in warp_points for c in p]
     settings = fill_settings(projection=projection, pattern=pattern, base_color=base_color, roughness=roughness, metallic=metallic, height=height, scale=scale,
-                             rotation=rotation_degrees, offset_x=offset_u, offset_y=offset_v, planar_axis=planar_axis, sharpness=sharpness, opacity=amount)
+                             rotation=rotation_degrees, offset_x=offset_u, offset_y=offset_v, planar_axis=planar_axis, sharpness=sharpness, opacity=amount,
+                             warp=warp if reset_warp or warp_points is not None else None)
     return call("set_fill", {"id": layer_id, "settings": settings})
 
 
