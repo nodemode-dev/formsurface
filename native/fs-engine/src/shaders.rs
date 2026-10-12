@@ -19,6 +19,12 @@ fn hable(x: vec3<f32>) -> vec3<f32> {
 
 fn view_transform(c: vec3<f32>) -> vec3<f32> {
     let mode = env.look.x;
+    if (mode > 3.5) {
+        let s = clamp((log2(max(c, vec3<f32>(1e-10))) - env.look.y) / (env.look.z - env.look.y), vec3<f32>(0.0), vec3<f32>(1.0));
+        let n = f32(textureDimensions(display_lut).x);
+        let o = textureSampleLevel(display_lut, lut_samp, (s * (n - 1.0) + 0.5) / n, 0.0).rgb;
+        return pow(clamp(o, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(2.2));
+    }
     if (mode < 0.5) {
         return (c * (2.51 * c + 0.03)) / (c * (2.43 * c + 0.59) + 0.14);
     }
@@ -59,6 +65,8 @@ pub const BACKGROUND: &str = r#"
 @group(0) @binding(2) var env_mid: texture_2d<f32>;
 @group(0) @binding(3) var env_small: texture_2d<f32>;
 @group(0) @binding(4) var samp: sampler;
+@group(0) @binding(5) var display_lut: texture_3d<f32>;
+@group(0) @binding(6) var lut_samp: sampler;
 
 struct BOut {
     @location(0) color: vec4<f32>,
@@ -408,6 +416,8 @@ struct Camera {
 @group(0) @binding(8) var env_mid: texture_2d<f32>;
 @group(0) @binding(9) var env_small: texture_2d<f32>;
 @group(0) @binding(10) var<uniform> look: vec4<f32>;
+@group(0) @binding(11) var display_lut: texture_3d<f32>;
+@group(0) @binding(12) var lut_samp: sampler;
 
 struct VOut {
     @builtin(position) clip: vec4<f32>,
@@ -1710,6 +1720,8 @@ struct Path { eye: vec4<f32>, params: vec4<f32>, scatter: vec4<f32>, };
 @group(0) @binding(14) var prev_albedo: texture_2d<f32>;
 @group(0) @binding(15) var prev_normal: texture_2d<f32>;
 @group(0) @binding(16) var<storage, read> cdf: array<f32>;
+@group(0) @binding(17) var display_lut: texture_3d<f32>;
+@group(0) @binding(18) var lut_samp: sampler;
 
 const NONE: u32 = 0xffffffffu;
 const PI: f32 = 3.14159265;
@@ -2187,10 +2199,12 @@ struct Show { params: vec4<f32>, clear: vec4<f32>, };
 @group(0) @binding(0) var<uniform> sh: Show;
 @group(0) @binding(1) var<uniform> env: Env;
 @group(0) @binding(2) var accum: texture_2d<f32>;
-@group(0) @binding(3) var env_sharp: texture_2d<f32>;
-@group(0) @binding(4) var env_mid: texture_2d<f32>;
-@group(0) @binding(5) var env_small: texture_2d<f32>;
-@group(0) @binding(6) var samp: sampler;
+@group(0) @binding(3) var display_lut: texture_3d<f32>;
+@group(0) @binding(4) var lut_samp: sampler;
+@group(0) @binding(5) var env_sharp: texture_2d<f32>;
+@group(0) @binding(6) var env_mid: texture_2d<f32>;
+@group(0) @binding(7) var env_small: texture_2d<f32>;
+@group(0) @binding(8) var samp: sampler;
 
 @fragment
 fn fs(i: FOut) -> @location(0) vec4<f32> {

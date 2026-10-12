@@ -30,7 +30,7 @@ struct TraceRun {
     active: bool,
 }
 
-const VIEW_TRANSFORMS: [&str; 4] = ["aces", "standard", "agx", "filmic"];
+const VIEW_TRANSFORMS: [&str; 5] = ["aces", "standard", "agx", "filmic", "ocio"];
 const POST_KEYS: [&str; 16] = ["bloom", "bloom_threshold", "glare", "lens_flare", "vignette", "vignette_softness", "grain", "sharpen", "aberration", "dof_aperture", "dof_focus", "contrast", "saturation", "temperature", "tint", "gain"];
 const POST_DEFAULTS: [f32; 16] = [0.0, 0.8, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
 const POST_RANGES: [(f32, f32); 16] = [(0.0, 2.0), (0.0, 0.99), (0.0, 2.0), (0.0, 2.0), (0.0, 1.0), (0.0, 1.0), (0.0, 1.0), (0.0, 2.0), (0.0, 1.0), (0.0, 24.0), (-1.0, 1.0), (-1.0, 1.0), (0.0, 2.0), (-1.0, 1.0), (-1.0, 1.0), (0.0, 2.0)];
@@ -95,6 +95,7 @@ pub struct Engine {
     path_lens: [f32; 2],
     path_scatter: f32,
     render: Option<(u32, u32)>,
+    display_lut: Option<(f32, f32)>,
 }
 
 #[wasm_bindgen]
@@ -162,6 +163,7 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         path_lens: [0.0, 0.0],
         path_scatter: 0.05,
         render: None,
+        display_lut: None,
     };
     engine.add_layer("Layer 1".into());
     Ok(engine)
@@ -1098,8 +1100,29 @@ impl Engine {
 
     pub fn set_view_transform(&mut self, name: &str) -> Result<String, JsValue> {
         let index = VIEW_TRANSFORMS.iter().position(|n| *n == name).ok_or_else(|| JsValue::from_str(&format!("view transform is one of {}", VIEW_TRANSFORMS.join(", "))))?;
+        if index == 4 && self.display_lut.is_none() {
+            return Err(JsValue::from_str("Load an OpenColorIO display view first"));
+        }
         self.view_transform = index as u32;
         Ok(VIEW_TRANSFORMS[index].to_string())
+    }
+
+    pub fn set_display_lut(&mut self, size: u32, low: f32, high: f32, rgb: &[f32]) -> Result<(), JsValue> {
+        if !(2..=129).contains(&size) || rgb.len() != (size * size * size * 3) as usize || !(high > low) {
+            return Err(JsValue::from_str("A display LUT is size cubed RGB floats over a log2 shaper with high above low"));
+        }
+        self.gpu.set_display_lut(size, rgb);
+        self.display_lut = Some((low, high));
+        self.view_transform = 4;
+        self.path_key.clear();
+        Ok(())
+    }
+
+    pub fn clear_display_lut(&mut self) {
+        self.display_lut = None;
+        if self.view_transform == 4 {
+            self.view_transform = 0;
+        }
     }
 
     pub fn view_transform(&self) -> String {
@@ -1138,7 +1161,7 @@ impl Engine {
             right[0], right[1], right[2], t * aspect,
             up[0], up[1], up[2], t,
             forward[0], forward[1], forward[2], self.exposure,
-            self.view_transform as f32, 0.0, 0.0, 0.0,
+            self.view_transform as f32, self.display_lut.map(|l| l.0).unwrap_or(0.0), self.display_lut.map(|l| l.1).unwrap_or(1.0), 0.0,
         ];
         let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
         let active = self.post.iter().zip(POST_DEFAULTS.iter()).enumerate().any(|(k, (v, d))| k != 1 && k != 5 && k != 10 && (v - d).abs() > 1e-4);

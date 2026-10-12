@@ -147,6 +147,7 @@ pub struct Gpu {
     path: Option<PathScene>,
     pub path_view: bool,
     pub path_denoise: bool,
+    display_lut: wgpu::Texture,
     pub path_lens: [f32; 2],
     pub path_scatter: f32,
     pub path_size: Option<(u32, u32)>,
@@ -263,6 +264,26 @@ fn half_texture(device: &wgpu::Device, queue: &wgpu::Queue, width: u32, height: 
         halves.extend_from_slice(&[half_bits(p[0]), half_bits(p[1]), half_bits(p[2]), half_bits(1.0)]);
     }
     queue.write_texture(texture.as_image_copy(), bytemuck::cast_slice(&halves), wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(width * 8), rows_per_image: Some(height) }, wgpu::Extent3d { width, height, depth_or_array_layers: 1 });
+    texture
+}
+
+fn lut_texture(device: &wgpu::Device, queue: &wgpu::Queue, size: u32, rgb: &[f32]) -> wgpu::Texture {
+    let extent = wgpu::Extent3d { width: size, height: size, depth_or_array_layers: size };
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("display lut"),
+        size: extent,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D3,
+        format: LAYER_FORMAT,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    let mut halves = Vec::with_capacity((size * size * size * 4) as usize);
+    for p in rgb.chunks_exact(3) {
+        halves.extend_from_slice(&[half_bits(p[0]), half_bits(p[1]), half_bits(p[2]), half_bits(1.0)]);
+    }
+    queue.write_texture(texture.as_image_copy(), bytemuck::cast_slice(&halves), wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(size * 8), rows_per_image: Some(size) }, extent);
     texture
 }
 
@@ -570,6 +591,7 @@ impl Gpu {
             path_filter_pipe: pipeline(&device, "path denoise", shaders::PATH_FILTER, false, &[wgpu::TextureFormat::Rgba32Float], None, false),
             path_filter_uniforms: [uniform("path denoise", 16), uniform("path denoise", 16), uniform("path denoise", 16), uniform("path denoise", 16)],
             path_denoise: false,
+            display_lut: lut_texture(&device, &queue, 2, &[0.0; 24]),
             path_lens: [0.0, 1.0],
             path_scatter: 0.05,
             path_size: None,
@@ -1394,6 +1416,10 @@ impl Gpu {
         self.path = Some(PathScene { nodes: storage("path nodes", nodes), tris: storage("path triangles", tris), attrs: storage("path attributes", attrs), roles, arrays: None, accum: None, filtered: None, cur: 0, samples: 0, seed: 0 });
     }
 
+    pub fn set_display_lut(&mut self, size: u32, rgb: &[f32]) {
+        self.display_lut = lut_texture(&self.device, &self.queue, size, rgb);
+    }
+
     pub fn idle(&self) -> js_sys::Promise {
         js_sys::Promise::new(&mut |resolve, _| {
             self.queue.on_submitted_work_done(move || {
@@ -1603,10 +1629,13 @@ impl Gpu {
         }
         self.queue.write_buffer(&self.path_show_uniform, 0, bytemuck::cast_slice(&[divisor, 0.0f32, 0.0, 0.0, 0.075, 0.078, 0.086, 1.0]));
         self.queue.write_buffer(&self.env_uniform, 0, bytemuck::cast_slice(&self.env_params));
+        let lut = view_of(&self.display_lut);
         let group = bind(&self.device, &self.path_show_pipe, &[
             self.path_show_uniform.as_entire_binding(),
             self.env_uniform.as_entire_binding(),
             wgpu::BindingResource::TextureView(&shown),
+            wgpu::BindingResource::TextureView(&lut),
+            wgpu::BindingResource::Sampler(&self.clamp_sampler),
         ]);
         let post = self.post_params[19] > 0.5 && self.scene.width() == target.width() && self.scene.height() == target.height();
         let out = if post { view_of(&self.scene) } else { view_of(target) };
@@ -2224,6 +2253,7 @@ impl Gpu {
         self.queue.write_buffer(&self.camera, 0, bytemuck::cast_slice(&bytes));
         self.queue.write_buffer(&self.env_uniform, 0, bytemuck::cast_slice(&self.env_params));
         let (e0, e1, e2) = (view_of(&self.env_textures[0]), view_of(&self.env_textures[1]), view_of(&self.env_textures[2]));
+        let lut = view_of(&self.display_lut);
         let set_group = |final_set: &Pair, baked_normal: &wgpu::Texture, quick: &wgpu::Texture, role: f32| {
             let (fc, fm, bn, qm) = (view_of(&final_set.color), view_of(&final_set.mat), view_of(baked_normal), view_of(quick));
             let look = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("set look"), size: 16, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
@@ -2240,6 +2270,8 @@ impl Gpu {
                 wgpu::BindingResource::TextureView(&e1),
                 wgpu::BindingResource::TextureView(&e2),
                 look.as_entire_binding(),
+                wgpu::BindingResource::TextureView(&lut),
+                wgpu::BindingResource::Sampler(&self.clamp_sampler),
             ])
         };
         let background = bind(&self.device, &self.background_pipe, &[
@@ -2248,6 +2280,8 @@ impl Gpu {
             wgpu::BindingResource::TextureView(&e1),
             wgpu::BindingResource::TextureView(&e2),
             wgpu::BindingResource::Sampler(&self.sampler),
+            wgpu::BindingResource::TextureView(&lut),
+            wgpu::BindingResource::Sampler(&self.clamp_sampler),
         ]);
         let mut draws = vec![(set_group(&self.final_set, &self.baked_normal, &self.quick, self.extra_role), self.range)];
         for state in self.parked.iter().flatten().filter(|_| !self.flat) {
