@@ -17,8 +17,21 @@ fn hable(x: vec3<f32>) -> vec3<f32> {
     return ((x * (0.15 * x + 0.05) + 0.004) / (x * (0.15 * x + 0.5) + 0.06)) - 0.02 / 0.3;
 }
 
-fn view_transform(c: vec3<f32>) -> vec3<f32> {
+const FROM_AP1 = mat3x3<f32>(vec3<f32>(1.7050509453, -0.1302564144, -0.0240033567), vec3<f32>(-0.6217921376, 1.1408047676, -0.128968969), vec3<f32>(-0.0832588747, -0.0105483187, 1.1529723406));
+
+fn to_working(c: vec3<f32>) -> vec3<f32> {
+    if (env.look.w > 0.5) { return mat3x3<f32>(vec3<f32>(0.6130974293, 0.0701937228, 0.0206155926), vec3<f32>(0.3395231366, 0.9163538814, 0.1095697731), vec3<f32>(0.0473794527, 0.0134523986, 0.8698146343)) * c; }
+    return c;
+}
+
+fn to_display_space(c: vec3<f32>) -> vec3<f32> {
+    if (env.look.w > 0.5) { return FROM_AP1 * c; }
+    return c;
+}
+
+fn view_transform(raw: vec3<f32>) -> vec3<f32> {
     let mode = env.look.x;
+    let c = select(to_display_space(raw), raw, mode > 3.5);
     if (mode > 3.5) {
         let s = clamp((log2(max(c, vec3<f32>(1e-10))) - env.look.y) / (env.look.z - env.look.y), vec3<f32>(0.0), vec3<f32>(1.0));
         let n = f32(textureDimensions(display_lut).x);
@@ -445,13 +458,13 @@ fn ggx(nh: f32, a: f32) -> f32 {
 
 fn sky(dir: vec3<f32>) -> vec3<f32> {
     let t = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
-    return mix(vec3<f32>(0.10, 0.10, 0.11), vec3<f32>(0.62, 0.68, 0.78), t) + vec3<f32>(1.2, 1.1, 1.0) * pow(max(dot(dir, normalize(vec3<f32>(0.5, 0.8, 0.3))), 0.0), 64.0);
+    return to_working(mix(vec3<f32>(0.10, 0.10, 0.11), vec3<f32>(0.62, 0.68, 0.78), t) + vec3<f32>(1.2, 1.1, 1.0) * pow(max(dot(dir, normalize(vec3<f32>(0.5, 0.8, 0.3))), 0.0), 64.0));
 }
 
 @fragment
 fn fs(i: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
     if (cam.params.w > 0.5) {
-        var flat_color = textureSampleLevel(color_tex, samp, i.uv, 0.0).rgb;
+        var flat_color = to_display_space(textureSampleLevel(color_tex, samp, i.uv, 0.0).rgb);
         let flat_channel = cam.cursor_normal.w;
         if (flat_channel > 0.5) {
             let fm = textureSampleLevel(mat_tex, samp, i.uv, 0.0);
@@ -1176,7 +1189,15 @@ fn pattern(c0: vec2<f32>) -> vec4<f32> {
         return vec4<f32>(vec3<f32>(v), 1.0);
     }
     let image = textureSampleLevel(pattern_tex, repeat_samp, c, 0.0);
-    return vec4<f32>(pow(image.rgb, vec3<f32>(2.2)), image.a);
+    return vec4<f32>(decode_image(image.rgb), image.a);
+}
+
+const TO_AP1 = mat3x3<f32>(vec3<f32>(0.6130974293, 0.0701937228, 0.0206155926), vec3<f32>(0.3395231366, 0.9163538814, 0.1095697731), vec3<f32>(0.0473794527, 0.0134523986, 0.8698146343));
+
+fn decode_image(rgb: vec3<f32>) -> vec3<f32> {
+    let l = pow(rgb, vec3<f32>(2.2));
+    if (fill.extra.z > 0.5) { return TO_AP1 * l; }
+    return l;
 }
 
 fn axis_coords(p: vec3<f32>, axis: f32) -> vec2<f32> {
@@ -1212,7 +1233,7 @@ fn fs(@builtin(position) frag: vec4<f32>) -> Out {
         s = pattern(unwarp(axis_coords(local, fill.proj2.w) * vec2<f32>(0.5, -0.5) + 0.5));
     } else if (fill.proj.y > 3.5) {
         let image = textureSampleLevel(pattern_tex, repeat_samp, uv, 0.0);
-        s = vec4<f32>(pow(image.rgb, vec3<f32>(2.2)), image.a);
+        s = vec4<f32>(decode_image(image.rgb), image.a);
     } else {
         s = pattern(uv);
     }
@@ -1268,6 +1289,7 @@ fn fs(@builtin(position) frag: vec4<f32>) -> Out {
 "#;
 
 pub const LAYER_EXPORT: &str = r#"
+const FROM_AP1 = mat3x3<f32>(vec3<f32>(1.7050509453, -0.1302564144, -0.0240033567), vec3<f32>(-0.6217921376, 1.1408047676, -0.128968969), vec3<f32>(-0.0832588747, -0.0105483187, 1.1529723406));
 @group(0) @binding(0) var<uniform> sel: vec4<u32>;
 @group(0) @binding(1) var l_color: texture_2d<f32>;
 @group(0) @binding(2) var l_val: texture_2d<f32>;
@@ -1282,7 +1304,9 @@ fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     switch sel.x {
         case 0u: {
             let a = clamp(c.a, 0.0, 1.0);
-            return vec4<f32>(pow(clamp(c.rgb / max(c.a, 1e-4), vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / 2.2)), a);
+            var rgb = c.rgb / max(c.a, 1e-4);
+            if (sel.y == 1u) { rgb = FROM_AP1 * rgb; }
+            return vec4<f32>(pow(clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / 2.2)), a);
         }
         case 1u: { return vec4<f32>(vec3<f32>(clamp(v.r / max(k.r, 1e-4), 0.0, 1.0)), clamp(k.r, 0.0, 1.0)); }
         case 2u: { return vec4<f32>(vec3<f32>(clamp(v.g / max(k.g, 1e-4), 0.0, 1.0)), clamp(k.g, 0.0, 1.0)); }
@@ -1671,6 +1695,18 @@ fn fs(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
 }
 "#;
 
+pub const COLOR_MATRIX: &str = r#"
+struct Mx { r0: vec4<f32>, r1: vec4<f32>, r2: vec4<f32>, };
+@group(0) @binding(0) var<uniform> mx: Mx;
+@group(0) @binding(1) var src: texture_2d<f32>;
+
+@fragment
+fn fs(i: FOut) -> @location(0) vec4<f32> {
+    let c = textureLoad(src, vec2<i32>(i.clip.xy), 0);
+    return vec4<f32>(dot(mx.r0.xyz, c.rgb), dot(mx.r1.xyz, c.rgb), dot(mx.r2.xyz, c.rgb), c.a);
+}
+"#;
+
 pub const PATH_GATHER: &str = r#"
 struct Gather { params: vec4<f32>, };
 @group(0) @binding(0) var<uniform> g: Gather;
@@ -1877,7 +1913,7 @@ fn trace(o: vec3<f32>, d: vec3<f32>, tmax: f32, any_hit: bool) -> Hit {
 
 fn sky(dir: vec3<f32>) -> vec3<f32> {
     let t = clamp(dir.y * 0.5 + 0.5, 0.0, 1.0);
-    return mix(vec3<f32>(0.10, 0.10, 0.11), vec3<f32>(0.62, 0.68, 0.78), t) + vec3<f32>(1.2, 1.1, 1.0) * pow(max(dot(dir, normalize(vec3<f32>(0.5, 0.8, 0.3))), 0.0), 64.0);
+    return to_working(mix(vec3<f32>(0.10, 0.10, 0.11), vec3<f32>(0.62, 0.68, 0.78), t) + vec3<f32>(1.2, 1.1, 1.0) * pow(max(dot(dir, normalize(vec3<f32>(0.5, 0.8, 0.3))), 0.0), 64.0));
 }
 
 fn ggx_d(nh: f32, a: f32) -> f32 {
@@ -2216,6 +2252,7 @@ fn fs(i: FOut) -> @location(0) vec4<f32> {
 "#;
 
 pub const EXPORT: &str = r#"
+const FROM_AP1 = mat3x3<f32>(vec3<f32>(1.7050509453, -0.1302564144, -0.0240033567), vec3<f32>(-0.6217921376, 1.1408047676, -0.128968969), vec3<f32>(-0.0832588747, -0.0105483187, 1.1529723406));
 struct Sel { channel: vec4<u32>, params: vec4<f32>, };
 @group(0) @binding(0) var<uniform> sel: Sel;
 @group(0) @binding(1) var color_tex: texture_2d<f32>;
@@ -2243,7 +2280,11 @@ fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         case 7u: { return vec4<f32>(vec3<f32>(b.b), 1.0); }
         case 8u: { return vec4<f32>(clamp((textureLoad(pos_map, p, 0).xyz - sel.params.yzw) / max(bitcast<f32>(sel.channel.y) * 2.0, 1e-6) + 0.5, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0); }
         case 9u: { return vec4<f32>(normalize(textureLoad(normal_map, p, 0).xyz + vec3<f32>(1e-6)) * 0.5 + 0.5, 1.0); }
-        case 0u: { return vec4<f32>(pow(clamp(textureLoad(color_tex, p, 0).rgb, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / 2.2)), 1.0); }
+        case 0u: {
+            var rgb = textureLoad(color_tex, p, 0).rgb;
+            if (sel.channel.z == 1u) { rgb = FROM_AP1 * rgb; }
+            return vec4<f32>(pow(clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / 2.2)), 1.0);
+        }
         case 1u: { return vec4<f32>(vec3<f32>(m.r), 1.0); }
         case 2u: { return vec4<f32>(vec3<f32>(m.g), 1.0); }
         case 3u: { return vec4<f32>(vec3<f32>(m.b), 1.0); }

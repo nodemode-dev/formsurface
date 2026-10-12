@@ -1118,6 +1118,31 @@ impl Engine {
         Ok(())
     }
 
+    pub fn set_working_space(&mut self, name: &str) -> Result<String, JsValue> {
+        let ap1 = match name {
+            "linear_rec709" => false,
+            "acescg" => true,
+            _ => return Err(JsValue::from_str("working space is linear_rec709 or acescg")),
+        };
+        if self.stroking {
+            return Err(JsValue::from_str("Finish the stroke first"));
+        }
+        self.flush();
+        self.gpu.set_working_space(ap1);
+        self.each_set(|engine| {
+            engine.render_fills();
+            Ok(())
+        })
+        .map_err(|e| JsValue::from_str(&e))?;
+        self.dirty = true;
+        self.path_key.clear();
+        Ok(self.working_space())
+    }
+
+    pub fn working_space(&self) -> String {
+        if self.gpu.ap1 { "acescg".into() } else { "linear_rec709".into() }
+    }
+
     pub fn clear_display_lut(&mut self) {
         self.display_lut = None;
         if self.view_transform == 4 {
@@ -1161,7 +1186,7 @@ impl Engine {
             right[0], right[1], right[2], t * aspect,
             up[0], up[1], up[2], t,
             forward[0], forward[1], forward[2], self.exposure,
-            self.view_transform as f32, self.display_lut.map(|l| l.0).unwrap_or(0.0), self.display_lut.map(|l| l.1).unwrap_or(1.0), 0.0,
+            self.view_transform as f32, self.display_lut.map(|l| l.0).unwrap_or(0.0), self.display_lut.map(|l| l.1).unwrap_or(1.0), if self.gpu.ap1 { 1.0 } else { 0.0 },
         ];
         let r = self.mesh.as_ref().map(|m| m.0.radius).unwrap_or(1.0);
         let active = self.post.iter().zip(POST_DEFAULTS.iter()).enumerate().any(|(k, (v, d))| k != 1 && k != 5 && k != 10 && (v - d).abs() > 1e-4);
