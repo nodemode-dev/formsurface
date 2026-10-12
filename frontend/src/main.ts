@@ -1317,7 +1317,7 @@ async function bakeHigh(): Promise<string> {
   $('k-high-state').textContent = `Baked normal, ID, height, opacity${num('k-ao-rays') ? ', AO and bent normal' : ''}: ${text}`;
   return text;
 }
-for (const id of ['k-front', 'k-rear', 'k-ao-rays']) $(id).addEventListener('input', () => setOutput(id));
+for (const id of ['k-front', 'k-rear', 'k-ao-rays', 'k-rays']) $(id).addEventListener('input', () => setOutput(id));
 const highInput = $<HTMLInputElement>('high-file');
 $('k-high-load').addEventListener('click', () => highInput.click());
 highInput.addEventListener('change', async () => {
@@ -1353,11 +1353,41 @@ $('k-high-sample').addEventListener('click', () => {
 $('k-bake-high').addEventListener('click', () => {
   bakeHigh().then((text) => status(text), (error) => status(error instanceof Error ? error.message : String(error), true));
 });
+const TRACE_ROWS = 8;
+
+async function bakeTraced(e: Engine, directions: number, rays: number): Promise<number> {
+  const started = performance.now();
+  const button = $<HTMLButtonElement>('k-bake');
+  button.disabled = true;
+  try {
+    e.bake_traced_begin(directions, rays);
+    let progress = 0;
+    while (progress < 1) {
+      progress = e.bake_traced_step(TRACE_ROWS);
+      $('k-state').textContent = `Ray tracing AO and thickness: ${Math.round(progress * 100)}%`;
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+  } finally {
+    button.disabled = false;
+  }
+  bakeState();
+  return (performance.now() - started) / 1000;
+}
+
 $('k-bake').addEventListener('click', () => {
   if (!engine) return;
+  const e = engine;
+  if (sel('k-method') === 'traced') {
+    status('Ray tracing ambient occlusion and thickness on the GPU, a band at a time');
+    bakeTraced(e, Number(sel('k-dirs')), Number(sel('k-rays'))).then(
+      (seconds) => status(`Mesh maps baked; AO and thickness ray traced in ${seconds.toFixed(1)} s`),
+      (error) => status(error instanceof Error ? error.message : String(error), true),
+    );
+    return;
+  }
   try {
     status('Baking mesh maps on the GPU');
-    engine.bake_maps(Number(sel('k-dirs')));
+    e.bake_maps(Number(sel('k-dirs')));
     bakeState();
     status('Mesh maps baked');
   } catch (error) {
@@ -1730,11 +1760,16 @@ const agentLink = new AgentLink({
     for (const k of POST_FIELDS) setControl(`p-${k}`, args[k]);
     return JSON.parse(requireEngine().post_json()) as Record<string, unknown>;
   },
-  bake: ({ directions }) => {
+  bake: async ({ directions, method, rays }) => {
     const e = requireEngine();
-    e.bake_maps(Number(directions ?? 64));
+    if (method !== undefined && method !== null) setControl('k-method', method, 'change');
+    if (rays !== undefined && rays !== null) setControl('k-rays', rays, 'change');
+    const traced = sel('k-method') === 'traced';
+    let seconds: number | undefined;
+    if (traced) seconds = await bakeTraced(e, Number(directions ?? 64), Number(sel('k-rays')));
+    else e.bake_maps(Number(directions ?? 64));
     bakeState();
-    return { baked: e.is_baked(), maps: ['ambient_occlusion', 'curvature', 'thickness', 'position', 'world_normal'] };
+    return { baked: e.is_baked(), method: traced ? 'traced' : 'depth', seconds, maps: ['ambient_occlusion', 'curvature', 'thickness', 'position', 'world_normal'] };
   },
   add_filter_layer: (args) => {
     const e = requireEngine();

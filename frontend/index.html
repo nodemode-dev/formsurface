@@ -264,6 +264,8 @@
     <section class="section">
       <h2>Baking</h2>
       <div class="row"><label for="k-dirs">Samples</label><select id="k-dirs"><option value="32">32 directions</option><option value="64" selected>64 directions</option><option value="128">128 directions</option></select><output></output></div>
+      <div class="row"><label for="k-method">AO and thickness</label><select id="k-method" title="Depth maps rasterize the mesh from many directions; ray traced casts rays through the mesh on the GPU per texel"><option value="depth" selected>Depth maps</option><option value="traced">Ray traced (GPU)</option></select><output></output></div>
+      <div class="row"><label for="k-rays">Rays per texel</label><input id="k-rays" type="range" min="4" max="128" step="4" value="32"><output for="k-rays">32</output></div>
       <button class="btn" id="k-bake" style="width:100%;justify-content:center" title="Bake ambient occlusion, curvature, thickness, position and world normal for every texture set"><svg><use href="#i-bake"/></svg>Bake mesh maps</button>
       <p class="check" id="k-state" style="min-height:28px;margin:6px 0 0">Not baked</p>
       <div class="row" style="grid-template-columns:1fr 1fr;gap:8px">
