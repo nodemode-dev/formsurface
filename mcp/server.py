@@ -74,9 +74,15 @@ def formsurface_list_texture_sets() -> dict:
 
 
 @server.tool()
-def formsurface_select_texture_set(name: str | None = None, index: int | None = None, size: Literal[256, 512, 1024, 2048, 4096] | None = None) -> dict:
-    """Make a texture set active by name (for example body.1002 or trim) or index. Strokes, layers, fills, masks, smart materials and the base material then apply to it only; the viewport keeps showing every set. size sets that set's (or UV tile's) own resolution, as in Painter's texture set settings: its layers and quick mask are resampled, fills and generators re-rendered, undo cleared, bakes must be run again, and its maps export at that size. formsurface_list_texture_sets reports each set's size."""
-    return call("select_texture_set", drop_none(name=name, index=index, size=size), timeout=120)
+def formsurface_select_texture_set(
+    name: str | None = None,
+    index: int | None = None,
+    size: Literal[256, 512, 1024, 2048, 4096] | None = None,
+    extra_channel: Literal["off", "user", "opacity", "ambient_occlusion", "emissive"] | None = None,
+    extra_name: Annotated[str, Field(pattern=r"^[A-Za-z0-9_]{1,24}$")] | None = None,
+) -> dict:
+    """Make a texture set active by name (for example body.1002 or trim) or index. Strokes, layers, fills, masks, smart materials and the base material then apply to it only; the viewport keeps showing every set. size sets that set's (or UV tile's) own resolution, as in Painter's texture set settings: its layers and quick mask are resampled, fills and generators re-rendered, undo cleared, bakes must be run again, and its maps export at that size. extra_channel gives the set a fifth channel (Painter's per-set channel list): user (named by extra_name, exported under that name), opacity (shown as cut-out in the viewport), ambient_occlusion (darkens the shading) or emissive (glows with the base color, exported as an emissive map); off removes it. It is painted with formsurface_set_paint_material paint_extra and filled with formsurface_set_fill extra and use_extra. formsurface_list_texture_sets reports each set's size and extra channel."""
+    return call("select_texture_set", drop_none(name=name, index=index, size=size, extra_channel=extra_channel, extra_name=extra_name), timeout=120)
 
 
 @server.tool()
@@ -130,9 +136,11 @@ def formsurface_set_paint_material(
     paint_roughness: bool | None = None,
     paint_metallic: bool | None = None,
     paint_height: bool | None = None,
+    extra: Unit | None = None,
+    paint_extra: bool | None = None,
 ) -> dict:
-    """Set what strokes and fills apply: channel values and which channels are painted. Height 0.5 is flat, above raises, below carves."""
-    return call("material", drop_none(base_color=base_color, roughness=roughness, metallic=metallic, height=height, use_color=paint_color, use_roughness=paint_roughness, use_metallic=paint_metallic, use_height=paint_height))
+    """Set what strokes and fills apply: channel values and which channels are painted. Height 0.5 is flat, above raises, below carves. extra and paint_extra drive the texture set's extra channel (set its role with formsurface_select_texture_set extra_channel): opacity 1 is solid, ambient occlusion 1 is unoccluded, emissive is the glow strength of the base color, a user channel is any value."""
+    return call("material", drop_none(base_color=base_color, roughness=roughness, metallic=metallic, height=height, use_color=paint_color, use_roughness=paint_roughness, use_metallic=paint_metallic, use_height=paint_height, extra=extra, use_extra=paint_extra))
 
 
 @server.tool()
@@ -204,6 +212,8 @@ def formsurface_set_fill(
     sharpness: Annotated[float | None, Field(ge=1, le=32)] = None,
     amount: Unit | None = None,
     warp_points: Annotated[list[tuple[float, float]], Field(min_length=16, max_length=16)] | None = None,
+    extra: Unit | None = None,
+    use_extra: bool | None = None,
     reset_warp: bool = False,
     tile_images: Annotated[list[str], Field(min_length=1, max_length=99)] | None = None,
 ) -> dict:
@@ -219,7 +229,7 @@ def formsurface_set_fill(
             raise ValueError("warp_points coordinates must be between -2 and 3")
         warp = [float(c) for p in warp_points for c in p]
     settings = fill_settings(projection=projection, pattern=pattern, base_color=base_color, roughness=roughness, metallic=metallic, height=height, scale=scale,
-                             rotation=rotation_degrees, offset_x=offset_u, offset_y=offset_v, planar_axis=planar_axis, sharpness=sharpness, opacity=amount,
+                             rotation=rotation_degrees, offset_x=offset_u, offset_y=offset_v, planar_axis=planar_axis, sharpness=sharpness, opacity=amount, extra=extra, use_extra=use_extra,
                              warp=warp if reset_warp or warp_points is not None else None)
     result = call("set_fill", {"id": layer_id, "settings": settings})
     if tiles is not None:
@@ -505,7 +515,7 @@ def formsurface_clone_layer(layer_id: int = 0) -> dict:
 
 @server.tool()
 def formsurface_view_2d(
-    channel: Literal["base_color", "roughness", "metallic", "height"] | None = None,
+    channel: Literal["base_color", "roughness", "metallic", "height", "extra"] | None = None,
     on: bool | None = None,
     center_u: Annotated[float, Field(ge=-1, le=2)] | None = None,
     center_v: Annotated[float, Field(ge=-1, le=2)] | None = None,
