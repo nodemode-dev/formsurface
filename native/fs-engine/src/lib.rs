@@ -1118,6 +1118,32 @@ impl Engine {
         Ok(())
     }
 
+    pub fn page_out_set(&mut self, index: u32) -> Option<js_sys::Promise> {
+        if self.stroking {
+            return None;
+        }
+        self.gpu.page_out(index as usize)
+    }
+
+    pub fn page_out_finish(&mut self, index: u32) -> f64 {
+        self.gpu.page_out_finish(index as usize) as f64
+    }
+
+    pub fn texture_memory_json(&self) -> String {
+        let sets: Vec<serde_json::Value> = self.gpu.memory().into_iter().map(|(index, size, layers, resident, paged, current)| {
+            serde_json::json!({
+                "index": index,
+                "name": self.sets.get(index).map(|s| s.info.name()).unwrap_or_default(),
+                "size": size,
+                "layers": layers,
+                "resident_bytes": resident,
+                "paged_bytes": paged,
+                "active": current,
+            })
+        }).collect();
+        serde_json::json!({ "sets": sets }).to_string()
+    }
+
     pub fn set_working_space(&mut self, name: &str) -> Result<String, JsValue> {
         let ap1 = match name {
             "linear_rec709" => false,

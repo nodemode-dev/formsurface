@@ -70,6 +70,25 @@ struct SetState {
     quick: wgpu::Texture,
     mask: wgpu::Texture,
     stroke: Option<(usize, Snapshot)>,
+    paged: Option<Vec<Vec<u8>>>,
+}
+
+fn stack_sets(state: &SetState) -> Vec<&Set> {
+    let mut sets: Vec<&Set> = state.layers.iter().map(|l| &l.set).collect();
+    sets.extend(state.undo_stack.iter().map(|s| &s.set));
+    sets.extend(state.redo_stack.iter().map(|s| &s.set));
+    sets
+}
+
+fn stack_sets_mut(state: &mut SetState) -> Vec<&mut Set> {
+    let mut sets: Vec<&mut Set> = state.layers.iter_mut().map(|l| &mut l.set).collect();
+    sets.extend(state.undo_stack.iter_mut().map(|s| &mut s.set));
+    sets.extend(state.redo_stack.iter_mut().map(|s| &mut s.set));
+    sets
+}
+
+fn set_bytes(set: &Set) -> u64 {
+    [&set.color, &set.val, &set.cov, &set.mask].iter().map(|t| t.width() as u64 * t.height() as u64 * 8).sum()
 }
 
 pub struct Gpu {
@@ -147,6 +166,7 @@ pub struct Gpu {
     path: Option<PathScene>,
     pub path_view: bool,
     pub path_denoise: bool,
+    page_jobs: std::collections::HashMap<usize, std::rc::Rc<std::cell::RefCell<Vec<Option<Vec<u8>>>>>>,
     pub ap1: bool,
     color_matrix_pipe: wgpu::RenderPipeline,
     display_lut: wgpu::Texture,
@@ -600,6 +620,7 @@ impl Gpu {
             path_filter_pipe: pipeline(&device, "path denoise", shaders::PATH_FILTER, false, &[wgpu::TextureFormat::Rgba32Float], None, false),
             path_filter_uniforms: [uniform("path denoise", 16), uniform("path denoise", 16), uniform("path denoise", 16), uniform("path denoise", 16)],
             path_denoise: false,
+            page_jobs: std::collections::HashMap::new(),
             ap1: false,
             color_matrix_pipe: pipeline(&device, "color matrix", shaders::COLOR_MATRIX, false, &[LAYER_FORMAT], None, false),
             display_lut: lut_texture(&device, &queue, 2, &[0.0; 24]),
@@ -766,6 +787,8 @@ impl Gpu {
         }
         self.parked = fresh;
         let mut first = self.parked[0].take().unwrap_or_else(|| self.new_state(ranges[0]));
+        self.page_jobs.clear();
+        self.page_in(&mut first);
         self.exchange(&mut first);
         self.current = 0;
         self.fit_shared();
@@ -798,7 +821,127 @@ impl Gpu {
             quick: texture(&self.device, size, LAYER_FORMAT, "quick mask"),
             mask: texture(&self.device, size, LAYER_FORMAT, "stroke mask"),
             stroke: None,
+            paged: None,
         }
+    }
+
+    fn page_in(&self, state: &mut SetState) {
+        let Some(data) = state.paged.take() else { return };
+        let size = state.size;
+        let extent = wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 };
+        let mut chunks = data.into_iter();
+        for set in stack_sets_mut(state) {
+            let fresh = new_set(&self.device, size);
+            for texture in [&fresh.color, &fresh.val, &fresh.cov, &fresh.mask] {
+                if let Some(bytes) = chunks.next() {
+                    self.queue.write_texture(texture.as_image_copy(), &bytes, wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(size * 8), rows_per_image: Some(size) }, extent);
+                }
+            }
+            *set = fresh;
+        }
+    }
+
+    pub fn page_out(&mut self, index: usize) -> Option<js_sys::Promise> {
+        if index == self.current || self.page_jobs.contains_key(&index) {
+            return None;
+        }
+        let state = self.parked.get(index)?.as_ref()?;
+        if state.paged.is_some() {
+            return None;
+        }
+        let size = state.size;
+        let textures: Vec<&wgpu::Texture> = stack_sets(state).into_iter().flat_map(|s| [&s.color, &s.val, &s.cov, &s.mask]).collect();
+        if textures.is_empty() || size < 32 {
+            return None;
+        }
+        let total = textures.len();
+        let row = size * 8;
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        let mut buffers = Vec::with_capacity(total);
+        for texture in textures {
+            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("page out"), size: (row * size) as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+            encoder.copy_texture_to_buffer(
+                texture.as_image_copy(),
+                wgpu::TexelCopyBufferInfo { buffer: &buffer, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(row), rows_per_image: Some(size) } },
+                wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
+            );
+            buffers.push(buffer);
+        }
+        self.queue.submit([encoder.finish()]);
+        let slots = std::rc::Rc::new(std::cell::RefCell::new(vec![None; total]));
+        self.page_jobs.insert(index, slots.clone());
+        let mut pending = Some(buffers);
+        Some(js_sys::Promise::new(&mut |resolve, reject| {
+            let done = std::rc::Rc::new(std::cell::Cell::new(0usize));
+            let resolve = std::rc::Rc::new(resolve);
+            let reject = std::rc::Rc::new(reject);
+            for (k, buffer) in pending.take().unwrap_or_default().into_iter().enumerate() {
+                let (slots, done, resolve, reject, readback) = (slots.clone(), done.clone(), resolve.clone(), reject.clone(), buffer.clone());
+                buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| {
+                    if let Err(e) = result {
+                        let _ = reject.call1(&JsValue::NULL, &JsValue::from_str(&format!("Paging out failed: {e}")));
+                        return;
+                    }
+                    let bytes = match readback.slice(..).get_mapped_range() {
+                        Ok(view) => view.to_vec(),
+                        Err(e) => {
+                            let _ = reject.call1(&JsValue::NULL, &JsValue::from_str(&format!("Paging out failed: {e}")));
+                            return;
+                        }
+                    };
+                    readback.unmap();
+                    slots.borrow_mut()[k] = Some(bytes);
+                    done.set(done.get() + 1);
+                    if done.get() == total {
+                        let _ = resolve.call1(&JsValue::NULL, &JsValue::from_f64(total as f64));
+                    }
+                });
+            }
+        }))
+    }
+
+    pub fn page_out_finish(&mut self, index: usize) -> u64 {
+        let Some(slots) = self.page_jobs.remove(&index) else { return 0 };
+        if index == self.current {
+            return 0;
+        }
+        let data: Option<Vec<Vec<u8>>> = slots.borrow_mut().drain(..).collect();
+        let Some(data) = data else { return 0 };
+        let device = &self.device;
+        let Some(Some(state)) = self.parked.get_mut(index) else { return 0 };
+        if data.len() != stack_sets(state).len() * 4 {
+            return 0;
+        }
+        let freed: u64 = stack_sets(state).into_iter().map(set_bytes).sum();
+        for set in stack_sets_mut(state) {
+            *set = new_set(device, 1);
+        }
+        state.paged = Some(data);
+        freed
+    }
+
+    pub fn page_in_all(&mut self) {
+        let mut parked = std::mem::take(&mut self.parked);
+        for state in parked.iter_mut().flatten() {
+            self.page_in(state);
+        }
+        self.parked = parked;
+        self.page_jobs.clear();
+    }
+
+    pub fn memory(&self) -> Vec<(usize, u32, usize, u64, u64, bool)> {
+        let mut out = Vec::new();
+        for k in 0..self.parked.len().max(1) {
+            if k == self.current {
+                let resident = self.layers.iter().map(|l| set_bytes(&l.set)).sum::<u64>() + self.undo_stack.iter().chain(self.redo_stack.iter()).map(|s| set_bytes(&s.set)).sum::<u64>();
+                out.push((k, self.size, self.layers.len(), resident, 0, true));
+            } else if let Some(Some(state)) = self.parked.get(k) {
+                let resident = stack_sets(state).into_iter().map(set_bytes).sum::<u64>();
+                let paged = state.paged.as_ref().map(|d| d.iter().map(|b| b.len() as u64).sum()).unwrap_or(0);
+                out.push((k, state.size, state.layers.len(), resident, paged, false));
+            }
+        }
+        out
     }
 
     fn fit_shared(&mut self) {
@@ -935,6 +1078,8 @@ impl Gpu {
             return;
         }
         let Some(mut state) = self.parked[to].take() else { return };
+        self.page_jobs.remove(&to);
+        self.page_in(&mut state);
         self.exchange(&mut state);
         self.parked[self.current] = Some(state);
         self.current = to;
@@ -1439,6 +1584,7 @@ impl Gpu {
         if ap1 == self.ap1 {
             return;
         }
+        self.page_in_all();
         let m = if ap1 { TO_AP1 } else { FROM_AP1 };
         let uniform = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("color matrix"), size: 48, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
         self.queue.write_buffer(&uniform, 0, bytemuck::cast_slice(&[m[0], m[1], m[2], 0.0, m[3], m[4], m[5], 0.0, m[6], m[7], m[8], 0.0]));
