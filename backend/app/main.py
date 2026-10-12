@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from app import ocio
 
-VERSION = "0.40.0"
+VERSION = "0.41.0"
 ROOT = Path(__file__).resolve().parents[2]
 DATA = Path(os.environ.get("FORMSURFACE_DATA", ROOT / "workspace"))
 SAFE = re.compile(r"^[A-Za-z0-9 _.-]{1,80}$")
