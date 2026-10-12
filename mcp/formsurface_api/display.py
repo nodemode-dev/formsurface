@@ -11,7 +11,7 @@ def set_environment(**options) -> dict:
 
 
 def path_trace(**options) -> dict:
-    """on, bounces (1 to 12), max_samples (64, 256, 1024, 4096), samples to render before returning."""
+    """on, bounces (1 to 12), max_samples (64, 256, 1024, 4096), samples to render before returning, denoise."""
     return tool("path_trace", **options)
 
 
