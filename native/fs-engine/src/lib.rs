@@ -662,11 +662,39 @@ impl Engine {
     }
 
     pub fn select_texture_set(&mut self, index: u32) -> bool {
-        if self.stroking || index as usize >= self.sets.len() {
+        if self.stroking || self.gpu.export_scaled() || index as usize >= self.sets.len() {
             return false;
         }
         self.switch_set(index as usize);
         true
+    }
+
+    pub fn export_size_begin(&mut self, size: u32) -> Result<(), JsValue> {
+        if self.stroking || self.trace.is_some() {
+            return Err(JsValue::from_str("Finish the stroke or bake first"));
+        }
+        if !matches!(size, 128 | 256 | 512 | 1024 | 2048 | 4096 | 8192) {
+            return Err(JsValue::from_str("An export size is 128, 256, 512, 1024, 2048, 4096 or 8192"));
+        }
+        let limit = self.gpu.max_texture_size();
+        if size > limit {
+            return Err(JsValue::from_str(&format!("This GPU's largest texture is {limit} px")));
+        }
+        self.gpu.export_scale_begin(size);
+        self.render_fills();
+        self.flush_set();
+        Ok(())
+    }
+
+    pub fn export_size_end(&mut self) {
+        if self.gpu.export_scaled() {
+            self.gpu.export_scale_end();
+            self.dirty = true;
+        }
+    }
+
+    pub fn max_texture_size(&self) -> u32 {
+        self.gpu.max_texture_size()
     }
 
     pub fn uv_tiles(&self) -> bool {
@@ -1371,7 +1399,7 @@ impl Engine {
     }
 
     pub fn stroke_begin(&mut self, x: f32, y: f32, pressure: f32) -> bool {
-        if self.mesh.is_none() || (self.brush.mode == StrokeMode::Clone && self.clone_source.is_none()) {
+        if self.mesh.is_none() || self.gpu.export_scaled() || (self.brush.mode == StrokeMode::Clone && self.clone_source.is_none()) {
             return false;
         }
         let index = self.layer_index(self.active);

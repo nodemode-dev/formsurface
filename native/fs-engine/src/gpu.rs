@@ -76,6 +76,21 @@ struct SetState {
     paged: Option<Vec<Vec<u8>>>,
 }
 
+struct ExportScale {
+    size: u32,
+    layers: Vec<LayerTex>,
+    final_set: Pair,
+    coverage: wgpu::Texture,
+    geometry: Option<(wgpu::Texture, wgpu::Texture)>,
+    bake: wgpu::Texture,
+    baked: bool,
+    baked_normal: wgpu::Texture,
+    baked_id: wgpu::Texture,
+    high_baked: bool,
+    quick: wgpu::Texture,
+    mask: wgpu::Texture,
+}
+
 fn stack_sets(state: &SetState) -> Vec<&Set> {
     let mut sets: Vec<&Set> = state.layers.iter().map(|l| &l.set).collect();
     sets.extend(state.undo_stack.iter().map(|s| &s.set));
@@ -171,6 +186,7 @@ pub struct Gpu {
     pub path_view: bool,
     pub path_denoise: bool,
     page_jobs: std::collections::HashMap<usize, std::rc::Rc<std::cell::RefCell<Vec<Option<Vec<u8>>>>>>,
+    export_scale: Option<ExportScale>,
     pub ap1: bool,
     color_matrix_pipe: wgpu::RenderPipeline,
     display_lut: wgpu::Texture,
@@ -626,6 +642,7 @@ impl Gpu {
             path_filter_uniforms: [uniform("path denoise", 16), uniform("path denoise", 16), uniform("path denoise", 16), uniform("path denoise", 16)],
             path_denoise: false,
             page_jobs: std::collections::HashMap::new(),
+            export_scale: None,
             ap1: false,
             color_matrix_pipe: pipeline(&device, "color matrix", shaders::COLOR_MATRIX, false, &[LAYER_FORMAT], None, false),
             display_lut: lut_texture(&device, &queue, 2, &[0.0; 24]),
@@ -1008,6 +1025,69 @@ impl Gpu {
         self.mask = texture(&self.device, size, LAYER_FORMAT, "stroke mask");
         self.prepare_set();
         self.quick = quick;
+    }
+
+    pub fn max_texture_size(&self) -> u32 {
+        self.device.limits().max_texture_dimension_2d
+    }
+
+    pub fn export_scaled(&self) -> bool {
+        self.export_scale.is_some()
+    }
+
+    pub fn export_scale_begin(&mut self, size: u32) {
+        if self.export_scale.is_some() || size == self.size {
+            return;
+        }
+        let layers = std::mem::take(&mut self.layers);
+        let mut scaled = Vec::with_capacity(layers.len());
+        for layer in &layers {
+            let next = new_set(&self.device, size);
+            self.resample_set(&layer.set, &next);
+            let fx = layer.fx.as_ref().map(|_| [texture(&self.device, size, LAYER_FORMAT, "mask effects"), texture(&self.device, size, LAYER_FORMAT, "mask effects")]);
+            scaled.push(LayerTex { id: layer.id, set: next, effects: layer.effects.clone(), fx });
+        }
+        let saved = ExportScale {
+            size: self.size,
+            layers,
+            final_set: std::mem::replace(&mut self.final_set, new_pair(&self.device, size)),
+            coverage: std::mem::replace(&mut self.coverage, texture(&self.device, size, wgpu::TextureFormat::R8Unorm, "uv coverage")),
+            geometry: self.geometry.take(),
+            bake: std::mem::replace(&mut self.bake, texture(&self.device, size, LAYER_FORMAT, "baked maps")),
+            baked: self.baked,
+            baked_normal: self.baked_normal.clone(),
+            baked_id: self.baked_id.clone(),
+            high_baked: self.high_baked,
+            quick: std::mem::replace(&mut self.quick, texture(&self.device, size, LAYER_FORMAT, "quick mask")),
+            mask: std::mem::replace(&mut self.mask, texture(&self.device, size, LAYER_FORMAT, "stroke mask")),
+        };
+        self.size = size;
+        self.layers = scaled;
+        self.fit_shared();
+        self.prepare_set();
+        self.resample_one(&saved.bake, &self.bake);
+        self.baked = saved.baked;
+        self.baked_normal = saved.baked_normal.clone();
+        self.baked_id = saved.baked_id.clone();
+        self.high_baked = saved.high_baked;
+        self.export_scale = Some(saved);
+    }
+
+    pub fn export_scale_end(&mut self) {
+        let Some(saved) = self.export_scale.take() else { return };
+        self.size = saved.size;
+        self.layers = saved.layers;
+        self.final_set = saved.final_set;
+        self.coverage = saved.coverage;
+        self.geometry = saved.geometry;
+        self.bake = saved.bake;
+        self.baked = saved.baked;
+        self.baked_normal = saved.baked_normal;
+        self.baked_id = saved.baked_id;
+        self.high_baked = saved.high_baked;
+        self.quick = saved.quick;
+        self.mask = saved.mask;
+        self.fit_shared();
     }
 
     fn resample_set(&self, from: &Set, to: &Set) {
