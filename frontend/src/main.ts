@@ -12,7 +12,7 @@ import { api } from './ui/api';
 import { AgentLink } from './ui/agent-link';
 import { BUILT_IN_MATERIALS, SMART_MASKS, generatorPart, saveMask, saveMaterial, savedMasks, savedMaterials, type SmartMaterial } from './ui/smart';
 import { parseHdr, type HdrImage } from './ui/hdr';
-import { clearOverlay, drawPath, pathSamples, type Vec3 } from './ui/path';
+import { clearOverlay, drawPath, filledCover, pathSamples, ribbonCover, type Vec3 } from './ui/path';
 import { fontLabel, loadFont, textImage } from './ui/text';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -26,6 +26,8 @@ type Tool = 'paint' | 'erase' | 'polyfill' | 'clone' | 'path';
 let tool: Tool = 'paint';
 const pathOverlay = $<HTMLCanvasElement>('path-overlay');
 const pathPoints: Vec3[] = [];
+let pathDrag = -1;
+let brushAlpha: ImageData | undefined;
 let mirror = false;
 let painting = false;
 let nav: 'orbit' | 'pan' | undefined;
@@ -426,18 +428,35 @@ function setView2d(on: boolean): boolean {
   return on;
 }
 
-function addPathPoint(x: number, y: number): boolean {
+function pathPointAt(x: number, y: number): Vec3 | undefined {
   const e = requireEngine();
   if (e.view_2d()) {
     const uv = e.uv_at(x, y);
-    if (uv.length !== 2) return false;
-    pathPoints.push([uv[0], uv[1], 0]);
-    return true;
+    return uv.length === 2 ? [uv[0], uv[1], 0] : undefined;
   }
   const p = e.surface_point(x, y);
-  if (p.length !== 3) return false;
-  pathPoints.push([p[0], p[1], p[2]]);
+  return p.length === 3 ? [p[0], p[1], p[2]] : undefined;
+}
+
+function addPathPoint(x: number, y: number): boolean {
+  const p = pathPointAt(x, y);
+  if (!p) return false;
+  pathPoints.push(p);
   return true;
+}
+
+function pathHandleAt(x: number, y: number): number {
+  const e = requireEngine();
+  const reach = 9 * Math.min(window.devicePixelRatio || 1, 2);
+  let best = -1;
+  let bestDistance = reach;
+  pathPoints.forEach((p, i) => {
+    const s = pathToScreen(e, p);
+    if (s.length !== 2) return;
+    const d = Math.hypot(s[0] - x, s[1] - y);
+    if (d < bestDistance) { best = i; bestDistance = d; }
+  });
+  return best;
 }
 
 function pathToScreen(e: Engine, p: Vec3): Float32Array {
@@ -446,9 +465,34 @@ function pathToScreen(e: Engine, p: Vec3): Float32Array {
 
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
-async function strokePath(closed = checked('p-closed'), smooth = checked('p-smooth'), erase = checked('p-erase')): Promise<number> {
+function coverPath(mode: string, closed: boolean, smooth: boolean, erase: boolean): number {
+  const e = requireEngine();
+  if (mode === 'filled' && pathPoints.length < 3) throw new Error('A filled path needs at least three points');
+  const samples = pathSamples(pathPoints, mode === 'filled' || (closed && pathPoints.length > 2), smooth).map((p) => pathToScreen(e, p));
+  if (samples.some((s) => s.length !== 2)) throw new Error('Part of the path is behind the camera');
+  const points = samples.map((s) => [s[0], s[1]] as [number, number]);
+  const cover = mode === 'filled' ? filledCover(points) : ribbonCover(points, num('b-size'), num('b-hardness'), sel('b-tip') === 'image' ? brushAlpha : undefined);
+  let [x0, y0, x1, y1] = cover.bounds;
+  if (e.view_2d()) {
+    const a = e.uv_at(x0, y0);
+    const b = e.uv_at(x1, y1);
+    [x0, y0, x1, y1] = [a[0], a[1], b[0], b[1]];
+  }
+  const keep = tool;
+  if (erase) { tool = 'erase'; syncBrush(); }
+  try {
+    e.path_cover(cover.width, cover.height, cover.rgba, x0, y0, x1, y1);
+  } finally {
+    if (erase) { tool = keep; syncBrush(); }
+  }
+  return samples.length;
+}
+
+async function strokePath(closed = checked('p-closed'), smooth = checked('p-smooth'), erase = checked('p-erase'), mode = sel('p-mode')): Promise<number> {
   const e = requireEngine();
   if (pathPoints.length < 2) throw new Error('A path needs at least two points on the surface');
+  if (mode === 'ribbon' || mode === 'filled') return coverPath(mode, closed, smooth, erase);
+  if (mode !== 'paint') throw new Error('Path mode is paint, ribbon or filled');
   const screen = pathSamples(pathPoints, closed && pathPoints.length > 2, smooth).map((p) => pathToScreen(e, p));
   const first = screen.findIndex((s) => s.length === 2);
   if (first < 0) throw new Error('The path is behind the camera');
@@ -566,6 +610,8 @@ canvas.addEventListener('pointerdown', (event) => {
     return;
   }
   if (tool === 'path') {
+    pathDrag = pathHandleAt(x, y);
+    if (pathDrag >= 0) { status(`Path: moving point ${pathDrag + 1}`); return; }
     if (addPathPoint(x, y)) status(`Path: ${pathPoints.length} point${pathPoints.length === 1 ? '' : 's'}; Enter strokes it, Backspace removes the last, Esc clears`);
     else status('Click on the mesh to place a path point', true);
     return;
@@ -593,6 +639,12 @@ canvas.addEventListener('pointermove', (event) => {
     if (nav === 'orbit') engine.orbit(dx, dy); else engine.pan(dx, dy);
     return;
   }
+  if (pathDrag >= 0 && tool === 'path') {
+    const [x, y] = local(event);
+    const p = pathPointAt(x, y);
+    if (p && pathDrag < pathPoints.length) pathPoints[pathDrag] = p;
+    return;
+  }
   if (painting) {
     for (const sample of event.getCoalescedEvents?.() ?? [event]) {
       const [x, y] = local(sample);
@@ -604,6 +656,8 @@ canvas.addEventListener('pointermove', (event) => {
   }
 });
 const endPointer = () => {
+  if (pathDrag >= 0) status(`Path: ${pathPoints.length} points; Enter strokes it`);
+  pathDrag = -1;
   if (painting) engine?.stroke_end();
   painting = false;
   nav = undefined;
@@ -736,6 +790,7 @@ function useImage(target: 'alpha' | 'stencil' | 'fill' | 'mask', w: number, h: n
   }
   if (target === 'alpha') {
     e.set_alpha(w, h, data);
+    brushAlpha = new ImageData(new Uint8ClampedArray(data), w, h);
     const option = $<HTMLSelectElement>('b-tip').querySelector<HTMLOptionElement>('option[value="image"]')!;
     option.disabled = false;
     $<HTMLSelectElement>('b-tip').value = 'image';
@@ -968,7 +1023,7 @@ function applyResource(r: Resource): void {
   const data = convertRgba(r);
   if (r.target === 'fill') e.set_fill_image(r.layer, r.w, r.h, data);
   else if (r.target === 'mask') e.mask_from_image(r.layer, r.w, r.h, data);
-  else if (r.target === 'alpha') e.set_alpha(r.w, r.h, data);
+  else if (r.target === 'alpha') { e.set_alpha(r.w, r.h, data); brushAlpha = new ImageData(new Uint8ClampedArray(data), r.w, r.h); }
   else e.set_stencil(r.w, r.h, data);
   refreshLayers();
 }
@@ -1867,7 +1922,7 @@ const agentLink = new AgentLink({
     }
     return { view: e.view_2d() ? '2d' : '3d' };
   },
-  paint_path: async ({ points, closed, smooth, erase }) => {
+  paint_path: async ({ points, closed, smooth, erase, mode }) => {
     const e = requireEngine();
     if (!Array.isArray(points) || points.length < 2) throw new Error('points is a list of at least two [x, y] pairs in 0 to 1');
     const [w, h] = e.viewport_size();
@@ -1878,8 +1933,9 @@ const agentLink = new AgentLink({
       if (!addPathPoint(x * w, y * h)) missed++;
     }
     try {
-      const samples = await strokePath(Boolean(closed), smooth === undefined ? true : Boolean(smooth), Boolean(erase));
-      return { control_points: pathPoints.length, missed_points: missed, samples, layer: e.active_layer() };
+      const kind = mode === undefined ? 'paint' : String(mode);
+      const samples = await strokePath(Boolean(closed), smooth === undefined ? true : Boolean(smooth), Boolean(erase), kind);
+      return { control_points: pathPoints.length, missed_points: missed, samples, mode: kind, layer: e.active_layer() };
     } finally {
       pathPoints.length = 0;
       clearOverlay(pathOverlay);
