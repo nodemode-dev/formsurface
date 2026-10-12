@@ -5,7 +5,7 @@ export class AgentLink {
   private wanted = false;
   private retry = 0;
 
-  constructor(private readonly handlers: Record<string, Handler>, private readonly onState: (state: 'off' | 'waiting' | 'linked') => void) {}
+  constructor(readonly handlers: Record<string, Handler>, private readonly onState: (state: 'off' | 'waiting' | 'linked') => void) {}
 
   get enabled(): boolean {
     return this.wanted;

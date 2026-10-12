@@ -3,5 +3,5 @@ Copyright 2026 nodemode-ai
 
 Licensed under the Apache License, Version 2.0 (see LICENSE).
 
-Third-party components: wgpu, naga, wasm-bindgen, js-sys, web-sys, bytemuck, serde, serde_json (MIT or Apache-2.0); three.js (MIT); FastAPI (MIT); Uvicorn (BSD-3-Clause); python-multipart (Apache-2.0).
+Third-party components: wgpu, naga, wasm-bindgen, js-sys, web-sys, bytemuck, serde, serde_json (MIT or Apache-2.0); three.js (MIT); Pyodide (MPL-2.0, loaded unmodified from its npm package for the embedded Python console); FastAPI (MIT); Uvicorn (BSD-3-Clause); python-multipart (Apache-2.0).
 Projection painting follows the published approach of rasterizing the mesh in UV space and testing texels in world space (Schaerfig and Hormann, VMV 2010); no third-party painting code is copied.

@@ -26,6 +26,18 @@ export const api = {
     return (await post(`/api/exports/${encodeURIComponent(stem)}`, form)).folder;
   },
 
+  async listScripts(): Promise<string[]> {
+    const response = await fetch('/api/scripts');
+    if (!response.ok) throw new Error(`FormSurface service: ${response.status} ${await response.text()}`);
+    return (await response.json()).scripts as string[];
+  },
+
+  async readScript(name: string): Promise<string> {
+    const response = await fetch(`/api/scripts/${encodeURIComponent(name)}`);
+    if (!response.ok) throw new Error(`FormSurface service: ${response.status} ${await response.text()}`);
+    return response.text();
+  },
+
   async saveProject(name: string, document: unknown, maps: Map<string, Blob>): Promise<string> {
     const form = new FormData();
     form.append('document', JSON.stringify(document));

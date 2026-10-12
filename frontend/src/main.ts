@@ -14,6 +14,7 @@ import { BUILT_IN_MATERIALS, SMART_MASKS, generatorPart, saveMask, saveMaterial,
 import { parseHdr, type HdrImage } from './ui/hdr';
 import { clearOverlay, drawPath, filledCover, pathSamples, ribbonCover, type Vec3 } from './ui/path';
 import { newEffect, renderEffects, type MaskEffectSpec } from './ui/mask-effects';
+import { clickPythonButton, emitPython, pythonLoaded, runPython, setPythonOutput } from './ui/python';
 import { fontLabel, loadFont, textImage } from './ui/text';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -280,6 +281,7 @@ function selectTextureSet(index: number): TextureSetInfo {
   bakeState();
   refreshLayers();
   status(`Texture set ${set.name}: strokes, layers, bakes and the base material now apply to it`);
+  emitPython('texture_set_changed', { index: set.index, name: set.name });
   return set;
 }
 
@@ -299,6 +301,11 @@ function refreshLayers(): void {
   const all = layers();
   const active = engine.active_layer();
   layerList.render(all, active);
+  const stackKey = `${engine.active_texture_set()}|${all.map((l) => `${l.id}:${l.kind}:${l.parent}`).join(',')}`;
+  if (stackKey !== lastStackKey) {
+    if (lastStackKey) emitPython('layer_stack_changed', { texture_set: engine.active_texture_set(), layers: all.map((l) => ({ id: l.id, name: l.name, kind: l.kind })) });
+    lastStackKey = stackKey;
+  }
   const layer = all.find((l) => l.id === active);
   if (layer) {
     $<HTMLSelectElement>('l-blend').value = layer.blend;
@@ -326,6 +333,7 @@ function refreshLayers(): void {
 }
 
 let mfxShown = '';
+let lastStackKey = '';
 
 function syncMaskEffects(layer: LayerInfo, all: LayerInfo[]): void {
   const e = requireEngine();
@@ -665,6 +673,7 @@ function applyMesh(next: FlatMesh, name: string): void {
   bakeState();
   refreshLayers();
   status(next.skipped ? `Loaded ${name}. ${next.skipped} part(s) without UVs were skipped.` : `Loaded ${name}`);
+  emitPython('mesh_loaded', { name, texture_sets: textureSets().map((s) => s.name) });
 }
 
 async function boot(): Promise<void> {
@@ -787,7 +796,7 @@ const endPointer = () => {
   if (warpDrag >= 0) status('Warp grid point moved');
   pathDrag = -1;
   warpDrag = -1;
-  if (painting) engine?.stroke_end();
+  if (painting) { engine?.stroke_end(); emitPython('stroke_end', { layer: engine?.active_layer() }); }
   painting = false;
   nav = undefined;
 };
@@ -1808,6 +1817,7 @@ $('export').addEventListener('click', async () => {
     if (await api.alive()) {
       const folder = await api.saveMaps(stem, maps);
       status(`Exported ${maps.size} maps to ${folder}`);
+      emitPython('export_finished', { folder, maps: [...maps.keys()] });
       return;
     }
     for (const [channel, blob] of maps) {
@@ -2062,6 +2072,7 @@ const agentLink = new AgentLink({
     if (traced) seconds = await bakeTraced(e, Number(directions ?? 64), Number(sel('k-rays')));
     else e.bake_maps(Number(directions ?? 64));
     bakeState();
+    emitPython('bake_finished', { method: traced ? 'traced' : 'depth', seconds });
     return { baked: e.is_baked(), method: traced ? 'traced' : 'depth', seconds, maps: ['ambient_occlusion', 'curvature', 'thickness', 'position', 'world_normal'] };
   },
   add_filter_layer: (args) => {
@@ -2258,6 +2269,7 @@ const agentLink = new AgentLink({
     });
     e.stroke_end();
     e.clear_hover();
+    emitPython('stroke_end', { layer: e.active_layer() });
     return { points: list.length, points_on_surface: hits, layer: e.active_layer() };
   },
   undo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().undo()) n++; return { undone: n }; },
@@ -2270,6 +2282,7 @@ const agentLink = new AgentLink({
       given(padding_color) ? hexColor(String(padding_color)) : hex('x-pad-color'));
     const maps = await renderMaps(template ? String(template) : sel('x-template'), custom ? validateMaps(custom) : undefined, choice);
     const folder = await api.saveMaps(String(name || meshName.replace(/\.[^.]+$/, '')), maps);
+    emitPython('export_finished', { folder, maps: [...maps.keys()] });
     return { folder, template: custom ? 'custom' : template ?? sel('x-template'), format: choice.format, bit_depth: choice.depth, padding: choice.padding.mode, padding_width: choice.padding.width, maps: [...maps.keys()] };
   },
   export_templates: () => ({ templates: allTemplates().map((t) => ({ name: t.name, label: t.label, maps: t.maps, saved: !TEMPLATES.includes(t) })) }),
@@ -2287,6 +2300,61 @@ const agentLink = new AgentLink({
   if (state === 'linked') status('Agent link on: MCP agents can now edit this document');
 });
 $('agent-link').addEventListener('click', () => agentLink.toggle());
+
+function pyLog(line: string, error = false): void {
+  const out = $('py-out');
+  const row = document.createElement('div');
+  row.textContent = line;
+  if (error) row.style.color = 'var(--danger)';
+  out.append(row);
+  while (out.childElementCount > 400) out.firstElementChild?.remove();
+  out.scrollTop = out.scrollHeight;
+}
+
+function pyButtonsChanged(labels: string[]): void {
+  const host = $('py-buttons');
+  const have = [...host.querySelectorAll('button')].map((b) => b.textContent ?? '');
+  if (have.join('\u0000') === labels.join('\u0000')) return;
+  host.replaceChildren(...labels.map((label) => {
+    const b = document.createElement('button');
+    b.className = 'btn';
+    b.textContent = label;
+    b.addEventListener('click', () => clickPythonButton(label).catch((error) => pyLog(error instanceof Error ? error.message : String(error), true)));
+    return b;
+  }));
+}
+
+setPythonOutput(pyLog, pyButtonsChanged);
+
+async function runPythonCode(code: string): Promise<string> {
+  $<HTMLButtonElement>('py-run').disabled = true;
+  if (!pythonLoaded()) status('Python: loading the interpreter (first run only)');
+  try {
+    const result = await runPython(agentLink.handlers, code);
+    if (result) pyLog(result);
+    status('Python script finished');
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    pyLog(message.split('\n').filter((l) => l.trim()).slice(-3).join('\n'), true);
+    status('Python script failed: see the Python panel', true);
+    throw error;
+  } finally {
+    $<HTMLButtonElement>('py-run').disabled = false;
+  }
+}
+
+$('py-run').addEventListener('click', () => { runPythonCode($<HTMLTextAreaElement>('py-code').value).catch(() => undefined); });
+$('py-clear').addEventListener('click', () => $('py-out').replaceChildren());
+$('py-plugins').addEventListener('click', () => {
+  api.listScripts().then(async (names) => {
+    if (!names.length) { status('No scripts in the workspace scripts folder'); return; }
+    for (const name of names) {
+      pyLog(`Running ${name}`);
+      await runPythonCode(await api.readScript(name)).catch(() => undefined);
+    }
+  }, (error) => status(error instanceof Error ? error.message : String(error), true));
+});
 
 let frames = 0;
 let lastFps = performance.now();

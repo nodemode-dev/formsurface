@@ -5,13 +5,22 @@
   "description": "FormSurface 3D texture painting editor",
   "license": "Apache-2.0",
   "type": "module",
-  "engines": { "node": ">=22.12" },
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview"
   },
-  "dependencies": { "three": "0.186.1" },
-  "devDependencies": { "@types/three": "0.186.0", "typescript": "7.0.2", "vite": "8.3.4" }
+  "dependencies": {
+    "pyodide": "314.0.7",
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@types/three": "0.186.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.4"
+  }
 }
