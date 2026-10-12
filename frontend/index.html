@@ -211,8 +211,10 @@
         <span><button class="icon-btn" id="f-image-load" title="Load an image for the fill pattern"><svg><use href="#i-open"/></svg></button></span>
       </h2>
       <div class="row"><label for="f-proj">Projection</label><select id="f-proj">
-        <option value="uv">UV</option><option value="triplanar">Tri-planar</option><option value="planar">Planar</option><option value="spherical">Spherical</option><option value="cylindrical">Cylindrical</option><option value="warp">Warp</option>
+        <option value="uv">UV</option><option value="triplanar">Tri-planar</option><option value="planar">Planar</option><option value="spherical">Spherical</option><option value="cylindrical">Cylindrical</option><option value="warp">Warp</option><option value="tile_match">Fill (match per UV tile)</option>
       </select><output></output></div>
+      <div class="row" style="grid-template-columns:1fr 96px"><span style="font-size:11px;color:var(--text-muted)">One image per UDIM tile, named with its tile (wood.1001.png)</span><button class="btn" id="f-tiles-load" style="justify-content:center" title="Load an image sequence: each file goes to the UV tile its name carries">Tile images</button></div>
+      <input type="file" id="tiles-file" accept="image/*" multiple hidden>
       <div class="row"><label for="f-axis">Planar axis</label><select id="f-axis"><option value="0">X</option><option value="1">Y</option><option value="2" selected>Z</option></select><output></output></div>
       <div class="row" style="grid-template-columns:1fr 96px"><label class="check" title="With Warp projection, drag the 4 by 4 grid points in the viewport to bend the pattern"><input type="checkbox" id="f-warp-edit">Edit warp grid</label><button class="btn" id="f-warp-reset" style="justify-content:center">Reset grid</button></div>
       <div class="row"><label for="f-pattern">Pattern</label><select id="f-pattern">

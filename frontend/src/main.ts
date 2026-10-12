@@ -820,6 +820,48 @@ function runPathStroke(): void {
 }
 $('p-stroke').addEventListener('click', runPathStroke);
 $('p-clear').addEventListener('click', () => { pathPoints.length = 0; clearOverlay(pathOverlay); status('Path cleared'); });
+function tileOf(name: string): number | undefined {
+  const m = /(?:^|[._\- ])(1\d{3})(?=[._\- ]|$)/.exec(name.replace(/\.[^.]+$/, ''));
+  return m ? Number(m[1]) : undefined;
+}
+
+async function fillTileImages(files: { name: string; file: File }[]): Promise<{ tiles: Record<string, string>; skipped: string[] }> {
+  const e = requireEngine();
+  const layer = layers().find((l) => l.id === e.active_layer());
+  if (!layer || layer.kind !== 'fill') throw new Error('Select a fill layer first');
+  const tiles: Record<string, string> = {};
+  const skipped: string[] = [];
+  for (const { name, file } of files) {
+    const udim = tileOf(name);
+    if (udim === undefined) { skipped.push(`${name}: no UDIM number in the name`); continue; }
+    const { w, h, data } = await imageRgba(file, false);
+    try {
+      tiles[String(udim)] = `${name} -> ${e.set_fill_image_tile(layer.id, udim, w, h, data)}`;
+    } catch (error) {
+      skipped.push(`${name}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  if (!Object.keys(tiles).length) throw new Error(`No tile image applied. ${skipped.join('; ')}`);
+  const option = $<HTMLSelectElement>('f-pattern').querySelector<HTMLOptionElement>('option[value="image"]')!;
+  option.disabled = false;
+  $<HTMLSelectElement>('f-pattern').value = 'image';
+  $<HTMLSelectElement>('f-proj').value = 'tile_match';
+  $<HTMLInputElement>('f-imgcolor').checked = true;
+  syncFill();
+  refreshLayers();
+  return { tiles, skipped };
+}
+
+$('f-tiles-load').addEventListener('click', () => $<HTMLInputElement>('tiles-file').click());
+$('tiles-file').addEventListener('change', () => {
+  const input = $<HTMLInputElement>('tiles-file');
+  const files = Array.from(input.files ?? []).map((file) => ({ name: file.name, file }));
+  input.value = '';
+  if (!files.length) return;
+  fillTileImages(files).then(({ tiles, skipped }) => status(`Tile images: ${Object.keys(tiles).sort().join(', ')}${skipped.length ? `; skipped ${skipped.length}` : ''}`, skipped.length > 0),
+    (error) => status(error instanceof Error ? error.message : String(error), true));
+});
+
 $('f-warp-edit').addEventListener('change', () => {
   if (checked('f-warp-edit') && !activeWarp()) status('Select a fill layer with Warp projection to edit its grid', true);
   else if (checked('f-warp-edit')) status('Warp: drag the grid points on the model');
@@ -1910,6 +1952,19 @@ const agentLink = new AgentLink({
     const { w, h, data } = await imageRgba(new File([blob], String(file)), false);
     const r = importImage(kind, String(file), w, h, data, color_space === undefined || color_space === null ? undefined : String(color_space));
     return { resource: resourceList()[resources.indexOf(r)], layers: layers() };
+  },
+  fill_tile_images: async ({ files, layer_id }) => {
+    const e = requireEngine();
+    if (!Array.isArray(files) || !files.length) throw new Error('files is a list of image names in the workspace images folder');
+    if (layer_id !== undefined && layer_id !== null) { e.select_layer(Number(layer_id)); refreshLayers(); }
+    const loaded: { name: string; file: File }[] = [];
+    for (const name of files.map(String)) {
+      const response = await fetch(`/api/images/${encodeURIComponent(name)}`);
+      if (!response.ok) throw new Error(`Image ${name} is not in the workspace images folder`);
+      loaded.push({ name, file: new File([await response.blob()], name) });
+    }
+    const result = await fillTileImages(loaded);
+    return { ...result, settings: JSON.parse(e.fill_settings(e.active_layer())) as Record<string, unknown> };
   },
   resources: () => ({ resources: resourceList() }),
   resource_color_space: ({ resource, color_space }) => {
