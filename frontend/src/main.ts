@@ -166,8 +166,7 @@ function refreshSets(): void {
   if ([...select.options].map((o) => `${o.value}:${o.textContent}`).join('|') !== wanted.map(([v, t]) => `${v}:${t}`).join('|')) {
     select.replaceChildren(...wanted.map(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; return o; }));
   }
-  const kind = layers().find((l) => l.id === engine!.active_layer())?.kind;
-  select.disabled = sets.length < 2 || (kind !== 'fill' && kind !== 'filter');
+  select.disabled = sets.length < 2 || engine.is_instance_copy(engine.active_layer());
 }
 
 function instanceLayer(id: number, target: number): number {
@@ -183,7 +182,7 @@ $('l-instance').addEventListener('change', () => {
   if (!value) return;
   try {
     instanceLayer(engine.active_layer(), Number(value));
-    status(`Instanced into ${textureSets().find((s) => s.index === Number(value))?.name}: changes to its settings, mask generator, name, opacity or blend now update every copy`);
+    status(`Instanced into ${textureSets().find((s) => s.index === Number(value))?.name}: settings, mask generator, name, opacity, blend and layers added inside a folder reach every copy; strokes stay on the source`);
   } catch (error) {
     status(error instanceof Error ? error.message : String(error), true);
   }
@@ -680,7 +679,8 @@ canvas.addEventListener('pointerdown', (event) => {
   painting = engine.stroke_begin(x, y, pressure(event));
   if (!painting && tool === 'clone' && !engine.has_clone_source()) { status('Ctrl+click the mesh to set a clone source first', true); return; }
   const activeKind = layers().find((l) => l.id === engine!.active_layer())?.kind;
-  if (!painting && (activeKind === 'fill' || activeKind === 'filter' || activeKind === 'folder')) status(`A ${activeKind} is painted through its mask: choose a mask in the layer properties first.`, true);
+  if (!painting && engine.is_instance_copy(engine.active_layer()) && engine.quick_mask_mode() !== 1) status('This layer is an instance: paint its source layer, in the texture set it was instanced from', true);
+  else if (!painting && (activeKind === 'fill' || activeKind === 'filter' || activeKind === 'folder')) status(`A ${activeKind} is painted through its mask: choose a mask in the layer properties first.`, true);
 });
 canvas.addEventListener('pointermove', (event) => {
   if (!engine) return;
@@ -2166,6 +2166,7 @@ const agentLink = new AgentLink({
     const list = points as [number, number][];
     const [w, h] = e.viewport_size();
     const p = Number(pressure ?? 1);
+    if (e.is_instance_copy(e.active_layer()) && e.quick_mask_mode() !== 1) throw new Error('This layer is an instance: paint actions only reach its source layer\'s texture set');
     let hits = 0;
     list.forEach(([u, v], i) => {
       const x = u * w;
