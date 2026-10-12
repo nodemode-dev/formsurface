@@ -155,8 +155,83 @@ function syncView(): void {
   engine?.set_environment_view(num('d-env-rot'), num('d-env-blur'), checked('d-env-bg'));
   engine?.set_post(JSON.stringify(Object.fromEntries(POST_FIELDS.map((k) => [k, num(`p-${k}`)]))));
   engine?.set_reproject(checked('m-reproject'));
-  engine?.set_view_transform(sel('d-view'));
+  if (sel('d-view') !== 'ocio') engine?.set_view_transform(sel('d-view'));
+  else if (ocioInfo) applyOcio().catch(ocioFailed);
 }
+
+interface OcioInfo { displays: Record<string, string[]>; default_display: string; default_views: Record<string, string>; looks: string[]; color_spaces: string[]; viewport_space: string; name: string }
+let ocioInfo: OcioInfo | undefined;
+
+function ocioViewOption(): HTMLOptionElement {
+  return [...$<HTMLSelectElement>('d-view').options].find((o) => o.value === 'ocio')!;
+}
+
+function fillSelect(id: string, values: string[], chosen: string, blank?: string): void {
+  const select = $<HTMLSelectElement>(id);
+  select.replaceChildren(...[...(blank !== undefined ? [['', blank]] : []), ...values.map((v) => [v, v])].map(([value, label]) => new Option(label, value, false, value === chosen)));
+  select.disabled = !values.length;
+}
+
+async function refreshOcioConfigs(): Promise<{ available: boolean; builtin: string[]; files: string[]; version: string }> {
+  const response = await fetch('/api/ocio');
+  if (!response.ok) throw new Error('The FormSurface service is needed for OpenColorIO');
+  const list = await response.json() as { available: boolean; builtin: string[]; files: string[]; version: string };
+  const current = sel('d-ocio');
+  fillSelect('d-ocio', [...list.builtin, ...list.files], current, 'None (built-in transforms)');
+  $<HTMLSelectElement>('d-ocio').disabled = !list.available;
+  if (!list.available) $('d-ocio-state').textContent = 'OpenColorIO is not installed in the service (pip install opencolorio)';
+  return list;
+}
+
+async function chooseOcioConfig(name: string): Promise<void> {
+  if (!name) {
+    ocioInfo = undefined;
+    engine?.clear_display_lut();
+    for (const id of ['d-ocio-display', 'd-ocio-view']) fillSelect(id, [], '');
+    fillSelect('d-ocio-look', [], '', 'None');
+    ocioViewOption().disabled = true;
+    if (sel('d-view') === 'ocio') setControl('d-view', 'aces', 'change');
+    $('d-ocio-state').textContent = 'Color management: built-in view transforms';
+    return;
+  }
+  const response = await fetch(`/api/ocio/${encodeURIComponent(name)}`);
+  if (!response.ok) throw new Error((await response.json()).detail ?? `Could not read ${name}`);
+  ocioInfo = await response.json() as OcioInfo;
+  const display = ocioInfo.default_display;
+  fillSelect('d-ocio-display', Object.keys(ocioInfo.displays), display);
+  fillSelect('d-ocio-view', ocioInfo.displays[display] ?? [], ocioInfo.default_views[display]);
+  fillSelect('d-ocio-look', ocioInfo.looks, '', 'None');
+  renderResources();
+}
+
+async function applyOcio(): Promise<Record<string, unknown>> {
+  const e = requireEngine();
+  const name = sel('d-ocio');
+  if (!name) return { config: null, view_transform: e.view_transform() };
+  const query = new URLSearchParams({ display: sel('d-ocio-display'), view: sel('d-ocio-view'), look: sel('d-ocio-look') });
+  const response = await fetch(`/api/ocio/${encodeURIComponent(name)}/lut?${query}`);
+  if (!response.ok) throw new Error((await response.json()).detail ?? 'OpenColorIO could not build that view');
+  const meta = JSON.parse(response.headers.get('X-Lut') ?? '{}') as { size: number; low: number; high: number; source: string };
+  e.set_display_lut(meta.size, meta.low, meta.high, new Float32Array(await response.arrayBuffer()));
+  ocioViewOption().disabled = false;
+  $<HTMLSelectElement>('d-view').value = 'ocio';
+  const state = { config: name, display: sel('d-ocio-display'), view: sel('d-ocio-view'), look: sel('d-ocio-look') || null, viewport_space: meta.source, lut_size: meta.size };
+  $('d-ocio-state').textContent = `${ocioInfo?.name ?? name}: ${state.display}, ${state.view}${state.look ? `, look ${state.look}` : ''} (viewport read as ${meta.source})`;
+  return state;
+}
+
+function ocioFailed(error: unknown): void {
+  status(error instanceof Error ? error.message : String(error), true);
+}
+
+$('d-ocio').addEventListener('change', () => { chooseOcioConfig(sel('d-ocio')).then(() => applyOcio()).catch(ocioFailed); });
+$('d-ocio-display').addEventListener('change', () => {
+  if (!ocioInfo) return;
+  const display = sel('d-ocio-display');
+  fillSelect('d-ocio-view', ocioInfo.displays[display] ?? [], ocioInfo.default_views[display]);
+  applyOcio().catch(ocioFailed);
+});
+for (const id of ['d-ocio-view', 'd-ocio-look']) $(id).addEventListener('change', () => { applyOcio().catch(ocioFailed); });
 
 const environments = new Map<string, HdrImage>();
 
@@ -730,6 +805,7 @@ async function boot(): Promise<void> {
     $('gpu-info').textContent = `${engine.backend()} · ${engine.texture_size()} px`;
     syncBrush(); syncChannels(); syncBase(); syncView();
     if (sel('d-env')) useEnvironment(sel('d-env'));
+    if (!sel('d-ocio')) refreshOcioConfigs().catch(() => { $('d-ocio-state').textContent = 'OpenColorIO needs the FormSurface service'; });
     applyMesh(mesh ?? sampleMesh('sphere'), mesh ? meshName : 'sphere');
     refreshLayers();
     notice.hidden = true;
@@ -1260,10 +1336,11 @@ $('tool-mirror').addEventListener('click', () => {
 });
 for (const id of ['b-angle', 'b-density', 'b-lazy', 'b-jsize', 'b-jangle', 'b-jpos', 'b-jflow', 'b-radial', 's-scale', 's-angle', 's-x', 's-y']) $(id).addEventListener('input', () => { setOutput(id); syncBrush(); });
 for (const id of ['b-align', 'b-space', 'b-tip', 'b-sym', 'b-axis', 'b-follow', 's-on']) $(id).addEventListener('change', syncBrush);
-type ColorSpace = 'srgb' | 'linear' | 'raw';
+type BuiltinSpace = 'srgb' | 'linear' | 'raw';
+type ColorSpace = BuiltinSpace | `ocio:${string}`;
 type ImageTarget = 'alpha' | 'stencil' | 'fill' | 'mask';
-const COLOR_SPACES: ColorSpace[] = ['srgb', 'linear', 'raw'];
-const SPACE_LABEL: Record<ColorSpace, string> = { srgb: 'sRGB', linear: 'Linear', raw: 'Raw data' };
+const COLOR_SPACES: BuiltinSpace[] = ['srgb', 'linear', 'raw'];
+const SPACE_LABEL: Record<BuiltinSpace, string> = { srgb: 'sRGB', linear: 'Linear', raw: 'Raw data' };
 
 interface Resource {
   name: string;
@@ -1273,11 +1350,46 @@ interface Resource {
   w: number;
   h: number;
   rgba?: Uint8Array;
+  converted?: Uint8Array;
+  envRgb?: Float32Array;
 }
 
 const resources: Resource[] = [];
 
+function spaceLabel(space: ColorSpace): string {
+  return space.startsWith('ocio:') ? `OCIO ${space.slice(5)}` : SPACE_LABEL[space as BuiltinSpace];
+}
+
+async function ocioConvert(src: string, rgb: Float32Array): Promise<Float32Array> {
+  const config = sel('d-ocio');
+  if (!config) throw new Error('Choose an OCIO config in the Display panel first');
+  const response = await fetch(`/api/ocio/${encodeURIComponent(config)}/convert?${new URLSearchParams({ src })}`, { method: 'POST', body: rgb.buffer as ArrayBuffer });
+  if (!response.ok) throw new Error((await response.json()).detail ?? `OpenColorIO could not convert from ${src}`);
+  return new Float32Array(await response.arrayBuffer());
+}
+
+async function ocioConvertResource(r: Resource): Promise<void> {
+  const src = r.space.slice(5);
+  if (r.target === 'environment') {
+    const image = environments.get(r.name);
+    if (!image) throw new Error(`${r.name} is not loaded`);
+    r.envRgb = await ocioConvert(src, image.rgb);
+    return;
+  }
+  const rgba = r.rgba!;
+  const rgb = new Float32Array((rgba.length / 4) * 3);
+  for (let i = 0, j = 0; i < rgba.length; i += 4, j += 3) { rgb[j] = rgba[i] / 255; rgb[j + 1] = rgba[i + 1] / 255; rgb[j + 2] = rgba[i + 2] / 255; }
+  const lin = await ocioConvert(src, rgb);
+  const out = new Uint8Array(rgba.length);
+  for (let i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
+    for (let c = 0; c < 3; c++) out[i + c] = Math.round(255 * Math.pow(Math.min(Math.max(lin[j + c], 0), 1), 1 / 2.2));
+    out[i + 3] = rgba[i + 3];
+  }
+  r.converted = out;
+}
+
 function convertRgba(r: Resource): Uint8Array {
+  if (r.space.startsWith('ocio:') && r.converted) return r.converted;
   const out = new Uint8Array(r.rgba!);
   const color = r.target === 'fill';
   const table = new Uint8Array(256);
@@ -1301,6 +1413,7 @@ function convertRgba(r: Resource): Uint8Array {
 
 function environmentRgb(name: string, rgb: Float32Array): Float32Array {
   const r = resources.find((x) => x.target === 'environment' && x.name === name);
+  if (r && r.space.startsWith('ocio:') && r.envRgb) return r.envRgb;
   if (!r || r.space !== 'srgb') return rgb;
   return rgb.map((v) => Math.pow(Math.max(v, 0), 2.2));
 }
@@ -1326,14 +1439,24 @@ function applyResource(r: Resource): void {
   refreshLayers();
 }
 
-function setResourceSpace(key: string | number, space: string): Resource {
-  if (!COLOR_SPACES.includes(space as ColorSpace)) throw new Error(`color_space is one of ${COLOR_SPACES.join(', ')}`);
+async function setResourceSpace(key: string | number, space: string): Promise<Resource> {
+  const ocioSpace = space.startsWith('ocio:');
+  if (!ocioSpace && !COLOR_SPACES.includes(space as BuiltinSpace)) throw new Error(`color_space is one of ${COLOR_SPACES.join(', ')}, or ocio: followed by a color space of the active OCIO config`);
+  if (ocioSpace && !ocioInfo?.color_spaces.includes(space.slice(5))) throw new Error(ocioInfo ? `${space.slice(5)} is not in ${ocioInfo.name}` : 'Choose an OCIO config in the Display panel first');
   const asIndex = typeof key === 'number' ? key : /^\d+$/.test(key) ? Number(key) : -1;
   const named = asIndex >= 0 ? [] : resources.filter((x) => x.name === key);
   if (named.length > 1) throw new Error(`${key} is loaded ${named.length} times (${named.map((x) => `${resources.indexOf(x)} as ${x.target}`).join(', ')}); pass its index`);
   const r = asIndex >= 0 ? resources[asIndex] : named[0];
   if (!r) throw new Error(`No resource ${key}. Resources: ${resources.map((x, i) => `${i} ${x.name} (${x.target})`).join(', ') || 'none loaded'}`);
-  r.space = space as ColorSpace;
+  if (ocioSpace && r.target !== 'fill' && r.target !== 'environment') throw new Error('OCIO color spaces apply to fill images and environments; masks, alphas and stencils are data');
+  const next = space as ColorSpace;
+  if (ocioSpace) {
+    const probe = { ...r, space: next };
+    await ocioConvertResource(probe);
+    r.converted = probe.converted;
+    r.envRgb = probe.envRgb;
+  }
+  r.space = next;
   applyResource(r);
   renderResources();
   return r;
@@ -1358,9 +1481,11 @@ function renderResources(): void {
     const select = document.createElement('select');
     select.setAttribute('aria-label', `Color space of ${r.name}`);
     for (const s of COLOR_SPACES) select.add(new Option(SPACE_LABEL[s], s));
+    if (ocioInfo && (r.target === 'fill' || r.target === 'environment')) for (const s of ocioInfo.color_spaces) select.add(new Option(`OCIO ${s}`, `ocio:${s}`));
+    if (r.space.startsWith('ocio:') && ![...select.options].some((o) => o.value === r.space)) select.add(new Option(spaceLabel(r.space), r.space));
     select.value = r.space;
     select.addEventListener('change', () => {
-      try { setResourceSpace(index, select.value); status(`${r.name} is now read as ${SPACE_LABEL[r.space]}`); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+      setResourceSpace(index, select.value).then(() => status(`${r.name} is now read as ${spaceLabel(r.space)}`), (error) => { select.value = r.space; status(error instanceof Error ? error.message : String(error), true); });
     });
     row.append(label, select);
     return row;
@@ -1370,8 +1495,8 @@ function renderResources(): void {
 
 function importImage(target: ImageTarget, name: string, w: number, h: number, rgba: Uint8Array, space?: string): Resource {
   const e = requireEngine();
-  const chosen = (space ?? (target === 'fill' ? 'srgb' : 'raw')) as ColorSpace;
-  if (!COLOR_SPACES.includes(chosen)) throw new Error(`color_space is one of ${COLOR_SPACES.join(', ')}`);
+  const chosen = (space ?? (target === 'fill' ? 'srgb' : 'raw')) as BuiltinSpace;
+  if (!COLOR_SPACES.includes(chosen)) throw new Error(`color_space is one of ${COLOR_SPACES.join(', ')} when loading; set an OCIO color space afterwards with the resource color space`);
   const r: Resource = { name, target, layer: target === 'fill' || target === 'mask' ? e.active_layer() : 0, space: chosen, w, h, rgba };
   useImage(target, w, h, convertRgba(r), name);
   return addResource(r);
@@ -2278,9 +2403,9 @@ const agentLink = new AgentLink({
     return { ...result, settings: JSON.parse(e.fill_settings(e.active_layer())) as Record<string, unknown> };
   },
   resources: () => ({ resources: resourceList() }),
-  resource_color_space: ({ resource, color_space }) => {
+  resource_color_space: async ({ resource, color_space }) => {
     const key = typeof resource === 'number' ? resource : String(resource);
-    const r = setResourceSpace(key, String(color_space));
+    const r = await setResourceSpace(key, String(color_space));
     return { resource: resourceList()[resources.indexOf(r)] };
   },
   set_post_effects: (args) => {
@@ -2502,6 +2627,32 @@ const agentLink = new AgentLink({
   undo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().undo()) n++; return { undone: n }; },
   redo: ({ steps }) => { let n = 0; for (let i = 0; i < Number(steps ?? 1); i++) if (requireEngine().redo()) n++; return { redone: n }; },
   screenshot: async () => ({ png_base64: await blobBase64(await viewportPng()) }),
+  color_management: async ({ config, display, view, look }) => {
+    const list = await refreshOcioConfigs();
+    if (config === undefined || config === null) return { ...list, active: sel('d-ocio') || null, view_transform: requireEngine().view_transform() };
+    const name = String(config);
+    if (name && !list.available) throw new Error('OpenColorIO is not installed in the FormSurface service (pip install opencolorio)');
+    if (name && !list.builtin.includes(name) && !list.files.includes(name)) throw new Error(`${name} is not a built-in config or an .ocio file in the workspace ocio folder. Built-in: ${list.builtin.join(', ')}`);
+    $<HTMLSelectElement>('d-ocio').value = name;
+    await chooseOcioConfig(name);
+    if (!name) return { config: null, view_transform: requireEngine().view_transform() };
+    const info = ocioInfo!;
+    if (display !== undefined && display !== null) {
+      if (!info.displays[String(display)]) throw new Error(`Displays: ${Object.keys(info.displays).join(', ')}`);
+      fillSelect('d-ocio-display', Object.keys(info.displays), String(display));
+      fillSelect('d-ocio-view', info.displays[String(display)], info.default_views[String(display)]);
+    }
+    if (view !== undefined && view !== null) {
+      const views = info.displays[sel('d-ocio-display')] ?? [];
+      if (!views.includes(String(view))) throw new Error(`Views for ${sel('d-ocio-display')}: ${views.join(', ')}`);
+      $<HTMLSelectElement>('d-ocio-view').value = String(view);
+    }
+    if (look !== undefined && look !== null) {
+      if (look && !info.looks.includes(String(look))) throw new Error(`Looks: ${info.looks.join(', ') || 'none in this config'}`);
+      $<HTMLSelectElement>('d-ocio-look').value = String(look);
+    }
+    return { ...(await applyOcio()), displays: info.displays, looks: info.looks };
+  },
   path_render: async ({ width, height, samples, name }) => {
     if (!JSON.parse(requireEngine().path_trace_json()).on) throw new Error('Turn path tracing on first (path_trace on true)');
     return { width: Number(width), height: Number(height), ...(await renderPath(Number(width), Number(height), Number(samples ?? 256), name ? String(name) : undefined)) };
