@@ -52,7 +52,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_flatten_folder` | folder_id (paint and fill children only) | new layer id, layers (destructive, not undoable) |
 | `formsurface_export_layer` | layer_id, name | folder with layer_ID_basecolor, roughness, metallic and height PNGs, coverage in alpha |
 | `formsurface_export_layer_mask` | layer_id, name | folder |
-| `formsurface_export_mesh` | name | folder (OBJ with UDIM UVs, one group per texture set) |
+| `formsurface_export_mesh` | name, ngons (keep OBJ or PLY quads and n-gons, default on), subdivide (0 to 3 levels), displacement (0 to 0.2 of the radius, by the height channel) | folder (OBJ with UDIM UVs, one group per texture set) |
 | `formsurface_uv_tiles` | on (omit to read) | uv_tiles and texture sets with linked flags |
 | `formsurface_mask_source` | layer_id, source (cavity, edges, thin, top, id_color), color hex or x, y point for id_color, tolerance, level, softness, invert | layers, picked color |
 | `formsurface_quick_mask` | mode (off, edit, on), action (clear, allow_all, invert) | mode |
