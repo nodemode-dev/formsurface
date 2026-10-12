@@ -993,9 +993,14 @@ impl Engine {
         Ok(())
     }
 
+    pub fn set_path_denoise(&mut self, on: bool) {
+        self.gpu.path_denoise = on;
+    }
+
     pub fn path_trace_json(&self) -> String {
         serde_json::json!({
             "on": self.path_bounces > 0,
+            "denoise": self.gpu.path_denoise,
             "bounces": self.path_bounces,
             "samples": self.gpu.path_samples(),
             "max_samples": self.path_limit,

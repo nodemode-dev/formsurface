@@ -44,7 +44,8 @@ struct PathScene {
     attrs: wgpu::Buffer,
     roles: wgpu::Buffer,
     arrays: Option<[wgpu::Texture; 3]>,
-    accum: Option<[wgpu::Texture; 2]>,
+    accum: Option<[wgpu::Texture; 6]>,
+    filtered: Option<[wgpu::Texture; 2]>,
     cur: usize,
     samples: u32,
     seed: u32,
@@ -145,6 +146,10 @@ pub struct Gpu {
     path_show_uniform: wgpu::Buffer,
     path: Option<PathScene>,
     pub path_view: bool,
+    pub path_denoise: bool,
+    path_filter_pipe: wgpu::RenderPipeline,
+    path_filter_uniforms: [wgpu::Buffer; 4],
+    env_cdf: wgpu::Buffer,
     path_inflight: std::sync::Arc<std::sync::atomic::AtomicU32>,
     post_uniform: wgpu::Buffer,
     pub post_params: [f32; 24],
@@ -558,7 +563,15 @@ impl Gpu {
             reproject_pipe: pipeline(&device, "reproject", shaders::REPROJECT, false, &[LAYER_FORMAT; 4], None, false),
             trace_pipe: pipeline(&device, "ray traced bake", shaders::TRACE, false, &[LAYER_FORMAT], None, false),
             trace_job: None,
-            path_pipe: pipeline(&device, "path trace", &format!("{}{}", shaders::ENV_COMMON, shaders::PATH), false, &[wgpu::TextureFormat::Rgba32Float], None, false),
+            path_pipe: pipeline(&device, "path trace", &format!("{}{}", shaders::ENV_COMMON, shaders::PATH), false, &[wgpu::TextureFormat::Rgba32Float, LAYER_FORMAT, LAYER_FORMAT], None, false),
+            path_filter_pipe: pipeline(&device, "path denoise", shaders::PATH_FILTER, false, &[wgpu::TextureFormat::Rgba32Float], None, false),
+            path_filter_uniforms: [uniform("path denoise", 16), uniform("path denoise", 16), uniform("path denoise", 16), uniform("path denoise", 16)],
+            path_denoise: false,
+            env_cdf: {
+                let buffer = device.create_buffer(&wgpu::BufferDescriptor { label: Some("environment distribution"), size: 32, usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+                queue.write_buffer(&buffer, 0, bytemuck::cast_slice(&[1.0f32, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0]));
+                buffer
+            },
             path_show_pipe: pipeline(&device, "path show", &format!("{}{}", shaders::ENV_COMMON, shaders::PATH_SHOW), false, &[format], None, false),
             path_gather_pipe: pipeline(&device, "path gather", shaders::PATH_GATHER, false, &[LAYER_FORMAT; 3], None, false),
             path_uniform: uniform("path trace", 32),
@@ -1372,7 +1385,7 @@ impl Gpu {
             buffer
         };
         let roles = storage("path roles", &vec![0.0f32; self.parked.len().max(4)]);
-        self.path = Some(PathScene { nodes: storage("path nodes", nodes), tris: storage("path triangles", tris), attrs: storage("path attributes", attrs), roles, arrays: None, accum: None, cur: 0, samples: 0, seed: 0 });
+        self.path = Some(PathScene { nodes: storage("path nodes", nodes), tris: storage("path triangles", tris), attrs: storage("path attributes", attrs), roles, arrays: None, accum: None, filtered: None, cur: 0, samples: 0, seed: 0 });
     }
 
     pub fn idle(&self) -> js_sys::Promise {
@@ -1425,17 +1438,19 @@ impl Gpu {
         let (width, height) = (self.config.width.max(1), self.config.height.max(1));
         let sized = scene.accum.as_ref().map(|a| a[0].width() == width && a[0].height() == height).unwrap_or(false);
         if !sized {
-            let accum = |label: &str| self.device.create_texture(&wgpu::TextureDescriptor {
+            let accum = |label: &str, format: wgpu::TextureFormat| self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(label),
                 size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba32Float,
+                format,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             });
-            scene.accum = Some([accum("path accumulation"), accum("path accumulation")]);
+            let wide = wgpu::TextureFormat::Rgba32Float;
+            scene.accum = Some([accum("path color", wide), accum("path albedo", LAYER_FORMAT), accum("path normal", LAYER_FORMAT), accum("path color", wide), accum("path albedo", LAYER_FORMAT), accum("path normal", LAYER_FORMAT)]);
+            scene.filtered = Some([accum("path filtered", wide), accum("path filtered", wide)]);
         }
         let mut encoder = self.device.create_command_encoder(&Default::default());
         if let Some(arrays) = scene.arrays.as_ref() {
@@ -1460,8 +1475,9 @@ impl Gpu {
             }
         }
         if let Some(accum) = scene.accum.as_ref() {
-            let target = view_of(&accum[scene.cur]);
-            encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&target, wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT))], ..Default::default() });
+            let (c, a, n) = (view_of(&accum[scene.cur * 3]), view_of(&accum[scene.cur * 3 + 1]), view_of(&accum[scene.cur * 3 + 2]));
+            let clear = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
+            encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&c, clear), attach(&a, clear), attach(&n, clear)], ..Default::default() });
         }
         self.queue.submit([encoder.finish()]);
         scene.samples = 0;
@@ -1477,7 +1493,9 @@ impl Gpu {
         let (e0, e1, e2) = (view_of(&self.env_textures[0]), view_of(&self.env_textures[1]), view_of(&self.env_textures[2]));
         let array_view = |t: &wgpu::Texture| t.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() });
         let (ca, ma, na) = (array_view(&arrays[0]), array_view(&arrays[1]), array_view(&arrays[2]));
-        let (prev, next) = (view_of(&accum[scene.cur]), view_of(&accum[1 - scene.cur]));
+        let (from, to) = (scene.cur * 3, (1 - scene.cur) * 3);
+        let (prev, prev_albedo, prev_normal) = (view_of(&accum[from]), view_of(&accum[from + 1]), view_of(&accum[from + 2]));
+        let (next, next_albedo, next_normal) = (view_of(&accum[to]), view_of(&accum[to + 1]), view_of(&accum[to + 2]));
         let group = bind(&self.device, &self.path_pipe, &[
             self.path_uniform.as_entire_binding(),
             self.env_uniform.as_entire_binding(),
@@ -1493,10 +1511,14 @@ impl Gpu {
             wgpu::BindingResource::TextureView(&ma),
             wgpu::BindingResource::TextureView(&na),
             wgpu::BindingResource::TextureView(&prev),
+            wgpu::BindingResource::TextureView(&prev_albedo),
+            wgpu::BindingResource::TextureView(&prev_normal),
+            self.env_cdf.as_entire_binding(),
         ]);
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&next, wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT))], ..Default::default() });
+            let clear = wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT);
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&next, clear), attach(&next_albedo, clear), attach(&next_normal, clear)], ..Default::default() });
             pass.set_pipeline(&self.path_pipe);
             pass.set_bind_group(0, &group, &[]);
             pass.draw(0..3, 0..1);
@@ -1521,9 +1543,32 @@ impl Gpu {
         if accum[0].width() != target.width() || accum[0].height() != target.height() {
             return false;
         }
-        self.queue.write_buffer(&self.path_show_uniform, 0, bytemuck::cast_slice(&[scene.samples as f32, 0.0f32, 0.0, 0.0, 0.075, 0.078, 0.086, 1.0]));
+        let (albedo, normal) = (view_of(&accum[scene.cur * 3 + 1]), view_of(&accum[scene.cur * 3 + 2]));
+        let mut shown = view_of(&accum[scene.cur * 3]);
+        let mut divisor = scene.samples as f32;
+        if let (true, Some(filtered)) = (self.path_denoise && scene.samples > 0, scene.filtered.as_ref()) {
+            let sigma = (2.0 / (scene.samples as f32).sqrt()).clamp(0.08, 1.5);
+            for (pass_index, uniform) in self.path_filter_uniforms.iter().enumerate() {
+                let input = if pass_index == 0 { view_of(&accum[scene.cur * 3]) } else { view_of(&filtered[(pass_index + 1) % 2]) };
+                let output = view_of(&filtered[pass_index % 2]);
+                let first = if pass_index == 0 { scene.samples as f32 } else { 1.0 };
+                self.queue.write_buffer(uniform, 0, bytemuck::cast_slice(&[(1u32 << pass_index) as f32, first, 0.0, sigma * 0.7f32.powi(pass_index as i32)]));
+                let group = bind(&self.device, &self.path_filter_pipe, &[
+                    uniform.as_entire_binding(),
+                    wgpu::BindingResource::TextureView(&input),
+                    wgpu::BindingResource::TextureView(&albedo),
+                    wgpu::BindingResource::TextureView(&normal),
+                ]);
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&output, wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT))], ..Default::default() });
+                pass.set_pipeline(&self.path_filter_pipe);
+                pass.set_bind_group(0, &group, &[]);
+                pass.draw(0..3, 0..1);
+            }
+            shown = view_of(&filtered[(self.path_filter_uniforms.len() - 1) % 2]);
+            divisor = 1.0;
+        }
+        self.queue.write_buffer(&self.path_show_uniform, 0, bytemuck::cast_slice(&[divisor, 0.0f32, 0.0, 0.0, 0.075, 0.078, 0.086, 1.0]));
         self.queue.write_buffer(&self.env_uniform, 0, bytemuck::cast_slice(&self.env_params));
-        let shown = view_of(&accum[scene.cur]);
         let group = bind(&self.device, &self.path_show_pipe, &[
             self.path_show_uniform.as_entire_binding(),
             self.env_uniform.as_entire_binding(),
@@ -1761,6 +1806,34 @@ impl Gpu {
         let sharp = shrink(rgb, w, h, sw, sh);
         let mid = blur_wrap(&shrink(&sharp, sw, sh, 128, 64), 128, 64, 2);
         let small = blur_wrap(&shrink(&mid, 128, 64, 32, 16), 32, 16, 4);
+        let (cw, ch) = (256usize, 128usize);
+        let grid = shrink(&sharp, sw, sh, cw, ch);
+        let mut rows = vec![0.0f32; ch];
+        let mut cond = vec![0.0f32; cw * ch];
+        for y in 0..ch {
+            let sin = (((y as f32) + 0.5) / ch as f32 * std::f32::consts::PI).sin();
+            let mut run = 0.0f32;
+            for x in 0..cw {
+                let k = (y * cw + x) * 3;
+                run += (0.2126 * grid[k] + 0.7152 * grid[k + 1] + 0.0722 * grid[k + 2]).max(0.0) * sin + 1e-6;
+                cond[y * cw + x] = run;
+            }
+            rows[y] = run;
+            for x in 0..cw {
+                cond[y * cw + x] /= run;
+            }
+        }
+        let total: f32 = rows.iter().sum();
+        let mut acc = 0.0f32;
+        for r in rows.iter_mut() {
+            acc += *r;
+            *r = acc / total;
+        }
+        let mut table = vec![cw as f32, ch as f32, total, 0.0];
+        table.extend_from_slice(&rows);
+        table.extend_from_slice(&cond);
+        self.env_cdf = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("environment distribution"), size: (table.len() * 4) as u64, usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+        self.queue.write_buffer(&self.env_cdf, 0, bytemuck::cast_slice(&table));
         self.env_textures = [
             half_texture(&self.device, &self.queue, sw as u32, sh as u32, &sharp),
             half_texture(&self.device, &self.queue, 128, 64, &mid),

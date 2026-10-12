@@ -1702,9 +1702,68 @@ struct Path { eye: vec4<f32>, params: vec4<f32>, };
 @group(0) @binding(11) var mat_arr: texture_2d_array<f32>;
 @group(0) @binding(12) var nrm_arr: texture_2d_array<f32>;
 @group(0) @binding(13) var prev: texture_2d<f32>;
+@group(0) @binding(14) var prev_albedo: texture_2d<f32>;
+@group(0) @binding(15) var prev_normal: texture_2d<f32>;
+@group(0) @binding(16) var<storage, read> cdf: array<f32>;
 
 const NONE: u32 = 0xffffffffu;
 const PI: f32 = 3.14159265;
+
+struct POut {
+    @location(0) color: vec4<f32>,
+    @location(1) albedo: vec4<f32>,
+    @location(2) normal: vec4<f32>,
+};
+
+fn find(start: u32, count: u32, u: f32) -> u32 {
+    var lo = 0u;
+    var hi = count - 1u;
+    loop {
+        if (lo >= hi) { break; }
+        let mid = (lo + hi) / 2u;
+        if (cdf[start + mid] < u) { lo = mid + 1u; } else { hi = mid; }
+    }
+    return lo;
+}
+
+fn cell_pdf(row: u32, col: u32) -> f32 {
+    let w = u32(cdf[0]);
+    let h = u32(cdf[1]);
+    let r0 = select(0.0, cdf[4u + row - 1u], row > 0u);
+    let base = 4u + h + row * w;
+    let c0 = select(0.0, cdf[base + col - 1u], col > 0u);
+    return (cdf[4u + row] - r0) * (cdf[base + col] - c0);
+}
+
+fn env_dir(uv: vec2<f32>) -> vec3<f32> {
+    let phi = (uv.x - 0.5) * 6.2831853;
+    let theta = uv.y * PI;
+    let st = sin(theta);
+    let r = vec3<f32>(st * sin(phi), cos(theta), -st * cos(phi));
+    let c = cos(env.a.y);
+    let s = sin(env.a.y);
+    return vec3<f32>(c * r.x + s * r.z, r.y, -s * r.x + c * r.z);
+}
+
+fn env_pick(u1: f32, u2: f32, u3: f32, u4: f32) -> vec4<f32> {
+    let w = u32(cdf[0]);
+    let h = u32(cdf[1]);
+    let row = find(4u, h, u1);
+    let col = find(4u + h + row * w, w, u2);
+    let uv = vec2<f32>((f32(col) + u3) / f32(w), (f32(row) + u4) / f32(h));
+    let st = max(sin(uv.y * PI), 1e-4);
+    return vec4<f32>(env_dir(uv), cell_pdf(row, col) * f32(w * h) / (2.0 * PI * PI * st));
+}
+
+fn env_pdf(d: vec3<f32>) -> f32 {
+    let w = u32(cdf[0]);
+    let h = u32(cdf[1]);
+    let uv = env_uv(d);
+    let col = min(u32(uv.x * f32(w)), w - 1u);
+    let row = min(u32(uv.y * f32(h)), h - 1u);
+    let st = max(sin(uv.y * PI), 1e-4);
+    return cell_pdf(row, col) * f32(w * h) / (2.0 * PI * PI * st);
+}
 
 var<private> seed: u32;
 
@@ -1815,9 +1874,14 @@ fn basis(n: vec3<f32>) -> mat3x3<f32> {
 }
 
 @fragment
-fn fs(i: FOut) -> @location(0) vec4<f32> {
+fn fs(i: FOut) -> POut {
     let px = vec2<i32>(i.clip.xy);
     let old = textureLoad(prev, px, 0);
+    let old_albedo = textureLoad(prev_albedo, px, 0);
+    let old_normal = textureLoad(prev_normal, px, 0);
+    var g_albedo = vec4<f32>(0.0);
+    var g_normal = vec4<f32>(0.0);
+    var last_pdf = 0.0;
     let dims = vec2<f32>(textureDimensions(prev));
     seed = pcg(u32(px.x) + pcg(u32(px.y) + pcg(u32(pt.eye.w))));
     let q = (floor(i.clip.xy) + vec2<f32>(rnd(), rnd())) / dims;
@@ -1843,7 +1907,8 @@ fn fs(i: FOut) -> @location(0) vec4<f32> {
                     cover = 1.0;
                 }
             } else if (hdr) {
-                radiance = radiance + thr * env_sample(d, 0.0);
+                let pe = env_pdf(d);
+                radiance = radiance + thr * env_sample(d, 0.0) * (last_pdf * last_pdf / max(last_pdf * last_pdf + pe * pe, 1e-12));
             } else {
                 radiance = radiance + thr * sky(d) * 0.5;
             }
@@ -1885,8 +1950,27 @@ fn fs(i: FOut) -> @location(0) vec4<f32> {
         if (dot(ns, v) < 1e-3) { ns = n; }
         let rough = clamp(m.r, 0.04, 1.0);
         let metal = clamp(m.g, 0.0, 1.0);
+        if (depth == 0u) {
+            g_albedo = vec4<f32>(base, 1.0);
+            g_normal = vec4<f32>(ns, h.t / (eps * 5000.0));
+        }
         if (role > 3.5) { radiance = radiance + thr * base * extra * 4.0; }
         let po = p + ng * eps;
+        let a = rough * rough;
+        let ps = mix(0.3, 0.95, metal);
+        if (hdr) {
+            let pick = env_pick(rnd(), rnd(), rnd(), rnd());
+            let l = pick.xyz;
+            let nl = dot(ns, l);
+            if (pick.w > 0.0 && nl > 0.0 && dot(ng, l) > 0.0) {
+                if (trace(po, l, 1e30, true).tri == NONE) {
+                    let hv = normalize(l + v);
+                    let pb = ps * ggx_d(max(dot(ns, hv), 0.0), a) * max(dot(ns, hv), 0.0) / (4.0 * max(dot(v, hv), 1e-4)) + (1.0 - ps) * nl / PI;
+                    let weight = pick.w * pick.w / (pick.w * pick.w + pb * pb);
+                    radiance = radiance + thr * brdf(ns, v, l, base, rough, metal) * nl * env_sample(l, 0.0) * weight / pick.w;
+                }
+            }
+        }
         if (!hdr) {
             for (var s = 0; s < 2; s = s + 1) {
                 let l = lights[s];
@@ -1899,8 +1983,6 @@ fn fs(i: FOut) -> @location(0) vec4<f32> {
             }
         }
         if (depth >= bounces) { break; }
-        let a = rough * rough;
-        let ps = mix(0.3, 0.95, metal);
         let tb = basis(ns);
         var l: vec3<f32>;
         let u1 = rnd();
@@ -1922,6 +2004,7 @@ fn fs(i: FOut) -> @location(0) vec4<f32> {
         let vh = max(dot(v, hv), 1e-4);
         let pdf = ps * ggx_d(nh, a) * nh / (4.0 * vh) + (1.0 - ps) * nl / PI;
         thr = thr * brdf(ns, v, l, base, rough, metal) * nl / max(pdf, 1e-6);
+        last_pdf = pdf;
         depth = depth + 1u;
         if (depth >= 2u) {
             let keep = clamp(max(thr.x, max(thr.y, thr.z)), 0.05, 0.95);
@@ -1934,7 +2017,61 @@ fn fs(i: FOut) -> @location(0) vec4<f32> {
     let lum = dot(radiance, vec3<f32>(0.2126, 0.7152, 0.0722));
     if (lum > 64.0) { radiance = radiance * (64.0 / lum); }
     if (any(radiance != radiance)) { radiance = vec3<f32>(0.0); }
-    return old + vec4<f32>(radiance, cover);
+    var result: POut;
+    result.color = old + vec4<f32>(radiance, cover);
+    result.albedo = old_albedo + g_albedo;
+    result.normal = old_normal + g_normal;
+    return result;
+}
+"#;
+
+pub const PATH_FILTER: &str = r#"
+struct Filt { params: vec4<f32>, };
+@group(0) @binding(0) var<uniform> f: Filt;
+@group(0) @binding(1) var src: texture_2d<f32>;
+@group(0) @binding(2) var albedo_tex: texture_2d<f32>;
+@group(0) @binding(3) var normal_tex: texture_2d<f32>;
+
+fn lum(c: vec3<f32>) -> f32 {
+    return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
+}
+
+@fragment
+fn fs(i: FOut) -> @location(0) vec4<f32> {
+    let p = vec2<i32>(i.clip.xy);
+    let size = vec2<i32>(textureDimensions(src));
+    let cn = max(f.params.y, 1.0);
+    let step = i32(f.params.x);
+    let c0 = textureLoad(src, p, 0) / cn;
+    let a0 = textureLoad(albedo_tex, p, 0);
+    if (a0.w < 0.5) { return c0; }
+    let n0 = textureLoad(normal_tex, p, 0);
+    let alb0 = max(a0.rgb / a0.w, vec3<f32>(0.02));
+    let dir0 = normalize(n0.xyz + vec3<f32>(1e-6));
+    let z0 = n0.w / a0.w;
+    let l0 = lum(c0.rgb / alb0);
+    let k = array<f32, 3>(0.375, 0.25, 0.0625);
+    var sum = vec3<f32>(0.0);
+    var total = 0.0;
+    for (var dy = -2; dy <= 2; dy = dy + 1) {
+        for (var dx = -2; dx <= 2; dx = dx + 1) {
+            let q = clamp(p + vec2<i32>(dx, dy) * step, vec2<i32>(0), size - 1);
+            let a = textureLoad(albedo_tex, q, 0);
+            if (a.w < 0.5) { continue; }
+            let n = textureLoad(normal_tex, q, 0);
+            let alb = max(a.rgb / a.w, vec3<f32>(0.02));
+            let irr = (textureLoad(src, q, 0).rgb / cn) / alb;
+            let wn = pow(max(dot(dir0, normalize(n.xyz + vec3<f32>(1e-6))), 0.0), 64.0);
+            let wz = exp(-abs(n.w / a.w - z0) / (0.01 * max(z0, 1e-4) * f32(step) + 1e-6));
+            let dl = (lum(irr) - l0) / (l0 + 0.1);
+            let wc = exp(-dl * dl / max(f.params.w * f.params.w, 1e-6));
+            let w = k[abs(dx)] * k[abs(dy)] * wn * wz * wc;
+            sum = sum + irr * w;
+            total = total + w;
+        }
+    }
+    if (total <= 1e-8) { return c0; }
+    return vec4<f32>(sum / total * alb0, c0.a);
 }
 "#;
 
