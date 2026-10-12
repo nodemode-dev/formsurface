@@ -431,9 +431,14 @@ def formsurface_set_filter(
 
 
 @server.tool()
-def formsurface_export_mesh(name: str | None = None) -> dict:
-    """Write the loaded mesh as an OBJ into the workspace exports folder: positions, normals, the original UDIM UVs and one group per texture set (usemtl with the material name). The mesh is triangulated."""
-    return call("export_mesh", drop_none(name=name), timeout=180)
+def formsurface_export_mesh(
+    name: str | None = None,
+    ngons: bool | None = None,
+    subdivide: Annotated[int, Field(ge=0, le=3)] | None = None,
+    displacement: Annotated[float, Field(ge=0, le=0.2)] | None = None,
+) -> dict:
+    """Write the loaded mesh as an OBJ into the workspace exports folder: positions, normals, the original UDIM UVs and one group per texture set (usemtl with the material name). ngons true writes the original quads and n-gons when the mesh came from an OBJ or ASCII PLY (other formats arrive triangulated), false triangulates. subdivide tessellates every triangle 1 to 3 levels (4, 16 or 64 triangles each) and displacement pushes the tessellated surface along its normal by the height channel, as a fraction of the mesh radius (mid gray stays put); tessellated output is triangulated."""
+    return call("export_mesh", drop_none(name=name, ngons=ngons, subdivide=subdivide, displacement=displacement), timeout=600)
 
 
 @server.tool()

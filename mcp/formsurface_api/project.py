@@ -18,9 +18,9 @@ def load_mesh(file: str, reproject: bool | None = None) -> dict:
     return tool("load_mesh", file=file, reproject=reproject)
 
 
-def export_mesh(name: str | None = None) -> dict:
-    """Write the mesh as OBJ with its UDIM UVs into the workspace exports folder."""
-    return tool("export_mesh", name=name)
+def export_mesh(name: str | None = None, ngons: bool | None = None, subdivide: int | None = None, displacement: float | None = None) -> dict:
+    """Write the mesh as OBJ with its UDIM UVs into the workspace exports folder, optionally keeping n-gons or tessellated and displaced by height."""
+    return tool("export_mesh", name=name, ngons=ngons, subdivide=subdivide, displacement=displacement)
 
 
 def undo(steps: int = 1) -> dict:
