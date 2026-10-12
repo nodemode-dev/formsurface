@@ -13,6 +13,7 @@ import { AgentLink } from './ui/agent-link';
 import { BUILT_IN_MATERIALS, SMART_MASKS, generatorPart, saveMask, saveMaterial, savedMasks, savedMaterials, type SmartMaterial } from './ui/smart';
 import { parseHdr, type HdrImage } from './ui/hdr';
 import { clearOverlay, drawPath, filledCover, pathSamples, ribbonCover, type Vec3 } from './ui/path';
+import { newEffect, renderEffects, type MaskEffectSpec } from './ui/mask-effects';
 import { fontLabel, loadFont, textImage } from './ui/text';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -318,10 +319,49 @@ function refreshLayers(): void {
     if (isFilter) loadFilterControls(JSON.parse(engine.filter_settings(layer.id)) as Record<string, number>);
     if (isFilter) target.disabled = true;
     syncParentOptions(all, layer);
+    syncMaskEffects(layer, all);
   }
   syncCloneSources(all);
   refreshSets();
 }
+
+let mfxShown = '';
+
+function syncMaskEffects(layer: LayerInfo, all: LayerInfo[]): void {
+  const e = requireEngine();
+  const raw = e.mask_effects(layer.id);
+  const others = all.filter((l) => l.id !== layer.id && l.mask).map((l) => ({ id: l.id, name: l.name }));
+  const key = `${layer.id}|${layer.mask}|${raw}|${others.map((o) => o.id).join(',')}`;
+  $<HTMLButtonElement>('mfx-add').disabled = !layer.mask;
+  if (key === mfxShown) return;
+  mfxShown = key;
+  if (mfxQuiet) return;
+  const specs = JSON.parse(raw || '[]') as MaskEffectSpec[];
+  renderEffects($('mfx-list'), specs, others, (next) => applyMaskEffects(layer.id, next));
+}
+
+let mfxQuiet = false;
+
+function applyMaskEffects(id: number, specs: MaskEffectSpec[], rerender = false): void {
+  try {
+    requireEngine().set_mask_effects(id, JSON.stringify(specs));
+    mfxQuiet = !rerender;
+    refreshLayers();
+  } catch (error) {
+    status(error instanceof Error ? error.message : String(error), true);
+  } finally {
+    mfxQuiet = false;
+  }
+}
+
+$('mfx-add').addEventListener('click', () => {
+  if (!engine) return;
+  const id = engine.active_layer();
+  const specs = JSON.parse(engine.mask_effects(id) || '[]') as MaskEffectSpec[];
+  specs.push(newEffect(sel('mfx-kind')));
+  applyMaskEffects(id, specs, true);
+  status(`Mask effect added: ${specs.length} on this mask`);
+});
 
 function syncParentOptions(all: LayerInfo[], layer: LayerInfo): void {
   const select = $<HTMLSelectElement>('l-parent');
@@ -2041,14 +2081,19 @@ const agentLink = new AgentLink({
     refreshLayers();
     return { id, settings: JSON.parse(e.filter_settings(id)) };
   },
-  mask: ({ id, action, paint_target }) => {
+  mask: ({ id, action, paint_target, effects }) => {
     const e = requireEngine();
     const layerId = Number(id);
     if (action === 'remove') e.set_mask(layerId, false);
     else if (action === 'add_white' || action === 'add_black') e.fill_mask(layerId, action === 'add_white');
     if (paint_target === 'mask' || paint_target === 'layer') e.set_paint_target(paint_target === 'mask');
+    if (Array.isArray(effects)) {
+      const specs = effects.map((x) => ({ ...newEffect(String((x as Record<string, unknown>).kind ?? 'fill')), ...(x as Record<string, unknown>) }));
+      e.set_mask_effects(layerId, JSON.stringify(specs));
+    }
+    mfxShown = '';
     refreshLayers();
-    return { layers: layers(), paints_mask: e.paint_target_is_mask() };
+    return { layers: layers(), paints_mask: e.paint_target_is_mask(), effects: JSON.parse(e.mask_effects(layerId) || '[]') };
   },
   instance_layer: ({ id, texture_set }) => {
     const sets = textureSets();
