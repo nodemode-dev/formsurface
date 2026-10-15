@@ -1,0 +1,7 @@
+{
+  "File names": "Bestandsnamen",
+  "Leave empty for FormSurface's names, or build them from tags: $mesh, $textureSet, $map, $udim (1001), $u and $v (tile column and row from 1), $size. Tiled sets get .1001 appended when no tile tag is used": "Laat leeg voor de namen van FormSurface, of stel ze samen met tags: $mesh, $textureSet, $map, $udim (1001), $u en $v (tegelkolom en -rij vanaf 1), $size. Textuursets met tegels krijgen .1001 achteraan als er geen tegeltag wordt gebruikt",
+  "Maps keep FormSurface's own names": "Maps behouden de eigen namen van FormSurface",
+  "A file name template is at most 120 characters": "Een bestandsnaamsjabloon mag maximaal 120 tekens bevatten",
+  "A file name template needs $map, or every map would get the same name": "Een bestandsnaamsjabloon heeft $map nodig, anders zou elke map dezelfde naam krijgen"
+}

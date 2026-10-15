@@ -1,0 +1,7 @@
+{
+  "File names": "Názvy souborů",
+  "Leave empty for FormSurface's names, or build them from tags: $mesh, $textureSet, $map, $udim (1001), $u and $v (tile column and row from 1), $size. Tiled sets get .1001 appended when no tile tag is used": "Nechte prázdné, chcete-li použít názvy FormSurface, nebo je složte ze značek: $mesh, $textureSet, $map, $udim (1001), $u a $v (sloupec a řádek dlaždice od 1), $size. Sady textur s dlaždicemi dostanou na konec .1001, pokud se nepoužije žádná značka dlaždice",
+  "Maps keep FormSurface's own names": "Mapy si ponechají vlastní názvy FormSurface",
+  "A file name template is at most 120 characters": "Šablona názvu souboru může mít nejvýše 120 znaků",
+  "A file name template needs $map, or every map would get the same name": "Šablona názvu souboru musí obsahovat $map, jinak by všechny mapy dostaly stejný název"
+}

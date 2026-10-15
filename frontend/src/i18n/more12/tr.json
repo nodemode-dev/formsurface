@@ -1,0 +1,7 @@
+{
+  "File names": "Dosya adları",
+  "Leave empty for FormSurface's names, or build them from tags: $mesh, $textureSet, $map, $udim (1001), $u and $v (tile column and row from 1), $size. Tiled sets get .1001 appended when no tile tag is used": "FormSurface'in adlarını kullanmak için boş bırakın veya etiketlerle oluşturun: $mesh, $textureSet, $map, $udim (1001), $u ve $v (karo sütunu ve satırı, 1'den başlar), $size. Karolu doku setlerinin sonuna, karo etiketi kullanılmadığında .1001 eklenir",
+  "Maps keep FormSurface's own names": "Haritalar FormSurface'in kendi adlarını korur",
+  "A file name template is at most 120 characters": "Dosya adı şablonu en fazla 120 karakter olabilir",
+  "A file name template needs $map, or every map would get the same name": "Dosya adı şablonunda $map bulunmalıdır, aksi halde tüm haritalar aynı adı alırdı"
+}

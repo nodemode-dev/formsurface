@@ -1,0 +1,7 @@
+{
+  "File names": "Fájlnevek",
+  "Leave empty for FormSurface's names, or build them from tags: $mesh, $textureSet, $map, $udim (1001), $u and $v (tile column and row from 1), $size. Tiled sets get .1001 appended when no tile tag is used": "Hagyja üresen a FormSurface saját neveinek használatához, vagy állítsa össze őket címkékből: $mesh, $textureSet, $map, $udim (1001), $u és $v (a csempe oszlopa és sora 1-től), $size. A csempézett textúrakészletek végére .1001 kerül, ha nincs csempecímke használatban",
+  "Maps keep FormSurface's own names": "A térképek megtartják a FormSurface saját nevét",
+  "A file name template is at most 120 characters": "A fájlnévsablon legfeljebb 120 karakter hosszú lehet",
+  "A file name template needs $map, or every map would get the same name": "A fájlnévsablonban szerepelnie kell a $map címkének, különben minden térkép ugyanazt a nevet kapná"
+}

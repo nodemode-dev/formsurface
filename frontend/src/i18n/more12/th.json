@@ -1,0 +1,7 @@
+{
+  "File names": "ชื่อไฟล์",
+  "Leave empty for FormSurface's names, or build them from tags: $mesh, $textureSet, $map, $udim (1001), $u and $v (tile column and row from 1), $size. Tiled sets get .1001 appended when no tile tag is used": "เว้นว่างไว้เพื่อใช้ชื่อของ FormSurface หรือสร้างชื่อเองจากแท็ก: $mesh, $textureSet, $map, $udim (1001), $u และ $v (คอลัมน์และแถวของไทล์ เริ่มจาก 1), $size ชุดเท็กซ์เจอร์ที่แบ่งเป็นไทล์จะถูกต่อท้ายด้วย .1001 เมื่อไม่ได้ใช้แท็กไทล์",
+  "Maps keep FormSurface's own names": "แมปคงใช้ชื่อเฉพาะของ FormSurface",
+  "A file name template is at most 120 characters": "เทมเพลตชื่อไฟล์ยาวได้ไม่เกิน 120 อักขระ",
+  "A file name template needs $map, or every map would get the same name": "เทมเพลตชื่อไฟล์ต้องมี $map ไม่เช่นนั้นทุกแมปจะได้ชื่อเดียวกัน"
+}

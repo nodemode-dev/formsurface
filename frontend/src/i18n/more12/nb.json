@@ -1,0 +1,7 @@
+{
+  "File names": "Filnavn",
+  "Leave empty for FormSurface's names, or build them from tags: $mesh, $textureSet, $map, $udim (1001), $u and $v (tile column and row from 1), $size. Tiled sets get .1001 appended when no tile tag is used": "La feltet stå tomt for å bruke FormSurfaces navn, eller bygg navnene med tagger: $mesh, $textureSet, $map, $udim (1001), $u og $v (tilekolonne og -rad fra 1), $size. Teksturssett med tiles får .1001 lagt til når det ikke brukes noen tile-tagg",
+  "Maps keep FormSurface's own names": "Maps beholder FormSurfaces egne navn",
+  "A file name template is at most 120 characters": "En mal for filnavn kan være på maks. 120 tegn",
+  "A file name template needs $map, or every map would get the same name": "En mal for filnavn må inneholde $map, ellers ville alle maps fått samme navn"
+}

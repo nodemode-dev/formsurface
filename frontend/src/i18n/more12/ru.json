@@ -1,0 +1,7 @@
+{
+  "File names": "Имена файлов",
+  "Leave empty for FormSurface's names, or build them from tags: $mesh, $textureSet, $map, $udim (1001), $u and $v (tile column and row from 1), $size. Tiled sets get .1001 appended when no tile tag is used": "Оставьте поле пустым, чтобы использовать имена FormSurface, или составьте имена из тегов: $mesh, $textureSet, $map, $udim (1001), $u и $v (столбец и строка тайла, начиная с 1), $size. Наборам текстур с тайлами добавляется .1001, если тег тайла не используется",
+  "Maps keep FormSurface's own names": "Карты сохраняют собственные имена FormSurface",
+  "A file name template is at most 120 characters": "Шаблон имени файла может содержать не более 120 символов",
+  "A file name template needs $map, or every map would get the same name": "В шаблоне имени файла нужен $map, иначе у всех карт было бы одинаковое имя"
+}

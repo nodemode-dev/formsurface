@@ -1,0 +1,7 @@
+{
+  "File names": "파일 이름",
+  "Leave empty for FormSurface's names, or build them from tags: $mesh, $textureSet, $map, $udim (1001), $u and $v (tile column and row from 1), $size. Tiled sets get .1001 appended when no tile tag is used": "비워 두면 FormSurface의 이름을 사용하고, 태그로 직접 구성할 수도 있습니다: $mesh, $textureSet, $map, $udim (1001), $u 및 $v (타일의 열과 행, 1부터 시작), $size. 타일로 나뉜 텍스처 세트는 타일 태그를 쓰지 않으면 끝에 .1001이 붙습니다",
+  "Maps keep FormSurface's own names": "맵은 FormSurface 고유의 이름을 유지합니다",
+  "A file name template is at most 120 characters": "파일 이름 템플릿은 최대 120자까지 가능합니다",
+  "A file name template needs $map, or every map would get the same name": "파일 이름 템플릿에는 $map이 필요합니다. 없으면 모든 맵의 이름이 같아집니다"
+}

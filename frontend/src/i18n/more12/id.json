@@ -1,0 +1,7 @@
+{
+  "File names": "Nama file",
+  "Leave empty for FormSurface's names, or build them from tags: $mesh, $textureSet, $map, $udim (1001), $u and $v (tile column and row from 1), $size. Tiled sets get .1001 appended when no tile tag is used": "Kosongkan untuk memakai nama FormSurface, atau susun dari tag: $mesh, $textureSet, $map, $udim (1001), $u dan $v (kolom dan baris tile mulai dari 1), $size. Set tekstur bertile akan diberi akhiran .1001 jika tidak ada tag tile yang dipakai",
+  "Maps keep FormSurface's own names": "Peta mempertahankan nama bawaan FormSurface",
+  "A file name template is at most 120 characters": "Templat nama file maksimal 120 karakter",
+  "A file name template needs $map, or every map would get the same name": "Templat nama file memerlukan $map, jika tidak setiap peta akan mendapat nama yang sama"
+}

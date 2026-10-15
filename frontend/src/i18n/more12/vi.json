@@ -1,0 +1,7 @@
+{
+  "File names": "Tên tệp",
+  "Leave empty for FormSurface's names, or build them from tags: $mesh, $textureSet, $map, $udim (1001), $u and $v (tile column and row from 1), $size. Tiled sets get .1001 appended when no tile tag is used": "Để trống để dùng tên của FormSurface, hoặc tự tạo bằng các thẻ: $mesh, $textureSet, $map, $udim (1001), $u và $v (cột và hàng của tile, tính từ 1), $size. Bộ texture chia tile sẽ được thêm .1001 ở cuối khi không dùng thẻ tile",
+  "Maps keep FormSurface's own names": "Các map giữ nguyên tên riêng của FormSurface",
+  "A file name template is at most 120 characters": "Mẫu tên tệp tối đa 120 ký tự",
+  "A file name template needs $map, or every map would get the same name": "Mẫu tên tệp cần có $map, nếu không mọi map sẽ có cùng một tên"
+}

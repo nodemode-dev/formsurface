@@ -1,0 +1,7 @@
+{
+  "File names": "Tiedostonimet",
+  "Leave empty for FormSurface's names, or build them from tags: $mesh, $textureSet, $map, $udim (1001), $u and $v (tile column and row from 1), $size. Tiled sets get .1001 appended when no tile tag is used": "Jätä tyhjäksi, jos haluat käyttää FormSurfacen omia nimiä, tai muodosta nimet tunnisteilla: $mesh, $textureSet, $map, $udim (1001), $u ja $v (ruudun sarake ja rivi alkaen 1:stä), $size. Ruuduiksi jaetuille tekstuurisetseille lisätään loppuun .1001, jos ruututunnistetta ei käytetä",
+  "Maps keep FormSurface's own names": "Kartat säilyttävät FormSurfacen omat nimet",
+  "A file name template is at most 120 characters": "Tiedostonimen malli saa olla enintään 120 merkkiä pitkä",
+  "A file name template needs $map, or every map would get the same name": "Tiedostonimen mallissa on oltava $map, muuten kaikki kartat saisivat saman nimen"
+}

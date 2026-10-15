@@ -411,6 +411,7 @@ print(project.status()["mesh"])</textarea>
       <div class="row" style="grid-template-columns:84px 1fr"><label for="x-pad-color">Pad color</label><input id="x-pad-color" type="color" value="#000000"></div>
       <label class="check" title="Write one map per channel for all texture sets that share a UV tile, each set filling its own UV islands; needs every set at the same size"><input type="checkbox" id="x-merge">Merge texture sets into one map set</label>
       <div class="row" style="grid-template-columns:84px 1fr"><label for="x-uv">UV channel</label><select id="x-uv" title="Write the maps in the layout you painted (UV0) or move them onto the mesh's second UV channel (UV1), for lightmap or trim layouts; tangent-space normals keep UV0's frame"><option value="0" selected>UV0 (painted layout)</option><option value="1" id="x-uv1">UV1 (second channel)</option></select></div>
+      <div class="row" style="grid-template-columns:84px 1fr"><label for="x-names">File names</label><input id="x-names" type="text" spellcheck="false" placeholder="$textureSet_$map.$udim" title="Leave empty for FormSurface's names, or build them from tags: $mesh, $textureSet, $map, $udim (1001), $u and $v (tile column and row from 1), $size. Tiled sets get .1001 appended when no tile tag is used"></div>
       <p class="check" id="x-maps" style="min-height:42px;margin:6px 0 0"></p>
       <details class="te">
         <summary>Edit templates</summary>

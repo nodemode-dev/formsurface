@@ -8,6 +8,7 @@ import { COLOR_SOURCES, TEMPLATES, emptyPixels, encodePng, halfToFloat, halfToUn
 import { FORMAT_ALPHA, FORMAT_DEPTHS, checkFormat, encodeImage, gammaToLinear, sampleMax, type Format } from './ui/image-formats';
 import { PADDING_MODES, applyPadding, nearestSource, uvMask, type Padding, type PaddingMode } from './ui/padding';
 import { transferToUv1 } from './ui/uv-transfer';
+import { checkNameTemplate, fileName } from './ui/export-names';
 import { TemplateEditor, loadTemplates, saveTemplate } from './ui/template-editor';
 import { api } from './ui/api';
 import { AgentLink } from './ui/agent-link';
@@ -380,6 +381,19 @@ function setUvTiles(on: boolean): void {
 
 $('uv-tiles').addEventListener('change', () => {
   try { setUvTiles(checked('uv-tiles')); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+});
+
+// The export file name template is remembered per browser; an unreadable store just starts empty.
+try { $<HTMLInputElement>('x-names').value = localStorage.getItem('formsurface.exportNames') ?? ''; } catch { /* storage unavailable */ }
+$('x-names').addEventListener('change', () => {
+  const input = $<HTMLInputElement>('x-names');
+  try {
+    checkNameTemplate(input.value);
+    try { localStorage.setItem('formsurface.exportNames', input.value.trim()); } catch { /* storage unavailable */ }
+    status(input.value.trim() ? `Maps will be named ${fileName(input.value.trim(), { mesh: meshName, textureSet: 'body', map: 'basecolor', udim: 1002, tiled: true, size: engine?.texture_size() ?? 2048 })}.png and so on` : 'Maps keep FormSurface\'s own names');
+  } catch (error) {
+    status(error instanceof Error ? error.message : String(error), true);
+  }
 });
 
 $('ts-cross').addEventListener('change', () => {
@@ -2453,12 +2467,14 @@ interface ExportChoice {
   size: number;
   merge: boolean;
   uv: number;
+  names: string;
 }
 
 const EXPORT_SIZES = [0, 128, 256, 512, 1024, 2048, 4096, 8192];
 
-function exportChoice(format = sel('x-format'), depth = Number(sel('x-depth')), mode = sel('x-pad'), width = num('x-pad-width'), color = hex('x-pad-color'), size = Number(sel('x-size')), merge = checked('x-merge'), uv = Number(sel('x-uv'))): ExportChoice {
+function exportChoice(format = sel('x-format'), depth = Number(sel('x-depth')), mode = sel('x-pad'), width = num('x-pad-width'), color = hex('x-pad-color'), size = Number(sel('x-size')), merge = checked('x-merge'), uv = Number(sel('x-uv')), names = $<HTMLInputElement>('x-names').value): ExportChoice {
   const checked = checkFormat(format, depth);
+  const nameTemplate = checkNameTemplate(names);
   if (uv !== 0 && uv !== 1) throw new Error('uv_channel is 0 (the painted layout) or 1 (the second UV channel)');
   if (uv === 1 && !engine?.has_uv1()) throw new Error('This mesh has no second UV channel; load a glTF, FBX or Collada mesh with one (TEXCOORD_1), or export on UV0');
   if (!EXPORT_SIZES.includes(size)) throw new Error('size is 0 (each texture set\'s own) or 128, 256, 512, 1024, 2048, 4096 or 8192');
@@ -2467,7 +2483,7 @@ function exportChoice(format = sel('x-format'), depth = Number(sel('x-depth')), 
   if (!PADDING_MODES.includes(mode as PaddingMode)) throw new Error(`padding is one of ${PADDING_MODES.join(', ')}`);
   if (mode === 'transparent' && !FORMAT_ALPHA[checked]) throw new Error(`${checked.toUpperCase()} has no alpha channel, so transparent padding cannot be written; choose infinite, color or diffusion`);
   const gamma = color.map((v) => Math.pow(v, 1 / 2.2)) as [number, number, number];
-  return { format: checked, depth, padding: { mode: mode as PaddingMode, width: Math.max(0, Math.min(256, Math.round(width))), color: gamma }, size, merge, uv };
+  return { format: checked, depth, padding: { mode: mode as PaddingMode, width: Math.max(0, Math.min(256, Math.round(width))), color: gamma }, size, merge, uv, names: nameTemplate };
 }
 
 function allTemplates(): Template[] {
@@ -2488,6 +2504,7 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
   const encode = async (name: string, px: Pixels, alpha: boolean, linearize: boolean, src: Int32Array) => {
     const transparent = applyPadding(px, size, src, padding, max);
     if (linearize && px instanceof Float32Array) gammaToLinear(px);
+    if (maps.has(`${name}.${format}`)) throw new Error(`Two maps would both be named ${name}.${format}; add $textureSet (or $udim) to the file name template`);
     maps.set(`${name}.${format}`, await encodeImage(format, px, size, size, alpha || transparent, depth));
   };
   const merged = new Map<string, { px: Pixels; cover: Uint8Array; alpha: boolean; linearize: boolean; size: number }>();
@@ -2516,6 +2533,9 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
       size = e.texture_size();
       const prefix = sets.length > 1 && !choice.merge ? `${set.material.replace(/[^A-Za-z0-9_-]/g, '_')}_` : '';
       const suffix = set.tiled ? `.${set.udim}` : '';
+      const named = (map: string) => choice.names
+        ? fileName(choice.names, { mesh: meshName, textureSet: choice.merge ? 'merged' : set.material, map, udim: set.udim, tiled: set.tiled, size })
+        : `${prefix}${map}${suffix}`;
       const [, , uvs, indices] = e.texture_set_mesh(set.index) as [Float32Array, Float32Array, Float32Array, Uint32Array, number];
       const uv1 = choice.uv === 1 ? e.uv1() : undefined;
       cover = uvMask(uv1 ?? uvs, indices, size);
@@ -2533,11 +2553,11 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
           if (c >= 5 && c < 12 && !e.is_baked()) continue;
           channels.set(c, await channelPixels(e, c, max));
         }
-        for (const map of template.maps) await write(`${prefix}${map.suffix}${suffix}`, pack(map, channels, size, max), !!map.a, !!map.rgb && COLOR_SOURCES.includes(map.rgb), src);
+        for (const map of template.maps) await write(named(map.suffix), pack(map, channels, size, max), !!map.a, !!map.rgb && COLOR_SOURCES.includes(map.rgb), src);
         continue;
       }
       const wanted = [0, 1, 2, 3, 4, ...(e.is_baked() ? [5, 6, 7, 8, 9] : []), ...(e.is_high_baked() ? [10, 11] : [])];
-      for (const i of wanted) await write(`${prefix}${CHANNELS[i]}${suffix}`, await channelPixels(e, i, max), false, i === 0, src);
+      for (const i of wanted) await write(named(CHANNELS[i]), await channelPixels(e, i, max), false, i === 0, src);
       const role = e.extra_channel(set.index);
       if (role !== 'off') {
         const extra = await channelPixels(e, 12, max);
@@ -2548,16 +2568,16 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
             const s = extra[k] / max;
             out[k] = base[k] * s; out[k + 1] = base[k + 1] * s; out[k + 2] = base[k + 2] * s; out[k + 3] = max;
           }
-          await write(`${prefix}emissive${suffix}`, out, false, true, src);
+          await write(named('emissive'), out, false, true, src);
         } else {
           const label = role === 'user' ? extraNames.get(set.index) || 'user0' : `channel_${role}`;
-          await write(`${prefix}${label}${suffix}`, extra, false, false, src);
+          await write(named(label), extra, false, false, src);
         }
       }
-      for (const slot of e.user_channels(set.index)) await write(`${prefix}${userName(set.index, slot)}${suffix}`, await channelPixels(e, slot + 11, max), false, false, src);
+      for (const slot of e.user_channels(set.index)) await write(named(userName(set.index, slot)), await channelPixels(e, slot + 11, max), false, false, src);
       for (const [code, label] of [[100, 'ambient_occlusion_high'], [101, 'height_high'], [102, 'opacity'], [103, 'bent_normal']] as const) {
         const baked = bakedPixels(set.index, code, size, max);
-        if (baked) await write(`${prefix}${label}${suffix}`, baked, false, false, src);
+        if (baked) await write(named(label), baked, false, false, src);
       }
     }
     for (const [name, m] of merged) {
@@ -3180,16 +3200,16 @@ const agentLink = new AgentLink({
     }
     return JSON.parse(e.path_trace_json());
   },
-  export: async ({ name, template, maps: custom, bit_depth, format, padding, padding_width, padding_color, size, uv_channel }) => {
+  export: async ({ name, template, maps: custom, bit_depth, format, padding, padding_width, padding_color, size, uv_channel, file_names }) => {
     const given = (v: unknown) => v !== undefined && v !== null;
     const choice = exportChoice(given(format) ? String(format) : sel('x-format'), given(bit_depth) ? Number(bit_depth) : Number(sel('x-depth')),
       given(padding) ? String(padding) : sel('x-pad'), given(padding_width) ? Number(padding_width) : num('x-pad-width'),
       given(padding_color) ? hexColor(String(padding_color)) : hex('x-pad-color'), given(size) ? Number(size) : Number(sel('x-size')),
-      checked('x-merge'), given(uv_channel) ? Number(uv_channel) : Number(sel('x-uv')));
+      checked('x-merge'), given(uv_channel) ? Number(uv_channel) : Number(sel('x-uv')), given(file_names) ? String(file_names) : $<HTMLInputElement>('x-names').value);
     const maps = await renderMaps(template ? String(template) : sel('x-template'), custom ? validateMaps(custom) : undefined, choice);
     const folder = await api.saveMaps(String(name || meshName.replace(/\.[^.]+$/, '')), maps);
     emitPython('export_finished', { folder, maps: [...maps.keys()] });
-    return { folder, template: custom ? 'custom' : template ?? sel('x-template'), format: choice.format, bit_depth: choice.depth, size: choice.size || 'texture set', padding: choice.padding.mode, padding_width: choice.padding.width, uv_channel: choice.uv, maps: [...maps.keys()] };
+    return { folder, template: custom ? 'custom' : template ?? sel('x-template'), format: choice.format, bit_depth: choice.depth, size: choice.size || 'texture set', padding: choice.padding.mode, padding_width: choice.padding.width, uv_channel: choice.uv, file_names: choice.names || 'default', maps: [...maps.keys()] };
   },
   export_templates: () => ({ templates: allTemplates().map((t) => ({ name: t.name, label: t.label, maps: t.maps, saved: !TEMPLATES.includes(t) })) }),
   save_export_template: async ({ name, label, maps: list }) => {

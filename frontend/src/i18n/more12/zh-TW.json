@@ -1,0 +1,7 @@
+{
+  "File names": "檔案名稱",
+  "Leave empty for FormSurface's names, or build them from tags: $mesh, $textureSet, $map, $udim (1001), $u and $v (tile column and row from 1), $size. Tiled sets get .1001 appended when no tile tag is used": "留空則使用 FormSurface 的命名，或以標籤組合：$mesh、$textureSet、$map、$udim (1001)、$u 和 $v (圖塊的欄和列，從 1 開始)、$size。分塊的紋理組在未使用圖塊標籤時，會在結尾附加 .1001",
+  "Maps keep FormSurface's own names": "貼圖沿用 FormSurface 自有的命名",
+  "A file name template is at most 120 characters": "檔案名稱範本最多 120 個字元",
+  "A file name template needs $map, or every map would get the same name": "檔案名稱範本必須包含 $map，否則所有貼圖都會得到相同的名稱"
+}
