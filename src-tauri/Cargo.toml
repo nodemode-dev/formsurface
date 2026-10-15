@@ -1,6 +1,6 @@
 [package]
 name = "formsurface"
-version = "0.50.0"
+version = "0.50.1"
 description = "FormSurface desktop shell"
 authors = ["nodemode-ai"]
 license = "Apache-2.0"
