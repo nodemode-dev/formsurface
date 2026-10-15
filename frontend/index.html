@@ -331,6 +331,7 @@ print(project.status()["mesh"])</textarea>
         <button class="btn" id="k-cage-clear" style="justify-content:center" title="Go back to the distance cage (Cage front and rear)">Distance cage</button>
       </div>
       <p class="check" id="k-cage-state" style="margin:4px 0 0">Distance cage</p>
+      <div class="row" style="grid-template-columns:84px 1fr"><label for="k-offset">Cage offset</label><select id="k-offset" title="Paint where rays need more reach into a user channel of the texture set: black keeps Cage front and rear, white pushes them out four times"><option value="0" selected>None</option><option value="2">User channel 2</option><option value="3">User channel 3</option></select></div>
       <input type="file" id="cage-file" accept=".glb,.gltf,.obj,.fbx,.usd,.usda,.usdc,.usdz,.ply,.dae" hidden>
       <button class="btn" id="k-bake-high" style="width:100%;justify-content:center;margin-top:6px"><svg><use href="#i-bake"/></svg>Bake maps from high-poly</button>
       <p class="check" id="k-high-state" style="min-height:28px;margin:6px 0 0">No high-poly mesh</p>

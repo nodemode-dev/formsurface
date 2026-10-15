@@ -120,7 +120,7 @@ export class Shell {
       { label: 'File', items: ['file.open', sample, '-', 'file.save', 'file.screenshot', '-', 'file.exportMaps', 'file.exportMesh', '-', 'file.preferences'] },
       { label: 'Edit', items: ['edit.undo', 'edit.redo', '-', 'edit.palette', 'edit.shortcuts'] },
       { label: 'Tools', items: ['tool.paint', 'tool.erase', 'tool.clone', 'tool.polyfill', 'tool.path', '-', 'tool.mirror', 'tool.quickMask', '-', 'tool.lassoFill', 'tool.rectFill', 'tool.lassoLimit', 'tool.rectLimit', '-', 'tool.brushBigger', 'tool.brushSmaller', 'tool.pickColor'] },
-      { label: 'Layer', items: ['layer.addPaint', 'layer.addFill', 'layer.addFillBlack', 'layer.addFilter', 'layer.addFolder', '-', 'layer.maskBlack', 'layer.maskWhite', 'layer.maskNone', '-', 'layer.pickUnderCursor', '-', 'layer.mergeDown', 'layer.flattenFolder', 'layer.flatten', '-', 'layer.export', 'layer.exportMask', '-', 'layer.delete'] },
+      { label: 'Layer', items: ['layer.addPaint', 'layer.addFill', 'layer.addFillBlack', 'layer.addFilter', 'layer.addFolder', '-', 'layer.maskBlack', 'layer.maskWhite', 'layer.maskNone', '-', 'layer.pickUnderCursor', '-', 'layer.mergeDown', 'layer.flattenFolder', 'layer.flatten', '-', 'layer.export', 'layer.exportMask', 'layer.editExternal', '-', 'layer.delete'] },
       { label: 'Bake', items: ['bake.mesh', 'bake.loadHigh', 'bake.high'] },
       { label: 'View', items: ['view.frame', 'view.2d', '-', 'view.hidePart', 'view.hideIsland', 'view.isolatePart', 'view.showParts', '-', ...PANEL_TABS.map((p) => `view.tab.${p.id}`), 'view.panel', '-', 'view.render'] },
       { label: 'Agent', items: ['view.terminal', 'view.newTerminal', 'agent.claude', 'agent.chat', '-', 'agent.link', 'agent.connect'] },
@@ -171,6 +171,7 @@ export class Shell {
       btn('layer.export', 'Export Layer', 'l-export'),
       btn('layer.exportMask', 'Export Mask', 'l-mask-export'),
       btn('layer.delete', 'Delete Layer', 'layer-delete', ['Mod+Backspace']),
+      { id: 'layer.editExternal', label: 'Edit Layer in External App...', keys: ['Alt+Mod+E'], run: () => { byId('canvas')?.dispatchEvent(new Event('fs-edit-external')); } },
       { id: 'layer.pickUnderCursor', label: 'Select Layer Under Cursor', keys: ['Shift+S'], run: () => { byId('canvas')?.dispatchEvent(new Event('fs-pick-layer')); } },
       btn('bake.mesh', 'Bake Mesh Maps', 'k-bake', ['Shift+Mod+B']),
       btn('bake.loadHigh', 'Load High-Poly Mesh...', 'k-high-load'),
@@ -441,6 +442,8 @@ export class Shell {
 <label class="fs-field"><span>Claude Code program</span><input class="fs-claude-bin" type="text" spellcheck="false" placeholder="Found automatically"></label>
 <label class="fs-field"><span>Starts in folder</span><input class="fs-claude-folder" type="text" spellcheck="false" placeholder="FormSurface Agent folder"></label>
 <label class="fs-field"><span>Start with message</span><input class="fs-claude-first" type="text" spellcheck="false" placeholder="Nothing"></label>
+<h3>Other apps</h3>
+<label class="fs-field"><span>External image editor</span><input class="fs-external" type="text" spellcheck="false" placeholder="The default app for PNG files"></label>
 <p class="cv-note fs-claude-state"></p>
 </div>`);
     const lang = q<HTMLSelectElement>(form, '.fs-lang');
@@ -449,6 +452,7 @@ export class Shell {
     q<HTMLInputElement>(form, '.fs-claude-bin').value = prefs.claudeBin ?? '';
     q<HTMLInputElement>(form, '.fs-claude-folder').value = prefs.claudeFolder ?? '';
     q<HTMLInputElement>(form, '.fs-claude-first').value = prefs.claudeFirstMessage ?? '';
+    q<HTMLInputElement>(form, '.fs-external').value = prefs.externalEditor ?? '';
     d.body.appendChild(form);
     void api.cmd<{ installed: boolean; path: string | null; version: string | null; folder: string }>('claudecode.status').then((s) => {
       setText(q(form, '.fs-claude-state'), s.installed ? `${t('Claude Code')} ${s.version ?? ''} · ${s.path ?? ''} · ${s.folder}` : t('Claude Code was not found on this computer: install it from claude.com/claude-code and sign in once in a terminal.'));
@@ -460,6 +464,7 @@ export class Shell {
           claudeBin: q<HTMLInputElement>(form, '.fs-claude-bin').value.trim(),
           claudeFolder: q<HTMLInputElement>(form, '.fs-claude-folder').value.trim(),
           claudeFirstMessage: q<HTMLInputElement>(form, '.fs-claude-first').value.trim(),
+          externalEditor: q<HTMLInputElement>(form, '.fs-external').value.trim(),
         } });
       } catch (err) { fail(err); }
       d.close();

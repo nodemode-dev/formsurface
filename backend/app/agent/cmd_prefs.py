@@ -1,7 +1,7 @@
 from app.agent import config
 from app.agent.commands import CommandError, command
 
-KEYS = {"claudeBin", "claudeFolder", "claudeFirstMessage"}
+KEYS = {"claudeBin", "claudeFolder", "claudeFirstMessage", "externalEditor"}
 
 
 @command("prefs.get", "Preferences", description="The saved preferences: the Claude Code program, its starting folder and first message.")

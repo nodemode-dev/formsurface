@@ -1523,6 +1523,66 @@ async function exportLayer(id: number, name: string): Promise<string> {
   return 'your downloads';
 }
 
+const externalEdits = new Map<number, { name: string; mtime: number; timer: number }>();
+
+async function decodePng(blob: Blob): Promise<{ w: number; h: number; rgba: Uint8Array }> {
+  const bitmap = await createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+  const surface = new OffscreenCanvas(bitmap.width, bitmap.height);
+  const ctx = surface.getContext('2d', { willReadFrequently: true })!;
+  ctx.drawImage(bitmap, 0, 0);
+  const data = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
+  return { w: bitmap.width, h: bitmap.height, rgba: new Uint8Array(data.buffer, data.byteOffset, data.byteLength) };
+}
+
+function applyExternal(e: Engine, fillId: number, w: number, h: number, rgba: Uint8Array): void {
+  const mask = new Uint8Array(rgba.length);
+  for (let k = 0; k < rgba.length; k += 4) { const a = rgba[k + 3]; mask[k] = a; mask[k + 1] = a; mask[k + 2] = a; mask[k + 3] = 255; }
+  e.set_fill_image(fillId, w, h, rgba);
+  e.mask_from_image(fillId, w, h, mask);
+}
+
+async function editExternally(): Promise<string> {
+  const e = requireEngine();
+  if (!(await api.alive())) throw new Error('Editing in another app needs the FormSurface service; start it with ./formsurface');
+  const source = layers().find((l) => l.id === e.active_layer());
+  if (!source || source.kind === 'folder' || source.kind === 'filter') throw new Error('Select a paint or fill layer to edit in another app');
+  const size = e.texture_size();
+  const pixels = await (e.export_layer(source.id, 0) as Promise<Uint8Array>);
+  const name = `${slug(meshName.replace(/\.[^.]+$/, ''))}_${slug(source.name)}_${source.id}`.slice(0, 80);
+  const sent = await fetch(`/api/external/${encodeURIComponent(name)}`, { method: 'POST', body: await encodePng(pixels, size, size, true) });
+  const reply = await sent.json() as { path?: string; mtime?: number; opened?: string; detail?: string };
+  if (!sent.ok) throw new Error(reply.detail || 'The service could not save the image');
+  $('layer-add-fill').click();
+  const fillId = e.active_layer();
+  useImage('fill', size, size, pixels, `${source.name} (external)`);
+  applyExternal(e, fillId, size, size, pixels);
+  const fill = layers().find((l) => l.id === fillId);
+  if (fill) e.update_layer(JSON.stringify({ ...fill, name: `${source.name} (external)` }));
+  e.update_layer(JSON.stringify({ ...source, visible: false }));
+  refreshLayers();
+  const watch = { name, mtime: reply.mtime ?? 0, timer: 0 };
+  watch.timer = window.setInterval(async () => {
+    if (!engine || !layers().some((l) => l.id === fillId)) { window.clearInterval(watch.timer); externalEdits.delete(fillId); return; }
+    try {
+      const s = await fetch(`/api/external/${encodeURIComponent(name)}`);
+      if (!s.ok) return;
+      const { mtime } = await s.json() as { mtime: number };
+      if (mtime === watch.mtime) return;
+      watch.mtime = mtime;
+      const img = await decodePng(await (await fetch(`/api/external/${encodeURIComponent(name)}/image`)).blob());
+      applyExternal(engine, fillId, img.w, img.h, img.rgba);
+      refreshLayers();
+      status(`Updated ${source.name} (external) from the saved file`);
+    } catch { return; }
+  }, 1500);
+  externalEdits.set(fillId, watch);
+  return `${reply.path} is open in ${reply.opened}; save it there and the new fill layer above ${source.name} updates (the original is hidden, not changed)`;
+}
+
+canvas.addEventListener('fs-edit-external', () => {
+  editExternally().then((text) => status(text), (error) => status(error instanceof Error ? error.message : String(error), true));
+});
+
 $('l-merge').addEventListener('click', () => {
   if (!engine) return;
   if (!window.confirm('Merge down replaces the active layer and the one below with one paint layer (fill settings and masks are baked in). This cannot be undone. Merge?')) return;
@@ -2159,6 +2219,34 @@ function bakeInWorker(job: BakeJob): Promise<BakeResult> {
   });
 }
 
+async function cageOffsets(e: Engine, sets: TextureSetInfo[]): Promise<Map<number, Float32Array>> {
+  const out = new Map<number, Float32Array>();
+  const slot = Number(sel('k-offset'));
+  if (!slot) return out;
+  const original = e.active_texture_set();
+  try {
+    for (const set of sets) {
+      if (!e.user_channels(set.index).includes(slot)) continue;
+      if (!e.select_texture_set(set.index)) throw new Error('Finish the stroke before baking');
+      const source = e.texture_size();
+      const pixels = await e.export_channel(slot + 11) as Uint8Array;
+      const size = (e.texture_set_mesh(set.index) as [Float32Array, Float32Array, Float32Array, Uint32Array, number])[4];
+      const map = new Float32Array(size * size);
+      for (let y = 0; y < size; y++) {
+        const sy = Math.min(source - 1, Math.floor(((y + 0.5) / size) * source));
+        for (let x = 0; x < size; x++) {
+          const sx = Math.min(source - 1, Math.floor(((x + 0.5) / size) * source));
+          map[y * size + x] = pixels[(sy * source + sx) * 4] / 255;
+        }
+      }
+      out.set(set.index, map);
+    }
+  } finally {
+    e.select_texture_set(original);
+  }
+  return out;
+}
+
 async function bakeHigh(): Promise<string> {
   const e = requireEngine();
   if (!highMesh) throw new Error('Load a high-poly mesh first');
@@ -2175,12 +2263,13 @@ async function bakeHigh(): Promise<string> {
   else e.clear_match_names();
   const started = performance.now();
   try {
+    const offsets = await cageOffsets(e, sets);
     for (const set of sets) {
       const [positions, normals, uvs, indices, size] = e.texture_set_mesh(set.index) as [Float32Array, Float32Array, Float32Array, Uint32Array, number];
       $('k-high-state').textContent = `Baking ${set.name} in the background (${sets.indexOf(set) + 1} of ${sets.length}); you can keep working`;
       const high = { positions: highMesh.positions.slice(), normals: highMesh.normals.slice(), indices: highMesh.indices.slice(), parts: highMesh.parts.slice() };
       const keys = e.texture_set_match_keys(set.index) as Uint32Array[];
-      const result = await bakeInWorker({ low: [positions, normals, uvs, indices], high, size, front: num('k-front'), rear: num('k-rear'), lowKeys: keys[0] ?? new Uint32Array(), highKeys: keys[1] ?? new Uint32Array(), aoRays: num('k-ao-rays'), cage: e.texture_set_cage(set.index) });
+      const result = await bakeInWorker({ low: [positions, normals, uvs, indices], high, size, front: num('k-front'), rear: num('k-rear'), lowKeys: keys[0] ?? new Uint32Array(), highKeys: keys[1] ?? new Uint32Array(), aoRays: num('k-ao-rays'), cage: e.texture_set_cage(set.index), offset: offsets.get(set.index) ?? new Float32Array() });
       if (generation !== meshGeneration || engine !== e) throw new Error('The mesh changed during the bake; bake again');
       e.apply_high_bake(set.index, result.size, result.normal, result.id);
       highMaps.set(set.index, result);

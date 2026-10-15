@@ -7,10 +7,11 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
 
-from app.agent import claude_code, cmd_chat, cmd_prefs, cmd_terminal, config, events, terminal
+from app.agent import claude_code, cmd_chat, cmd_prefs, cmd_terminal, config, events, external, terminal
 from app.agent.commands import REGISTRY, CommandError, dispatch
 
 router = APIRouter()
+router.include_router(external.router)
 LOCAL = ("localhost", "127.0.0.1", "::1", "tauri.localhost")
 MODULES = (claude_code, cmd_chat, cmd_prefs, cmd_terminal)
 
