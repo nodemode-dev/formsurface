@@ -82,6 +82,8 @@ def mcp_config() -> str:
     env = {"FORMSURFACE_SERVICE": config.service_url()}
     if config.FROZEN:
         server = {"type": "stdio", "command": sys.executable, "args": ["--mcp"], "env": env}
+    elif os.name == "nt":
+        server = {"type": "stdio", "command": sys.executable, "args": ["-I", str(config.REPO_DIR / "mcp" / "server.py")], "env": env}
     else:
         server = {"type": "stdio", "command": str(config.REPO_DIR / "formsurface"), "args": ["mcp"], "env": env}
     return json.dumps({"mcpServers": {SERVER: server}})

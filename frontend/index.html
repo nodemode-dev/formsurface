@@ -199,6 +199,7 @@ print(project.status()["mesh"])</textarea>
       <label class="check" title="When you open a new version of the mesh, carry the first texture set's paint and masks over by surface position instead of by UV"><input type="checkbox" id="m-reproject"> Reproject layers on mesh reload</label>
       <label class="check" title="Move the layer stacks and undo history of texture sets you are not working on out of GPU memory; their finished look stays on screen and they come back when you select, export or bake them"><input type="checkbox" id="ts-page"> Page out idle texture sets</label>
       <p class="check" id="ts-memory" style="margin:2px 0 0">Layer storage: 0.0 MB on the GPU, 0.0 MB paged out</p>
+      <div class="row" style="grid-template-columns:1fr auto auto" title="Parts hidden with View > Hide Part Under Cursor (H); brushes reach the surface behind them, exports keep them"><span class="check" id="hp-info">No parts hidden</span><button class="btn" id="hp-undo" disabled title="Go back one hide or show step">Step back</button><button class="btn" id="hp-show" disabled>Show all</button></div>
     </section>
     <section class="section">
       <h2>Layers

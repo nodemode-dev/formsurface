@@ -501,6 +501,7 @@ function refreshLayers(): void {
   const active = engine.active_layer();
   layerList.render(all, active);
   showTextureMemory();
+  refreshHidden();
   const stackKey = `${engine.active_texture_set()}|${all.map((l) => `${l.id}:${l.kind}:${l.parent}`).join(',')}`;
   if (stackKey !== lastStackKey) {
     if (lastStackKey) emitPython('layer_stack_changed', { texture_set: engine.active_texture_set(), layers: all.map((l) => ({ id: l.id, name: l.name, kind: l.kind })) });
@@ -906,11 +907,21 @@ function drawSelection(s: Selecting): void {
 
 function fillSelection(corners: [number, number][], limit: boolean): number {
   const e = requireEngine();
+  const cover = filledCover(corners);
+  let [x0, y0, x1, y1] = cover.bounds;
+  if (e.view_2d()) {
+    const a = e.uv_at(x0, y0);
+    const b = e.uv_at(x1, y1);
+    [x0, y0, x1, y1] = [a[0], a[1], b[0], b[1]];
+  }
   if (limit && e.quick_mask_mode() !== 1) setQuickMask(1);
-  const count = e.fill_screen_region(new Float32Array(corners.flat()), true);
+  e.path_cover(cover.width, cover.height, cover.rgba, x0, y0, x1, y1);
   if (limit) setQuickMask(2);
   refreshLayers();
-  return count;
+  return Math.round(Math.abs(corners.reduce((sum, [x, y], i) => {
+    const [nx, ny] = corners[(i + 1) % corners.length];
+    return sum + x * ny - nx * y;
+  }, 0)) / 2);
 }
 
 canvas.addEventListener('fs-select', (event) => {
@@ -948,8 +959,8 @@ canvas.addEventListener('pointerup', (event) => {
   const corners = selectionCorners(s);
   if (corners.length < 3) { status('The selection was too small', true); return; }
   try {
-    const count = fillSelection(corners, s.limit);
-    status(s.limit ? `Strokes now stay inside the selection (${count} triangles); T or Quick mask Off lifts it` : `Filled ${count} triangles with the paint material`);
+    fillSelection(corners, s.limit);
+    status(s.limit ? 'Strokes now stay inside the selection; T or Quick mask Off lifts it' : 'Filled the selection with the paint material');
   } catch (error) {
     status(error instanceof Error ? error.message : String(error), true);
   }
@@ -969,8 +980,22 @@ canvas.addEventListener('fs-pick-layer', () => {
 
 function hidePartAt(x: number, y: number, mode: number, isolate: boolean): number {
   if (!engine) throw new Error('The GPU engine is not running');
-  return engine.hide_part(x, y, mode, isolate);
+  const count = engine.hide_part(x, y, mode, isolate);
+  refreshHidden();
+  return count;
 }
+
+function refreshHidden(): void {
+  const count = engine?.hidden_triangles() ?? 0;
+  const info = $('hp-info');
+  const text = count ? `${count} triangles hidden` : 'No parts hidden';
+  if (info.textContent !== text) info.textContent = text;
+  $<HTMLButtonElement>('hp-show').disabled = !count;
+  $<HTMLButtonElement>('hp-undo').disabled = !(engine?.hide_steps() ?? 0);
+}
+
+$('hp-show').addEventListener('click', () => { engine?.show_all_parts(); refreshHidden(); status('Every part is visible'); });
+$('hp-undo').addEventListener('click', () => { engine?.show_last_hidden(); refreshHidden(); });
 
 canvas.addEventListener('fs-hide-part', (event) => {
   const { mode, isolate } = (event as CustomEvent<{ mode: number; isolate: boolean }>).detail;
@@ -982,7 +1007,7 @@ canvas.addEventListener('fs-hide-part', (event) => {
     status(error instanceof Error ? error.message : String(error), true);
   }
 });
-canvas.addEventListener('fs-show-parts', () => { engine?.show_all_parts(); status('Every part is visible'); });
+canvas.addEventListener('fs-show-parts', () => { engine?.show_all_parts(); refreshHidden(); status('Every part is visible'); });
 
 async function selectLayerUnder(x: number, y: number): Promise<void> {
   try {
@@ -2577,14 +2602,14 @@ const agentLink = new AgentLink({
     if (code === undefined) throw new Error('mode is triangle, polygon, mesh or uv_island');
     return { hidden_triangles: hidePartAt(Number(x) * canvas.width, Number(y) * canvas.height, code, Boolean(isolate)) };
   },
-  show_all_parts: () => { engine?.show_all_parts(); return { hidden_triangles: 0 }; },
+  show_all_parts: () => { engine?.show_all_parts(); refreshHidden(); return { hidden_triangles: 0 }; },
   select_region: ({ points, limit }) => {
     if (!Array.isArray(points) || points.length < 3) throw new Error('points is a list of at least three [x, y] pairs in normalized viewport coordinates');
     const corners = (points as unknown[]).map((p): [number, number] => {
       const [x, y] = p as [number, number];
       return [Number(x) * canvas.width, Number(y) * canvas.height];
     });
-    return { triangles: fillSelection(corners, Boolean(limit)), quick_mask: limit ? 'on' : undefined };
+    return { screen_pixels: fillSelection(corners, Boolean(limit)), quick_mask: limit ? 'on' : undefined };
   },
   pick_layer: async ({ x, y }) => {
     const hit = await pickLayerAt(Number(x) * canvas.width, Number(y) * canvas.height);
