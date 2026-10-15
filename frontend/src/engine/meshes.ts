@@ -11,6 +11,8 @@ export interface FlatMesh {
   positions: Float32Array;
   normals: Float32Array;
   uvs: Float32Array;
+  /** Second UV channel (glTF TEXCOORD_1, FBX and Collada second UV set), present when any part carries one; parts without it repeat their first UVs. */
+  uvs1?: Float32Array;
   indices: Uint32Array;
   parts: Uint32Array;
   materials: Uint32Array;
@@ -24,6 +26,8 @@ function flatten(root: THREE.Object3D, requireUv = true): FlatMesh {
   const positions: number[] = [];
   const normals: number[] = [];
   const uvs: number[] = [];
+  const uvs1: number[] = [];
+  let anyUv1 = false;
   const indices: number[] = [];
   const parts: number[] = [];
   const materials: number[] = [];
@@ -47,6 +51,8 @@ function flatten(root: THREE.Object3D, requireUv = true): FlatMesh {
     const pos = geometry.getAttribute('position');
     const uv = geometry.getAttribute('uv');
     if (!pos || (!uv && requireUv)) { skipped++; return; }
+    const uv1 = geometry.getAttribute('uv1') ?? geometry.getAttribute('uv2');
+    if (uv1) anyUv1 = true;
     if (!geometry.getAttribute('normal')) geometry.computeVertexNormals();
     const nor = geometry.getAttribute('normal');
     normalMatrix.getNormalMatrix(mesh.matrixWorld);
@@ -57,6 +63,8 @@ function flatten(root: THREE.Object3D, requireUv = true): FlatMesh {
       positions.push(p.x, p.y, p.z);
       normals.push(n.x, n.y, n.z);
       if (uv) uvs.push(uv.getX(i), 1 - uv.getY(i)); else uvs.push(0, 0);
+      const second = uv1 ?? uv;
+      if (second) uvs1.push(second.getX(i), 1 - second.getY(i)); else uvs1.push(0, 0);
     }
     const before = indices.length;
     const index = geometry.getIndex();
@@ -79,6 +87,7 @@ function flatten(root: THREE.Object3D, requireUv = true): FlatMesh {
   return {
     positions: new Float32Array(positions), normals: new Float32Array(normals), uvs: new Float32Array(uvs), indices: new Uint32Array(indices),
     parts: new Uint32Array(parts), materials: new Uint32Array(materials), materialNames, partNames, skipped,
+    ...(anyUv1 ? { uvs1: new Float32Array(uvs1) } : {}),
   };
 }
 
@@ -233,6 +242,16 @@ function sampleSets(): FlatMesh {
 export function sampleMesh(kind: string): FlatMesh {
   if (kind === 'sets') return sampleSets();
   if (kind === 'pair') return samplePair();
+  if (kind === 'uv2') {
+    // A sphere whose second UV channel is its first, turned a quarter and shrunk into the middle of the square,
+    // so a map moved onto UV1 is visibly a different layout.
+    const sphere = new THREE.SphereGeometry(1, 128, 64);
+    const uv = sphere.getAttribute('uv');
+    const second = new Float32Array(uv.count * 2);
+    for (let i = 0; i < uv.count; i++) { second[i * 2] = 0.25 + 0.5 * uv.getY(i); second[i * 2 + 1] = 0.25 + 0.5 * (1 - uv.getX(i)); }
+    sphere.setAttribute('uv1', new THREE.BufferAttribute(second, 2));
+    return flatten(new THREE.Mesh(sphere));
+  }
   const geometry =
     kind === 'knot' ? new THREE.TorusKnotGeometry(0.7, 0.24, 360, 48) :
     kind === 'torus' ? new THREE.TorusGeometry(0.8, 0.32, 96, 192) :

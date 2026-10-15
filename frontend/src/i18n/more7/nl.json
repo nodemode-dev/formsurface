@@ -1,0 +1,8 @@
+{
+  "Sphere with a second UV channel": "Bol met een tweede UV-kanaal",
+  "UV channel": "UV-kanaal",
+  "UV0 (painted layout)": "UV0 (geschilderde indeling)",
+  "UV1 (second channel)": "UV1 (tweede kanaal)",
+  "Write the maps in the layout you painted (UV0) or move them onto the mesh's second UV channel (UV1), for lightmap or trim layouts; tangent-space normals keep UV0's frame": "Schrijf de maps weg in de indeling waarin je hebt geschilderd (UV0) of verplaats ze naar het tweede UV-kanaal van de mesh (UV1), voor lightmap- of trim-indelingen; tangent-space-normalen behouden het frame van UV0",
+  "This mesh has no second UV channel; load a glTF, FBX or Collada mesh with one (TEXCOORD_1), or export on UV0": "Deze mesh heeft geen tweede UV-kanaal; laad een glTF-, FBX- of Collada-mesh die er een heeft (TEXCOORD_1), of exporteer op UV0"
+}

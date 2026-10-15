@@ -1,0 +1,8 @@
+{
+  "Sphere with a second UV channel": "Gömb második UV-csatornával",
+  "UV channel": "UV-csatorna",
+  "UV0 (painted layout)": "UV0 (festett elrendezés)",
+  "UV1 (second channel)": "UV1 (második csatorna)",
+  "Write the maps in the layout you painted (UV0) or move them onto the mesh's second UV channel (UV1), for lightmap or trim layouts; tangent-space normals keep UV0's frame": "A mapeket abba az elrendezésbe írja, amelyben festett (UV0), vagy áthelyezi őket a mesh második UV-csatornájára (UV1), lightmap- vagy trim-elrendezésekhez; a tangenstérbeli normálok megtartják az UV0 koordináta-rendszerét",
+  "This mesh has no second UV channel; load a glTF, FBX or Collada mesh with one (TEXCOORD_1), or export on UV0": "Ennek a meshnek nincs második UV-csatornája; töltsön be egy olyan glTF-, FBX- vagy Collada-mesht, amelynek van (TEXCOORD_1), vagy exportáljon UV0-ra"
+}

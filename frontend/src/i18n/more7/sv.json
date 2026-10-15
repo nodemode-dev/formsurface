@@ -1,0 +1,8 @@
+{
+  "Sphere with a second UV channel": "Sfär med en andra UV-kanal",
+  "UV channel": "UV-kanal",
+  "UV0 (painted layout)": "UV0 (målad layout)",
+  "UV1 (second channel)": "UV1 (andra kanalen)",
+  "Write the maps in the layout you painted (UV0) or move them onto the mesh's second UV channel (UV1), for lightmap or trim layouts; tangent-space normals keep UV0's frame": "Skriv kartorna i den layout du målade i (UV0) eller flytta dem till meshens andra UV-kanal (UV1), för lightmap- eller trim-layouter; tangentrumsnormaler behåller UV0:s ram",
+  "This mesh has no second UV channel; load a glTF, FBX or Collada mesh with one (TEXCOORD_1), or export on UV0": "Den här meshen har ingen andra UV-kanal; läs in en glTF-, FBX- eller Collada-mesh som har en (TEXCOORD_1), eller exportera på UV0"
+}

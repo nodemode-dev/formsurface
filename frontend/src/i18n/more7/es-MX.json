@@ -1,0 +1,8 @@
+{
+  "Sphere with a second UV channel": "Esfera con un segundo canal UV",
+  "UV channel": "Canal UV",
+  "UV0 (painted layout)": "UV0 (disposición pintada)",
+  "UV1 (second channel)": "UV1 (segundo canal)",
+  "Write the maps in the layout you painted (UV0) or move them onto the mesh's second UV channel (UV1), for lightmap or trim layouts; tangent-space normals keep UV0's frame": "Escribe los mapas en la disposición que pintaste (UV0) o muévelos al segundo canal UV de la malla (UV1), para disposiciones de lightmap o trim; las normales en espacio tangente conservan el marco de UV0",
+  "This mesh has no second UV channel; load a glTF, FBX or Collada mesh with one (TEXCOORD_1), or export on UV0": "Esta malla no tiene un segundo canal UV; carga una malla glTF, FBX o Collada que lo tenga (TEXCOORD_1), o exporta en UV0"
+}

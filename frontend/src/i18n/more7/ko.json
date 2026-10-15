@@ -1,0 +1,8 @@
+{
+  "Sphere with a second UV channel": "두 번째 UV 채널이 있는 구",
+  "UV channel": "UV 채널",
+  "UV0 (painted layout)": "UV0(페인트한 레이아웃)",
+  "UV1 (second channel)": "UV1(두 번째 채널)",
+  "Write the maps in the layout you painted (UV0) or move them onto the mesh's second UV channel (UV1), for lightmap or trim layouts; tangent-space normals keep UV0's frame": "맵을 페인트한 레이아웃(UV0)으로 쓰거나, 라이트맵 또는 트림 레이아웃을 위해 메시의 두 번째 UV 채널(UV1)로 옮겨 씁니다. 탄젠트 공간 노멀은 UV0의 프레임을 유지합니다",
+  "This mesh has no second UV channel; load a glTF, FBX or Collada mesh with one (TEXCOORD_1), or export on UV0": "이 메시에는 두 번째 UV 채널이 없습니다. 두 번째 UV 채널(TEXCOORD_1)이 있는 glTF, FBX 또는 Collada 메시를 불러오거나 UV0으로 내보내세요"
+}

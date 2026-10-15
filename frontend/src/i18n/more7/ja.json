@@ -1,0 +1,8 @@
+{
+  "Sphere with a second UV channel": "第2UVチャンネル付きの球",
+  "UV channel": "UVチャンネル",
+  "UV0 (painted layout)": "UV0（ペイントしたレイアウト）",
+  "UV1 (second channel)": "UV1（第2チャンネル）",
+  "Write the maps in the layout you painted (UV0) or move them onto the mesh's second UV channel (UV1), for lightmap or trim layouts; tangent-space normals keep UV0's frame": "マップをペイントしたレイアウト（UV0）で書き出すか、ライトマップやトリム用レイアウト向けにメッシュの第2UVチャンネル（UV1）へ移して書き出します。タンジェントスペースのノーマルはUV0のフレームを維持します",
+  "This mesh has no second UV channel; load a glTF, FBX or Collada mesh with one (TEXCOORD_1), or export on UV0": "このメッシュには第2UVチャンネルがありません。第2UVチャンネル（TEXCOORD_1）を持つglTF、FBX、またはColladaメッシュを読み込むか、UV0で書き出してください"
+}

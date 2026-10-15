@@ -1,0 +1,8 @@
+{
+  "Sphere with a second UV channel": "สเฟียร์ที่มีช่อง UV ที่สอง",
+  "UV channel": "ช่อง UV",
+  "UV0 (painted layout)": "UV0 (เลย์เอาต์ที่ระบายสี)",
+  "UV1 (second channel)": "UV1 (ช่องที่สอง)",
+  "Write the maps in the layout you painted (UV0) or move them onto the mesh's second UV channel (UV1), for lightmap or trim layouts; tangent-space normals keep UV0's frame": "เขียนแมปลงในเลย์เอาต์ที่คุณระบายสี (UV0) หรือย้ายไปยังช่อง UV ที่สองของเมช (UV1) สำหรับเลย์เอาต์ไลต์แมปหรือทริม โดยนอร์มัลในปริภูมิแทนเจนต์จะคงเฟรมของ UV0 ไว้",
+  "This mesh has no second UV channel; load a glTF, FBX or Collada mesh with one (TEXCOORD_1), or export on UV0": "เมชนี้ไม่มีช่อง UV ที่สอง โปรดโหลดเมช glTF, FBX หรือ Collada ที่มีช่องดังกล่าว (TEXCOORD_1) หรือส่งออกบน UV0"
+}

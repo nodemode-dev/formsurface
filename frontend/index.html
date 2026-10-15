@@ -62,6 +62,7 @@
         <button data-sample="capsule">Capsule</button>
         <button data-sample="sets">Figure (2 materials, UDIM 1001 and 1002)</button>
         <button data-sample="pair">Two spheres with high-poly pair (match by name)</button>
+        <button data-sample="uv2">Sphere with a second UV channel</button>
       </div>
     </div>
     <div class="row" style="grid-template-columns:auto 96px;width:auto;gap:6px"><label for="tex-size">Texture</label>
@@ -407,6 +408,7 @@ print(project.status()["mesh"])</textarea>
       <div class="row"><label for="x-pad-width">Dilation width</label><input id="x-pad-width" type="range" min="0" max="64" step="1" value="8"><output for="x-pad-width">8</output></div>
       <div class="row" style="grid-template-columns:84px 1fr"><label for="x-pad-color">Pad color</label><input id="x-pad-color" type="color" value="#000000"></div>
       <label class="check" title="Write one map per channel for all texture sets that share a UV tile, each set filling its own UV islands; needs every set at the same size"><input type="checkbox" id="x-merge">Merge texture sets into one map set</label>
+      <div class="row" style="grid-template-columns:84px 1fr"><label for="x-uv">UV channel</label><select id="x-uv" title="Write the maps in the layout you painted (UV0) or move them onto the mesh's second UV channel (UV1), for lightmap or trim layouts; tangent-space normals keep UV0's frame"><option value="0" selected>UV0 (painted layout)</option><option value="1" id="x-uv1">UV1 (second channel)</option></select></div>
       <p class="check" id="x-maps" style="min-height:42px;margin:6px 0 0"></p>
       <details class="te">
         <summary>Edit templates</summary>

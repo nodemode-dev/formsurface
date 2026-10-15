@@ -1,0 +1,8 @@
+{
+  "Sphere with a second UV channel": "具第二組 UV 通道的球體",
+  "UV channel": "UV 通道",
+  "UV0 (painted layout)": "UV0（繪製版面）",
+  "UV1 (second channel)": "UV1（第二通道）",
+  "Write the maps in the layout you painted (UV0) or move them onto the mesh's second UV channel (UV1), for lightmap or trim layouts; tangent-space normals keep UV0's frame": "將貼圖寫入你繪製時使用的版面（UV0），或移至網格的第二組 UV 通道（UV1），用於光照貼圖或 trim 版面；切線空間法線會保留 UV0 的座標系",
+  "This mesh has no second UV channel; load a glTF, FBX or Collada mesh with one (TEXCOORD_1), or export on UV0": "此網格沒有第二組 UV 通道；請載入具有第二組 UV 通道（TEXCOORD_1）的 glTF、FBX 或 Collada 網格，或以 UV0 匯出"
+}
