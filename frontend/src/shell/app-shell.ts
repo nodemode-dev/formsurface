@@ -10,6 +10,7 @@ import { TerminalDock } from './terminal-dock';
 import { CommandPalette } from './command-palette';
 import { Dialog } from './dialog';
 import { language, languages, setLanguage, t, type Lang } from '../i18n';
+import { mountColorWheel } from '../ui/color-wheel';
 
 const SHORTCUTS_KEY = 'formsurface.shortcuts';
 const DOCK_KEY = 'formsurface.dock';
@@ -310,6 +311,7 @@ export class Shell {
     });
     row.after(strip);
     sync();
+    mountColorWheel(input, strip);
   }
 
   private applyFold(section: HTMLElement, fold: HTMLElement, on: boolean): void {

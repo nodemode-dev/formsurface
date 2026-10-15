@@ -972,5 +972,6 @@
 "With UV projection, lay the pattern out on the first UV channel or on the mesh's second one (lightmap or trim UVs)",
 "Needs WebGPU; this window runs on WebGL 2",
 "The path tracer needs WebGPU; this window runs on WebGL 2 (the Linux desktop app, or a browser without WebGPU)",
-"This needs WebGPU: the path tracer and the ray-traced bake read storage buffers, which WebGL 2 (the Linux desktop app, or a browser without WebGPU) does not have. Use the mesh bake here, or open FormSurface in a browser with WebGPU"
+"This needs WebGPU: the path tracer and the ray-traced bake read storage buffers, which WebGL 2 (the Linux desktop app, or a browser without WebGPU) does not have. Use the mesh bake here, or open FormSurface in a browser with WebGPU",
+"Color wheel: drag the ring for hue and the square for saturation and value; arrow keys adjust"
 ]
