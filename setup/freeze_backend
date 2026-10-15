@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -e
+source "$(dirname "$0")/lib.sh"
+fs_venv
+python -c "import PyInstaller" 2>/dev/null || fs_die "PyInstaller missing, run ./formsurface install-desktop"
+fs_rust_env
+triple="$(fs_target_triple)" || fs_die "rustc not found; install Rust or set FORMSURFACE_TARGET"
+[ -f "$FORMSURFACE_ROOT/frontend/dist/index.html" ] || "$FORMSURFACE_ROOT/setup/build_frontend"
+cd "$FORMSURFACE_ROOT/backend"
+sep=":"
+[ "$(fs_os)" = windows ] && sep=";"
+ext="$(fs_exe)"
+rm -rf build/pyinstaller dist-engine
+pyinstaller --noconfirm --clean --onefile --name formsurface-engine \
+  --distpath dist-engine --workpath build/pyinstaller --specpath build/pyinstaller --paths "$FORMSURFACE_ROOT/backend" \
+  --add-data "$FORMSURFACE_ROOT/frontend/dist${sep}frontend_dist" \
+  --add-data "$FORMSURFACE_ROOT/mcp${sep}mcp" \
+  --hidden-import app.agent.router --hidden-import app.agent.cmd_terminal --hidden-import app.agent.claude_code \
+  --hidden-import app.agent.cmd_chat --hidden-import app.agent.cmd_prefs --hidden-import ptyprocess \
+  --collect-submodules uvicorn --collect-submodules app --collect-submodules mcp.server --collect-submodules mcp.shared --collect-submodules mcp_types --collect-submodules httpx --collect-all PyOpenColorIO \
+  "$FORMSURFACE_ROOT/backend/formsurface_engine.py"
+"dist-engine/formsurface-engine${ext}" --selfcheck || fs_die "the frozen engine failed its selfcheck; nothing was copied to src-tauri/binaries"
+mkdir -p "$FORMSURFACE_ROOT/src-tauri/binaries"
+out="$FORMSURFACE_ROOT/src-tauri/binaries/formsurface-engine-${triple}${ext}"
+cp "dist-engine/formsurface-engine${ext}" "$out"
+fs_say "sidecar ready: $out"

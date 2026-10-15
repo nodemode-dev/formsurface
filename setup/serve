@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -e
+source "$(dirname "$0")/lib.sh"
+fs_venv
+[ -f "$FORMSURFACE_ROOT/frontend/dist/index.html" ] || "$FORMSURFACE_ROOT/setup/build_frontend"
+cd "$FORMSURFACE_ROOT/backend"
+fs_say "open http://127.0.0.1:${FORMSURFACE_PORT:-8766}"
+exec uvicorn app.main:app --host 127.0.0.1 --port "${FORMSURFACE_PORT:-8766}"

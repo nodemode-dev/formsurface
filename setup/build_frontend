@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -e
+source "$(dirname "$0")/lib.sh"
+[ -f "$FORMSURFACE_ROOT/frontend/src/engine/pkg/fs_engine.js" ] || "$FORMSURFACE_ROOT/setup/build_engine"
+cd "$FORMSURFACE_ROOT/frontend"
+[ -d node_modules ] || npm install
+npm run build
+fs_say "built frontend/dist"

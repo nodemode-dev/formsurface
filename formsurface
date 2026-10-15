@@ -20,6 +20,14 @@ usage: ./formsurface [command]
   script FILE     run a Python script that imports formsurface_api (project, textureset,
                   layerstack, baking, export, resource, display) against the linked editor
                   (script --headless [--size N] FILE runs it without an open editor)
+  build           build the engine and the editor into frontend/dist
+  serve           serve the built editor from the service on 8766 (no Vite)
+  claude [ARGS]   Claude Code in this terminal, connected to the formsurface MCP server
+  install-desktop install PyInstaller and check the Tauri toolchain
+  freeze          freeze the service into the desktop sidecar (src-tauri/binaries)
+  desktop dev     run the desktop app from source
+  desktop build   build the desktop app (same as ./build_app)
+  doctor          check the toolchain, the builds and the running service
   help            this text
 EOF2
 }
@@ -33,6 +41,14 @@ case "$cmd" in
   mcp) exec mcp/launch ;;
   batch) shift; [ -x backend/venv/bin/python ] || { echo "Run ./formsurface install first" >&2; exit 1; }; exec backend/venv/bin/python -I mcp/batch.py "$@" ;;
   script) shift; [ -x backend/venv/bin/python ] || { echo "Run ./formsurface install first" >&2; exit 1; }; exec backend/venv/bin/python -I mcp/run_script.py "$@" ;;
+  build) exec setup/build_frontend ;;
+  serve) exec setup/serve ;;
+  claude) shift; command -v claude >/dev/null || { echo "Claude Code is not installed: https://claude.com/claude-code" >&2; exit 1; }
+    exec claude --mcp-config "{\"mcpServers\":{\"formsurface\":{\"type\":\"stdio\",\"command\":\"$PWD/formsurface\",\"args\":[\"mcp\"]}}}" --allowedTools mcp__formsurface "$@" ;;
+  install-desktop) exec setup/install_desktop ;;
+  freeze) exec setup/freeze_backend ;;
+  desktop) shift; case "${1:-}" in dev) shift; exec setup/desktop_dev "$@" ;; build) shift; exec ./build_app "$@" ;; *) usage; exit 2 ;; esac ;;
+  doctor) exec setup/doctor ;;
   help|-h|--help) usage ;;
   *) usage; exit 2 ;;
 esac

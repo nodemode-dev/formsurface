@@ -7,5 +7,12 @@ __pycache__/
 native/target/
 frontend/src/engine/pkg/
 workspace/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/*
+!src-tauri/binaries/.gitkeep
+backend/build/
+backend/dist-engine/
+build_app.log
 .env
 .DS_Store

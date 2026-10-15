@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -e
+source "$(dirname "$0")/lib.sh"
+fs_rust_env
+triple="$(fs_target_triple)" || fs_die "rustc not found; run ./formsurface install-desktop"
+[ -x "$FORMSURFACE_ROOT/src-tauri/binaries/formsurface-engine-${triple}$(fs_exe)" ] || "$FORMSURFACE_ROOT/setup/freeze_backend"
+cd "$FORMSURFACE_ROOT"
+exec frontend/node_modules/.bin/tauri dev "$@"

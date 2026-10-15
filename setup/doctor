@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+source "$(dirname "$0")/lib.sh"
+fs_rust_env
+ok() { printf '  %-22s %s\n' "$1" "$2"; }
+fs_say "FormSurface $(cat "$FORMSURFACE_ROOT/VERSION") on $(fs_os)"
+py="$(fs_python)" && ok python "$("$py" -V 2>&1)" || ok python "missing (3.12 or newer)"
+command -v node >/dev/null && ok node "$(node -v)" || ok node "missing (22.12 or newer)"
+command -v cargo >/dev/null && ok rust "$(rustc -V)" || ok rust "missing (https://rustup.rs)"
+command -v wasm-bindgen >/dev/null && ok wasm-bindgen "$(wasm-bindgen --version)" || ok wasm-bindgen "missing (./formsurface install)"
+[ -f "$FORMSURFACE_ROOT/backend/venv/bin/activate" ] && ok "service venv" ready || ok "service venv" "missing (./formsurface install)"
+[ -d "$FORMSURFACE_ROOT/frontend/node_modules" ] && ok "editor packages" ready || ok "editor packages" "missing (./formsurface install)"
+[ -f "$FORMSURFACE_ROOT/frontend/src/engine/pkg/fs_engine.js" ] && ok engine built || ok engine "not built (./formsurface engine)"
+command -v claude >/dev/null && ok "claude code" "$(claude --version 2>/dev/null | head -1)" || ok "claude code" "not found (https://claude.com/claude-code)"
+curl -fsS "http://127.0.0.1:${FORMSURFACE_PORT:-8766}/api/health" >/dev/null 2>&1 && ok service running || ok service "not running"

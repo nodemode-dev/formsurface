@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -e
+source "$(dirname "$0")/lib.sh"
+fs_venv
+pip install -r "$FORMSURFACE_ROOT/backend/requirements_desktop.txt"
+fs_rust_env
+command -v cargo >/dev/null 2>&1 || fs_die "Rust is not installed. Install it from https://rustup.rs then rerun ./formsurface install-desktop"
+if [ "$(fs_os)" = linux ] && ! pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
+  fs_say "Tauri needs system libraries. On Debian or Ubuntu run:"
+  fs_say "sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf"
+  exit 1
+fi
+[ -x "$FORMSURFACE_ROOT/frontend/node_modules/.bin/tauri" ] || ( cd "$FORMSURFACE_ROOT/frontend" && npm install )
+fs_say "desktop toolchain ready: rustc $(rustc --version | awk '{print $2}')"
