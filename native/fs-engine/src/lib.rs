@@ -73,6 +73,7 @@ pub struct Engine {
     view_transform: u32,
     trace: Option<TraceRun>,
     polygons: Option<Vec<u32>>,
+    hidden: Vec<bool>,
     normal_strength: f32,
     uv_tiles: bool,
     relaying: bool,
@@ -141,6 +142,7 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         view_transform: 0,
         trace: None,
         polygons: None,
+        hidden: Vec::new(),
         normal_strength: 1.0,
         uv_tiles: false,
         relaying: false,
@@ -235,6 +237,7 @@ impl Engine {
         self.tri_order = split.order;
         self.match_keys = None;
         self.polygons = None;
+        self.hidden.clear();
         self.cage = None;
         self.instance_groups.clear();
         self.set_index = 0;
@@ -1336,6 +1339,84 @@ impl Engine {
         ["off", "user", "opacity", "ambient_occlusion", "emissive", "transmission", "scattering"][(code.round() as usize).min(6)].to_string()
     }
 
+    pub fn hide_part(&mut self, x: f32, y: f32, mode: u32, isolate: bool) -> Result<u32, JsValue> {
+        if self.stroking {
+            return Err(JsValue::from_str("Finish the stroke first"));
+        }
+        if self.flat.is_some() {
+            return Err(JsValue::from_str("Hiding parts works in the 3D view"));
+        }
+        let hit = self.pick(x, y).ok_or_else(|| JsValue::from_str("Click on the mesh to hide a part"))?;
+        let (mesh, _) = self.mesh.as_ref().ok_or_else(|| JsValue::from_str("Load a mesh first"))?;
+        let total = (mesh.indices.len() / 3) as u32;
+        let region: Vec<u32> = match (mode, self.polygons.as_ref()) {
+            (1, Some(ids)) => (0..total).filter(|&t| ids[t as usize] == ids[hit.triangle as usize]).collect(),
+            _ => fs_core::regions::select(mesh, hit.triangle, 0, total, fs_core::regions::Mode::from_code(mode)),
+        };
+        if self.hidden.len() != total as usize {
+            self.hidden = vec![false; total as usize];
+        }
+        if isolate {
+            let keep: std::collections::HashSet<u32> = region.iter().copied().collect();
+            for t in 0..total {
+                self.hidden[t as usize] = !keep.contains(&t);
+            }
+        } else {
+            for &t in &region {
+                self.hidden[t as usize] = true;
+            }
+        }
+        self.sync_hidden();
+        Ok(self.hidden.iter().filter(|h| **h).count() as u32)
+    }
+
+    pub fn show_all_parts(&mut self) {
+        self.hidden.clear();
+        self.sync_hidden();
+    }
+
+    pub fn hidden_triangles(&self) -> u32 {
+        self.hidden.iter().filter(|h| **h).count() as u32
+    }
+
+    fn sync_hidden(&mut self) {
+        let Some((mesh, _)) = self.mesh.as_ref() else { return };
+        if !self.hidden.iter().any(|h| *h) {
+            self.hidden.clear();
+            self.gpu.set_view_indices(None);
+        } else {
+            let mut view = mesh.indices.clone();
+            for (t, h) in self.hidden.iter().enumerate() {
+                if *h {
+                    let first = view[t * 3];
+                    view[t * 3 + 1] = first;
+                    view[t * 3 + 2] = first;
+                }
+            }
+            self.gpu.set_view_indices(Some(&view));
+        }
+        self.dirty = true;
+    }
+
+    pub fn layer_coverage_at(&mut self, x: f32, y: f32) -> Result<js_sys::Promise, JsValue> {
+        if self.stroking {
+            return Err(JsValue::from_str("Finish the stroke first"));
+        }
+        let info = &self.sets[self.set_index].info;
+        let (first, last) = (info.start / 3, (info.start + info.count) / 3);
+        let uv = match self.flat_uv(x, y) {
+            Some(uv) => uv,
+            None => {
+                let hit = self.pick(x, y).ok_or_else(|| JsValue::from_str("Click on the mesh to pick a layer"))?;
+                if hit.triangle < first || hit.triangle >= last {
+                    return Err(JsValue::from_str("That part belongs to another texture set; select it first"));
+                }
+                hit.uv
+            }
+        };
+        Ok(self.gpu.coverage_at(uv[0], uv[1]))
+    }
+
     pub fn uv_at(&self, x: f32, y: f32) -> Vec<f32> {
         self.flat_uv(x, y).map(|uv| uv.to_vec()).unwrap_or_default()
     }
@@ -2383,7 +2464,8 @@ impl Engine {
         let nx = (x / self.width as f32) * 2.0 - 1.0;
         let ny = 1.0 - (y / self.height as f32) * 2.0;
         let dir = normalize(add(forward, add(scale(right, nx * t * aspect), scale(up, ny * t))));
-        let hit = bvh.raycast(mesh, eye, dir)?;
+        let hidden = &self.hidden;
+        let hit = if hidden.is_empty() { bvh.raycast(mesh, eye, dir)? } else { bvh.raycast_filter(mesh, eye, dir, &|t| !hidden.get(t as usize).copied().unwrap_or(false))? };
         let n = if dot(hit.normal, dir) > 0.0 { scale(hit.normal, -1.0) } else { hit.normal };
         Some(Hit { normal: n, ..hit })
     }

@@ -207,6 +207,7 @@ pub struct Gpu {
     cover_pipe: wgpu::RenderPipeline,
     vertices: Option<wgpu::Buffer>,
     indices: Option<wgpu::Buffer>,
+    view_indices: Option<wgpu::Buffer>,
     range: (u32, u32),
     total: u32,
     parked: Vec<Option<SetState>>,
@@ -531,6 +532,17 @@ pub fn view_projection(eye: Vec3, forward: Vec3, right: Vec3, up: Vec3, fov: f32
     m
 }
 
+fn half_to_f32(h: u16) -> f32 {
+    let sign = if h & 0x8000 != 0 { -1.0 } else { 1.0 };
+    let exp = ((h >> 10) & 0x1f) as i32;
+    let frac = (h & 0x3ff) as f32;
+    match exp {
+        0 => sign * frac * 2f32.powi(-24),
+        31 => if frac == 0.0 { sign * f32::INFINITY } else { f32::NAN },
+        _ => sign * (1.0 + frac / 1024.0) * 2f32.powi(exp - 15),
+    }
+}
+
 fn read_rgba(buffer: wgpu::Buffer, width: u32, height: u32, row: u32, bgra: bool, keep_alpha: bool) -> js_sys::Promise {
     js_sys::Promise::new(&mut |resolve, reject| {
         let readback = buffer.clone();
@@ -731,6 +743,7 @@ impl Gpu {
             export_uniform: uniform("export", 32),
             vertices: None,
             indices: None,
+            view_indices: None,
             range: (0, 0),
             total: 0,
             parked: vec![None],
@@ -776,6 +789,7 @@ impl Gpu {
         };
         self.vertices = Some(upload("vertices", bytemuck::cast_slice(&data), wgpu::BufferUsages::VERTEX));
         self.indices = Some(upload("indices", bytemuck::cast_slice(&mesh.indices), wgpu::BufferUsages::INDEX));
+        self.view_indices = None;
         self.total = mesh.indices.len() as u32;
         let ranges: Vec<(u32, u32)> = if ranges.is_empty() { vec![(0, self.total)] } else { ranges.to_vec() };
         self.select_set(0);
@@ -1221,6 +1235,15 @@ impl Gpu {
         self.high_baked = true;
     }
 
+    pub fn set_view_indices(&mut self, indices: Option<&[u32]>) {
+        self.view_indices = indices.map(|data| {
+            let bytes: &[u8] = bytemuck::cast_slice(data);
+            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("view indices"), size: bytes.len().next_multiple_of(4) as u64, usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+            self.queue.write_buffer(&buffer, 0, bytes);
+            buffer
+        });
+    }
+
     fn draw_mesh(&self, pass: &mut wgpu::RenderPass) {
         if let (Some(v), Some(i)) = (&self.vertices, &self.indices) {
             pass.set_vertex_buffer(0, v.slice(..));
@@ -1427,6 +1450,49 @@ impl Gpu {
         let mut encoder = self.device.create_command_encoder(&Default::default());
         encoder.copy_texture_to_texture(self.layers[from].set.mask.as_image_copy(), self.layers[to].set.mask.as_image_copy(), extent);
         self.queue.submit([encoder.finish()]);
+    }
+
+    pub fn coverage_at(&mut self, u: f32, v: f32) -> js_sys::Promise {
+        let n = self.layers.len();
+        let size = self.size;
+        let x = ((u.clamp(0.0, 1.0) * size as f32) as u32).min(size - 1);
+        let y = ((v.clamp(0.0, 1.0) * size as f32) as u32).min(size - 1);
+        let bytes = (n.max(1) * 512) as u64;
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("coverage probe"), size: bytes, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+        let texel = wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 };
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        for (i, layer) in self.layers.iter().enumerate() {
+            for (k, tex) in [&layer.set.cov, &layer.set.mask].into_iter().enumerate() {
+                encoder.copy_texture_to_buffer(
+                    wgpu::TexelCopyTextureInfo { texture: tex, mip_level: 0, origin: wgpu::Origin3d { x, y, z: 0 }, aspect: wgpu::TextureAspect::All },
+                    wgpu::TexelCopyBufferInfo { buffer: &buffer, layout: wgpu::TexelCopyBufferLayout { offset: (i * 512 + k * 256) as u64, bytes_per_row: Some(256), rows_per_image: Some(1) } },
+                    texel,
+                );
+            }
+        }
+        self.queue.submit([encoder.finish()]);
+        js_sys::Promise::new(&mut |resolve, reject| {
+            let readback = buffer.clone();
+            buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| {
+                if let Err(e) = result {
+                    let _ = reject.call1(&JsValue::NULL, &JsValue::from_str(&format!("Coverage readback failed: {e}")));
+                    return;
+                }
+                let values: Vec<f32> = match readback.slice(..).get_mapped_range() {
+                    Ok(view) => (0..n).map(|i| {
+                        let half = |o: usize| half_to_f32(u16::from_le_bytes([view[o], view[o + 1]]));
+                        let cov = (0..4).map(|c| half(i * 512 + c * 2)).fold(0.0f32, f32::max);
+                        cov * half(i * 512 + 256).clamp(0.0, 1.0)
+                    }).collect(),
+                    Err(e) => {
+                        let _ = reject.call1(&JsValue::NULL, &JsValue::from_str(&format!("Coverage readback failed: {e}")));
+                        return;
+                    }
+                };
+                readback.unmap();
+                let _ = resolve.call1(&JsValue::NULL, &js_sys::Float32Array::from(&values[..]));
+            });
+        })
     }
 
     pub fn export_layer(&mut self, index: usize, channel: u32) -> js_sys::Promise {
@@ -2709,7 +2775,7 @@ impl Gpu {
                 ..Default::default()
             });
             pass.set_pipeline(&self.view_pipe);
-            if let (Some(v), Some(i)) = (&self.vertices, &self.indices) {
+            if let (Some(v), Some(i)) = (&self.vertices, self.view_indices.as_ref().or(self.indices.as_ref())) {
                 pass.set_vertex_buffer(0, v.slice(..));
                 pass.set_index_buffer(i.slice(..), wgpu::IndexFormat::Uint32);
                 for (group, (start, count)) in &draws {
