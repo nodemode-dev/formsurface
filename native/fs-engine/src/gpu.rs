@@ -2477,9 +2477,49 @@ impl Gpu {
         let mut encoder = self.device.create_command_encoder(&Default::default());
         encoder.copy_texture_to_texture(mask.as_image_copy(), fx[0].as_image_copy(), extent);
         self.queue.submit([encoder.finish()]);
-        let mut cur = 0;
         let mut resized: Option<wgpu::Texture> = None;
-        for effect in effects {
+        self.effect_chain(id, effects, fx, 0, &mut resized)
+    }
+
+    /// Runs `effects` over `fx[cur]`, ping-ponging between the two textures, and returns the index holding the result.
+    /// A group effect owns the `count` effects after it: they run on their own black accumulator (nested groups recurse
+    /// with a fresh pair), and the group's result then blends onto the outer accumulator with the group's blend and opacity.
+    fn effect_chain(&self, id: u32, effects: &[Effect], fx: &[wgpu::Texture; 2], start: usize, resized: &mut Option<wgpu::Texture>) -> usize {
+        let mut cur = start;
+        let mut i = 0;
+        while i < effects.len() {
+            let effect = &effects[i];
+            i += 1;
+            if effect.spec.kind == fs_core::MaskEffectKind::Group {
+                let end = (i + effect.spec.count as usize).min(effects.len());
+                let children = &effects[i..end];
+                i = end;
+                if effect.params[0] > 8.0 {
+                    continue;
+                }
+                let size = fx[0].width();
+                let inner = [texture(&self.device, size, LAYER_FORMAT, "mask effect group"), texture(&self.device, size, LAYER_FORMAT, "mask effect group")];
+                let mut encoder = self.device.create_command_encoder(&Default::default());
+                encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&view_of(&inner[0]), wgpu::LoadOp::Clear(wgpu::Color::BLACK))], ..Default::default() });
+                self.queue.submit([encoder.finish()]);
+                let k = self.effect_chain(id, children, &inner, 0, resized);
+                let mut params = effect.params;
+                params[0] = 1.0;
+                self.queue.write_buffer(&self.fx_uniform, 0, bytemuck::cast_slice(&params));
+                let (acc, src) = (view_of(&fx[cur]), view_of(&inner[k]));
+                let group = bind(&self.device, &self.fx_pipe, &[self.fx_uniform.as_entire_binding(), wgpu::BindingResource::TextureView(&acc), wgpu::BindingResource::TextureView(&src)]);
+                let target = view_of(&fx[1 - cur]);
+                let mut encoder = self.device.create_command_encoder(&Default::default());
+                {
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&target, wgpu::LoadOp::Clear(wgpu::Color::BLACK))], ..Default::default() });
+                    pass.set_pipeline(&self.fx_pipe);
+                    pass.set_bind_group(0, &group, &[]);
+                    pass.draw(0..3, 0..1);
+                }
+                self.queue.submit([encoder.finish()]);
+                cur = 1 - cur;
+                continue;
+            }
             if effect.params[0] > 8.0 {
                 continue;
             }

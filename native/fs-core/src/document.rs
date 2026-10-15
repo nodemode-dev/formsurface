@@ -449,6 +449,8 @@ pub enum MaskEffectKind {
     Invert,
     Blur,
     Compare,
+    /// Owns the `count` effects after it; they run on their own black mask and the result blends in with the group's blend and opacity.
+    Group,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -478,6 +480,8 @@ pub struct MaskEffect {
     pub radius: f32,
     pub layer: u32,
     pub fill: FillSettings,
+    /// For a group: how many of the effects that follow belong to it, nested groups and their contents included.
+    pub count: u32,
 }
 
 impl Default for MaskEffect {
@@ -495,6 +499,7 @@ impl Default for MaskEffect {
             radius: 4.0,
             layer: 0,
             fill: FillSettings::default(),
+            count: 0,
         }
     }
 }
@@ -508,6 +513,7 @@ impl MaskEffect {
             MaskEffectKind::Invert => 3.0,
             MaskEffectKind::Blur => 4.0,
             MaskEffectKind::Compare => 5.0,
+            MaskEffectKind::Group => 6.0,
         };
         let blend = match self.blend {
             MaskBlend::Normal => 0.0,
