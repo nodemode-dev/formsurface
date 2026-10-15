@@ -1,0 +1,13 @@
+{
+  "Cage offset": "Độ lệch cage",
+  "Paint where rays need more reach into a user channel of the texture set: black keeps Cage front and rear, white pushes them out four times": "Vẽ vào một kênh người dùng của bộ texture ở nơi tia cần với xa hơn: màu đen giữ nguyên Cage phía trước và Cage phía sau, màu trắng đẩy chúng ra xa gấp bốn lần",
+  "Edit Layer in External App...": "Chỉnh sửa layer trong ứng dụng khác...",
+  "Other apps": "Ứng dụng khác",
+  "External image editor": "Trình chỉnh sửa ảnh bên ngoài",
+  "The default app for PNG files": "Ứng dụng mặc định cho tệp PNG",
+  "Editing in another app needs the FormSurface service; start it with ./formsurface": "Chỉnh sửa trong ứng dụng khác cần dịch vụ FormSurface; hãy khởi động bằng ./formsurface",
+  "Select a paint or fill layer to edit in another app": "Hãy chọn một layer vẽ hoặc layer tô để chỉnh sửa trong ứng dụng khác",
+  "{0} is open in {1}; save it there and the new fill layer above {2} updates (the original is hidden, not changed)": "{0} đang mở trong {1}; hãy lưu tại đó và layer tô mới phía trên {2} sẽ được cập nhật (bản gốc được ẩn, không bị thay đổi)",
+  "Updated {0} (external) from the saved file": "Đã cập nhật {0} (bên ngoài) từ tệp đã lưu",
+  "The service could not save the image": "Dịch vụ không thể lưu ảnh"
+}

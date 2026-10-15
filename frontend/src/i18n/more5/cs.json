@@ -1,0 +1,13 @@
+{
+  "Cage offset": "Odsazení klece",
+  "Paint where rays need more reach into a user channel of the texture set: black keeps Cage front and rear, white pushes them out four times": "Malujte do uživatelského kanálu sady textur tam, kde paprsky potřebují větší dosah: černá ponechá Klec, přední a Klec, zadní, bílá je odsune čtyřikrát dál",
+  "Edit Layer in External App...": "Upravit vrstvu v jiné aplikaci...",
+  "Other apps": "Další aplikace",
+  "External image editor": "Externí obrazový editor",
+  "The default app for PNG files": "Výchozí aplikace pro soubory PNG",
+  "Editing in another app needs the FormSurface service; start it with ./formsurface": "Úpravy v jiné aplikaci vyžadují službu FormSurface; spusťte ji příkazem ./formsurface",
+  "Select a paint or fill layer to edit in another app": "Vyberte vrstvu malby nebo výplně, kterou chcete upravit v jiné aplikaci",
+  "{0} is open in {1}; save it there and the new fill layer above {2} updates (the original is hidden, not changed)": "{0} je otevřeno v aplikaci {1}; uložte ho tam a nová vrstva výplně nad {2} se aktualizuje (originál je skrytý, ne změněný)",
+  "Updated {0} (external) from the saved file": "Aktualizováno {0} (externí) z uloženého souboru",
+  "The service could not save the image": "Služba nemohla obrázek uložit"
+}

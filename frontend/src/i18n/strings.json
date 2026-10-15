@@ -947,5 +947,16 @@
 "Show all",
 "Step back",
 "Go back one hide or show step",
-"Parts hidden with View > Hide Part Under Cursor (H); brushes reach the surface behind them, exports keep them"
+"Parts hidden with View > Hide Part Under Cursor (H); brushes reach the surface behind them, exports keep them",
+"Cage offset",
+"Paint where rays need more reach into a user channel of the texture set: black keeps Cage front and rear, white pushes them out four times",
+"Edit Layer in External App...",
+"Other apps",
+"External image editor",
+"The default app for PNG files",
+"Editing in another app needs the FormSurface service; start it with ./formsurface",
+"Select a paint or fill layer to edit in another app",
+"{0} is open in {1}; save it there and the new fill layer above {2} updates (the original is hidden, not changed)",
+"Updated {0} (external) from the saved file",
+"The service could not save the image"
 ]

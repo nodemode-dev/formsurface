@@ -1,0 +1,13 @@
+{
+  "Cage offset": "籠體偏移",
+  "Paint where rays need more reach into a user channel of the texture set: black keeps Cage front and rear, white pushes them out four times": "在紋理組的使用者通道中，於射線需要更大延伸範圍的位置繪製：黑色保持籠體前部和籠體後部不變，白色將它們向外推出四倍",
+  "Edit Layer in External App...": "在其他應用程式中編輯圖層...",
+  "Other apps": "其他應用程式",
+  "External image editor": "外部影像編輯器",
+  "The default app for PNG files": "PNG 檔案的預設應用程式",
+  "Editing in another app needs the FormSurface service; start it with ./formsurface": "在其他應用程式中編輯需要 FormSurface 服務；請使用 ./formsurface 啟動",
+  "Select a paint or fill layer to edit in another app": "請選擇要在其他應用程式中編輯的繪製圖層或填色圖層",
+  "{0} is open in {1}; save it there and the new fill layer above {2} updates (the original is hidden, not changed)": "{0} 已在 {1} 中開啟；在其中儲存後，{2} 上方的新填色圖層會自動更新（原圖層已隱藏，未被更改）",
+  "Updated {0} (external) from the saved file": "已根據儲存的檔案更新 {0}（外部）",
+  "The service could not save the image": "服務無法儲存影像"
+}

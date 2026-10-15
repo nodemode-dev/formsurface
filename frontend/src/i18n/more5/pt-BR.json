@@ -1,0 +1,13 @@
+{
+  "Cage offset": "Deslocamento da gaiola",
+  "Paint where rays need more reach into a user channel of the texture set: black keeps Cage front and rear, white pushes them out four times": "Pinte onde os raios precisam de mais alcance em um canal de usuário do conjunto de texturas: preto mantém Gaiola frontal e Gaiola traseira, branco as afasta quatro vezes",
+  "Edit Layer in External App...": "Editar camada em outro app...",
+  "Other apps": "Outros apps",
+  "External image editor": "Editor de imagens externo",
+  "The default app for PNG files": "O app padrão para arquivos PNG",
+  "Editing in another app needs the FormSurface service; start it with ./formsurface": "Editar em outro app requer o serviço do FormSurface; inicie-o com ./formsurface",
+  "Select a paint or fill layer to edit in another app": "Selecione uma camada de pintura ou de preenchimento para editar em outro app",
+  "{0} is open in {1}; save it there and the new fill layer above {2} updates (the original is hidden, not changed)": "{0} está aberto em {1}; salve lá e a nova camada de preenchimento acima de {2} é atualizada (o original fica oculto, não é alterado)",
+  "Updated {0} (external) from the saved file": "{0} (externo) atualizado a partir do arquivo salvo",
+  "The service could not save the image": "O serviço não conseguiu salvar a imagem"
+}

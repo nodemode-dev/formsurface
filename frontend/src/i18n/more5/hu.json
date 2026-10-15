@@ -1,0 +1,13 @@
+{
+  "Cage offset": "Ketrec eltolása",
+  "Paint where rays need more reach into a user channel of the texture set: black keeps Cage front and rear, white pushes them out four times": "Fessen a textúrakészlet egy felhasználói csatornájába ott, ahol a sugaraknak nagyobb hatótávolság kell: a fekete megtartja a Ketrec eleje és Ketrec hátulja értékét, a fehér négyszer messzebbre tolja őket",
+  "Edit Layer in External App...": "Réteg szerkesztése másik alkalmazásban...",
+  "Other apps": "Más alkalmazások",
+  "External image editor": "Külső képszerkesztő",
+  "The default app for PNG files": "A PNG-fájlok alapértelmezett alkalmazása",
+  "Editing in another app needs the FormSurface service; start it with ./formsurface": "A másik alkalmazásban való szerkesztéshez szükség van a FormSurface szolgáltatásra; indítsa el a ./formsurface paranccsal",
+  "Select a paint or fill layer to edit in another app": "Válasszon festő- vagy kitöltő réteget a másik alkalmazásban való szerkesztéshez",
+  "{0} is open in {1}; save it there and the new fill layer above {2} updates (the original is hidden, not changed)": "A(z) {0} meg van nyitva itt: {1}; mentse ott, és a(z) {2} feletti új kitöltő réteg frissül (az eredeti rejtett, nem módosul)",
+  "Updated {0} (external) from the saved file": "A(z) {0} (külső) frissítve a mentett fájlból",
+  "The service could not save the image": "A szolgáltatás nem tudta menteni a képet"
+}

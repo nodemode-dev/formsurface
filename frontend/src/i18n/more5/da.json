@@ -1,0 +1,13 @@
+{
+  "Cage offset": "Burforskydning",
+  "Paint where rays need more reach into a user channel of the texture set: black keeps Cage front and rear, white pushes them out four times": "Mal i en brugerkanal i tekstursættet, hvor stråler har brug for mere rækkevidde: sort beholder Bur, forside og Bur, bagside, hvid skubber dem fire gange længere ud",
+  "Edit Layer in External App...": "Rediger lag i en anden app...",
+  "Other apps": "Andre apps",
+  "External image editor": "Ekstern billededitor",
+  "The default app for PNG files": "Standardappen til PNG-filer",
+  "Editing in another app needs the FormSurface service; start it with ./formsurface": "Redigering i en anden app kræver FormSurface-tjenesten; start den med ./formsurface",
+  "Select a paint or fill layer to edit in another app": "Vælg et mal- eller fyldlag for at redigere det i en anden app",
+  "{0} is open in {1}; save it there and the new fill layer above {2} updates (the original is hidden, not changed)": "{0} er åbnet i {1}; gem det dér, så opdateres det nye fyldlag over {2} (originalen er skjult, ikke ændret)",
+  "Updated {0} (external) from the saved file": "{0} (ekstern) opdateret fra den gemte fil",
+  "The service could not save the image": "Tjenesten kunne ikke gemme billedet"
+}

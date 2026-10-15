@@ -1,0 +1,13 @@
+{
+  "Cage offset": "Käfig-Versatz",
+  "Paint where rays need more reach into a user channel of the texture set: black keeps Cage front and rear, white pushes them out four times": "Male in einem Benutzerkanal des Texturensets dort, wo Strahlen mehr Reichweite brauchen: Schwarz behält Käfig vorn und Käfig hinten bei, Weiß schiebt sie auf das Vierfache nach außen",
+  "Edit Layer in External App...": "Ebene in externer App bearbeiten...",
+  "Other apps": "Weitere Apps",
+  "External image editor": "Externer Bildeditor",
+  "The default app for PNG files": "Die Standard-App für PNG-Dateien",
+  "Editing in another app needs the FormSurface service; start it with ./formsurface": "Zum Bearbeiten in einer anderen App wird der FormSurface-Dienst benötigt; starte ihn mit ./formsurface",
+  "Select a paint or fill layer to edit in another app": "Wähle eine Mal- oder Füllebene, um sie in einer anderen App zu bearbeiten",
+  "{0} is open in {1}; save it there and the new fill layer above {2} updates (the original is hidden, not changed)": "{0} ist in {1} geöffnet; speichere dort, dann wird die neue Füllebene über {2} aktualisiert (das Original ist ausgeblendet, nicht verändert)",
+  "Updated {0} (external) from the saved file": "{0} (extern) aus der gespeicherten Datei aktualisiert",
+  "The service could not save the image": "Der Dienst konnte das Bild nicht speichern"
+}

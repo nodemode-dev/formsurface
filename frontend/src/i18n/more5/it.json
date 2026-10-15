@@ -1,0 +1,13 @@
+{
+  "Cage offset": "Offset della gabbia",
+  "Paint where rays need more reach into a user channel of the texture set: black keeps Cage front and rear, white pushes them out four times": "Dipingi in un canale utente del set di texture dove i raggi hanno bisogno di più portata: il nero mantiene Gabbia anteriore e Gabbia posteriore, il bianco le spinge fuori di quattro volte",
+  "Edit Layer in External App...": "Modifica livello in un'altra app...",
+  "Other apps": "Altre app",
+  "External image editor": "Editor di immagini esterno",
+  "The default app for PNG files": "L'app predefinita per i file PNG",
+  "Editing in another app needs the FormSurface service; start it with ./formsurface": "La modifica in un'altra app richiede il servizio FormSurface; avvialo con ./formsurface",
+  "Select a paint or fill layer to edit in another app": "Seleziona un livello di pittura o di riempimento da modificare in un'altra app",
+  "{0} is open in {1}; save it there and the new fill layer above {2} updates (the original is hidden, not changed)": "{0} è aperto in {1}; salvalo lì e il nuovo livello di riempimento sopra {2} si aggiorna (l'originale è nascosto, non modificato)",
+  "Updated {0} (external) from the saved file": "{0} (esterno) aggiornato dal file salvato",
+  "The service could not save the image": "Il servizio non è riuscito a salvare l'immagine"
+}

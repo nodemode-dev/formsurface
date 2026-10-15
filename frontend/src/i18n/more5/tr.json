@@ -1,0 +1,13 @@
+{
+  "Cage offset": "Kafes ofseti",
+  "Paint where rays need more reach into a user channel of the texture set: black keeps Cage front and rear, white pushes them out four times": "Işınların daha fazla menzile ihtiyaç duyduğu yerlere doku setinin bir kullanıcı kanalına boyayın: siyah Kafes ön ve Kafes arka değerlerini korur, beyaz onları dört kat dışarı iter",
+  "Edit Layer in External App...": "Katmanı başka bir uygulamada düzenle...",
+  "Other apps": "Diğer uygulamalar",
+  "External image editor": "Harici görüntü düzenleyici",
+  "The default app for PNG files": "PNG dosyaları için varsayılan uygulama",
+  "Editing in another app needs the FormSurface service; start it with ./formsurface": "Başka bir uygulamada düzenlemek için FormSurface hizmeti gerekir; ./formsurface ile başlatın",
+  "Select a paint or fill layer to edit in another app": "Başka bir uygulamada düzenlemek için bir boyama veya dolgu katmanı seçin",
+  "{0} is open in {1}; save it there and the new fill layer above {2} updates (the original is hidden, not changed)": "{0}, {1} içinde açık; orada kaydedin, {2} üstündeki yeni dolgu katmanı güncellenir (orijinal gizlenir, değiştirilmez)",
+  "Updated {0} (external) from the saved file": "{0} (harici) kaydedilen dosyadan güncellendi",
+  "The service could not save the image": "Hizmet görüntüyü kaydedemedi"
+}

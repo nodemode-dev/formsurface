@@ -1,0 +1,13 @@
+{
+  "Cage offset": "Décalage de la cage",
+  "Paint where rays need more reach into a user channel of the texture set: black keeps Cage front and rear, white pushes them out four times": "Peinturez là où les rayons ont besoin de plus de portée dans un canal utilisateur du jeu de textures : le noir conserve Cage avant et Cage arrière, le blanc les écarte quatre fois plus",
+  "Edit Layer in External App...": "Modifier le calque dans une autre application...",
+  "Other apps": "Autres applications",
+  "External image editor": "Éditeur d'images externe",
+  "The default app for PNG files": "L'application par défaut pour les fichiers PNG",
+  "Editing in another app needs the FormSurface service; start it with ./formsurface": "La modification dans une autre application nécessite le service FormSurface ; démarrez-le avec ./formsurface",
+  "Select a paint or fill layer to edit in another app": "Sélectionnez un calque de peinture ou de remplissage à modifier dans une autre application",
+  "{0} is open in {1}; save it there and the new fill layer above {2} updates (the original is hidden, not changed)": "{0} est ouvert dans {1} ; enregistrez-le là et le nouveau calque de remplissage au-dessus de {2} sera mis à jour (l'original est masqué, pas modifié)",
+  "Updated {0} (external) from the saved file": "{0} (externe) mis à jour à partir du fichier enregistré",
+  "The service could not save the image": "Le service n'a pas pu enregistrer l'image"
+}

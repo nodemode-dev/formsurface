@@ -1,0 +1,13 @@
+{
+  "Cage offset": "ระยะเยื้องเคจ",
+  "Paint where rays need more reach into a user channel of the texture set: black keeps Cage front and rear, white pushes them out four times": "ระบายลงในช่องผู้ใช้ของชุดเท็กซ์เจอร์ในจุดที่รังสีต้องการระยะเอื้อมมากขึ้น: สีดำคงเคจด้านหน้าและเคจด้านหลังไว้ สีขาวดันออกไปสี่เท่า",
+  "Edit Layer in External App...": "แก้ไขเลเยอร์ในแอปอื่น...",
+  "Other apps": "แอปอื่น ๆ",
+  "External image editor": "ตัวแก้ไขรูปภาพภายนอก",
+  "The default app for PNG files": "แอปเริ่มต้นสำหรับไฟล์ PNG",
+  "Editing in another app needs the FormSurface service; start it with ./formsurface": "การแก้ไขในแอปอื่นต้องใช้บริการ FormSurface เริ่มต้นด้วย ./formsurface",
+  "Select a paint or fill layer to edit in another app": "เลือกเลเยอร์วาดหรือเลเยอร์เติมสีเพื่อแก้ไขในแอปอื่น",
+  "{0} is open in {1}; save it there and the new fill layer above {2} updates (the original is hidden, not changed)": "{0} เปิดอยู่ใน {1} บันทึกที่นั่น แล้วเลเยอร์เติมสีใหม่เหนือ {2} จะอัปเดต (ต้นฉบับถูกซ่อน ไม่ได้ถูกเปลี่ยนแปลง)",
+  "Updated {0} (external) from the saved file": "อัปเดต {0} (ภายนอก) จากไฟล์ที่บันทึกแล้ว",
+  "The service could not save the image": "บริการไม่สามารถบันทึกรูปภาพได้"
+}

@@ -1,0 +1,13 @@
+{
+  "Cage offset": "ケージオフセット",
+  "Paint where rays need more reach into a user channel of the texture set: black keeps Cage front and rear, white pushes them out four times": "テクスチャセットのユーザーチャンネルで、レイにもっと届く距離が必要な箇所にペイントします。黒はケージ前面とケージ背面を維持し、白は4倍外側へ押し出します",
+  "Edit Layer in External App...": "別のアプリでレイヤーを編集...",
+  "Other apps": "その他のアプリ",
+  "External image editor": "外部画像エディター",
+  "The default app for PNG files": "PNG ファイルの既定のアプリ",
+  "Editing in another app needs the FormSurface service; start it with ./formsurface": "別のアプリで編集するには FormSurface サービスが必要です。./formsurface で起動してください",
+  "Select a paint or fill layer to edit in another app": "別のアプリで編集するペイントレイヤーまたはフィルレイヤーを選択してください",
+  "{0} is open in {1}; save it there and the new fill layer above {2} updates (the original is hidden, not changed)": "{0} は {1} で開いています。そこで保存すると、{2} の上にある新しいフィルレイヤーが更新されます (元のレイヤーは非表示になるだけで、変更されません)",
+  "Updated {0} (external) from the saved file": "保存されたファイルから {0} (外部) を更新しました",
+  "The service could not save the image": "サービスが画像を保存できませんでした"
+}

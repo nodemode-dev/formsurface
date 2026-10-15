@@ -1,0 +1,13 @@
+{
+  "Cage offset": "Häkin siirtymä",
+  "Paint where rays need more reach into a user channel of the texture set: black keeps Cage front and rear, white pushes them out four times": "Maalaa tekstuurisetin käyttäjäkanavaan kohtiin, joissa säteet tarvitsevat lisää ulottuvuutta: musta säilyttää arvot Häkki, etu ja Häkki, taka, valkoinen työntää ne nelinkertaisen matkan päähän",
+  "Edit Layer in External App...": "Muokkaa tasoa toisessa sovelluksessa...",
+  "Other apps": "Muut sovellukset",
+  "External image editor": "Ulkoinen kuvaeditori",
+  "The default app for PNG files": "PNG-tiedostojen oletussovellus",
+  "Editing in another app needs the FormSurface service; start it with ./formsurface": "Muokkaaminen toisessa sovelluksessa vaatii FormSurface-palvelun; käynnistä se komennolla ./formsurface",
+  "Select a paint or fill layer to edit in another app": "Valitse maalaus- tai täyttötaso muokattavaksi toisessa sovelluksessa",
+  "{0} is open in {1}; save it there and the new fill layer above {2} updates (the original is hidden, not changed)": "{0} on avoinna sovelluksessa {1}; tallenna se siellä, niin uusi täyttötaso kohteen {2} yläpuolella päivittyy (alkuperäinen on piilotettu, ei muutettu)",
+  "Updated {0} (external) from the saved file": "{0} (ulkoinen) päivitetty tallennetusta tiedostosta",
+  "The service could not save the image": "Palvelu ei voinut tallentaa kuvaa"
+}
