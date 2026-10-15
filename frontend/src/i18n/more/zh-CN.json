@@ -1,0 +1,8 @@
+{
+ "Menu": "菜单",
+ "Preferences": "首选项",
+ "Pick Paint Color from Screen": "从屏幕拾取绘画颜色",
+ "Merge texture sets into one map set": "将纹理集合并为一组贴图",
+ "Write one map per channel for all texture sets that share a UV tile, each set filling its own UV islands; needs every set at the same size": "为共享同一 UV 图块的所有纹理集按通道各写一张贴图，每个纹理集填充自己的 UV 岛；所有纹理集需尺寸相同",
+ "Merging texture sets needs every set at the same size; choose an export size or match the set sizes": "合并纹理集要求所有纹理集尺寸相同；请选择导出尺寸或统一尺寸"
+}

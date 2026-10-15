@@ -1,0 +1,8 @@
+{
+ "Menu": "메뉴",
+ "Preferences": "환경설정",
+ "Pick Paint Color from Screen": "화면에서 페인트 색상 선택",
+ "Merge texture sets into one map set": "텍스처 세트를 하나의 맵 세트로 병합",
+ "Write one map per channel for all texture sets that share a UV tile, each set filling its own UV islands; needs every set at the same size": "UV 타일을 공유하는 모든 텍스처 세트에 대해 채널마다 맵 하나를 기록하며 각 세트가 자체 UV 아일랜드를 채웁니다. 모든 세트의 크기가 같아야 합니다",
+ "Merging texture sets needs every set at the same size; choose an export size or match the set sizes": "텍스처 세트를 병합하려면 모든 세트의 크기가 같아야 합니다. 내보내기 크기를 선택하거나 크기를 맞추세요"
+}

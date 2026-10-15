@@ -1,0 +1,8 @@
+{
+ "Menu": "Nabídka",
+ "Preferences": "Předvolby",
+ "Pick Paint Color from Screen": "Nabrat barvu malby z obrazovky",
+ "Merge texture sets into one map set": "Sloučit sady textur do jedné sady map",
+ "Write one map per channel for all texture sets that share a UV tile, each set filling its own UV islands; needs every set at the same size": "Zapíše jednu mapu na kanál pro všechny sady textur sdílející dlaždici UV; každá sada vyplní své vlastní ostrovy UV; všechny sady musí mít stejnou velikost",
+ "Merging texture sets needs every set at the same size; choose an export size or match the set sizes": "Sloučení sad textur vyžaduje stejnou velikost všech sad; zvolte velikost exportu nebo velikosti sjednoťte"
+}

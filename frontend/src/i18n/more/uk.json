@@ -1,0 +1,8 @@
+{
+ "Menu": "Меню",
+ "Preferences": "Налаштування",
+ "Pick Paint Color from Screen": "Узяти колір фарби з екрана",
+ "Merge texture sets into one map set": "Об'єднати набори текстур в один набір карт",
+ "Write one map per channel for all texture sets that share a UV tile, each set filling its own UV islands; needs every set at the same size": "Записує одну карту на канал для всіх наборів текстур зі спільним UV-тайлом; кожен набір заповнює власні UV-острови; усі набори мають бути однакового розміру",
+ "Merging texture sets needs every set at the same size; choose an export size or match the set sizes": "Для об'єднання наборів текстур усі набори мають бути однакового розміру; виберіть розмір експорту або вирівняйте розміри"
+}

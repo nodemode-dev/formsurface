@@ -1,0 +1,8 @@
+{
+ "Menu": "Menu",
+ "Preferences": "Preferencje",
+ "Pick Paint Color from Screen": "Pobierz kolor malowania z ekranu",
+ "Merge texture sets into one map set": "Scal zestawy tekstur w jeden zestaw map",
+ "Write one map per channel for all texture sets that share a UV tile, each set filling its own UV islands; needs every set at the same size": "Zapisuje jedną mapę na kanał dla wszystkich zestawów tekstur dzielących kafelek UV; każdy zestaw wypełnia własne wyspy UV; wszystkie zestawy muszą mieć ten sam rozmiar",
+ "Merging texture sets needs every set at the same size; choose an export size or match the set sizes": "Scalanie zestawów tekstur wymaga jednakowego rozmiaru; wybierz rozmiar eksportu lub wyrównaj rozmiary"
+}

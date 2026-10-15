@@ -1,0 +1,8 @@
+{
+ "Menu": "Menü",
+ "Preferences": "Beállítások",
+ "Pick Paint Color from Screen": "Festékszín felvétele a képernyőről",
+ "Merge texture sets into one map set": "Textúrakészletek egyesítése egy térképkészletbe",
+ "Write one map per channel for all texture sets that share a UV tile, each set filling its own UV islands; needs every set at the same size": "Csatornánként egy térképet ír az egy UV-csempén osztozó összes textúrakészlethez; minden készlet a saját UV-szigeteit tölti ki; minden készletnek azonos méretűnek kell lennie",
+ "Merging texture sets needs every set at the same size; choose an export size or match the set sizes": "A textúrakészletek egyesítéséhez minden készletnek azonos méretűnek kell lennie; válassz exportméretet vagy egyeztesd a méreteket"
+}

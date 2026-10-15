@@ -1,0 +1,8 @@
+{
+ "Menu": "Meny",
+ "Preferences": "Inställningar",
+ "Pick Paint Color from Screen": "Hämta målarfärg från skärmen",
+ "Merge texture sets into one map set": "Slå ihop textursetten till en uppsättning maps",
+ "Write one map per channel for all texture sets that share a UV tile, each set filling its own UV islands; needs every set at the same size": "Skriver en map per kanal för alla texturset som delar en UV-ruta; varje set fyller sina egna UV-öar; alla set måste ha samma storlek",
+ "Merging texture sets needs every set at the same size; choose an export size or match the set sizes": "Sammanslagning av texturset kräver samma storlek på alla set; välj en exportstorlek eller gör storlekarna lika"
+}
