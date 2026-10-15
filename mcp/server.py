@@ -227,8 +227,9 @@ def formsurface_set_fill(
     use_extra3: bool | None = None,
     reset_warp: bool = False,
     tile_images: Annotated[list[str], Field(min_length=1, max_length=99)] | None = None,
+    uv_set: Literal[0, 1] | None = None,
 ) -> dict:
-    """Change a fill layer's projection, pattern or values. Only the values you pass change. projection warp is a planar projection along planar_axis whose 4 by 4 grid bends the pattern: warp_points gives the 16 grid points row by row (top row first, left to right) as [x, y] in the projection square, where 0 to 1 spans the mesh's bounds across the axis (x right, y down) and the rest grid is i/3, j/3; a pattern point stays attached to its grid cell, so moving a point drags that part of the pattern with it. reset_warp restores the rest grid. tile_images (Painter's Fill (match per UV tile)) takes image files from the workspace images folder whose names carry a UDIM number (wood.1001.png, wood_1002.png) and puts each on its own UV tile of the material, filling the tile once with no scale or offset; it needs UV tiles on so the material's tiles share the layer, and sets projection tile_match with the image pattern."""
+    """Change a fill layer's projection, pattern or values. Only the values you pass change. projection warp is a planar projection along planar_axis whose 4 by 4 grid bends the pattern: warp_points gives the 16 grid points row by row (top row first, left to right) as [x, y] in the projection square, where 0 to 1 spans the mesh's bounds across the axis (x right, y down) and the rest grid is i/3, j/3; a pattern point stays attached to its grid cell, so moving a point drags that part of the pattern with it. reset_warp restores the rest grid. tile_images (Painter's Fill (match per UV tile)) takes image files from the workspace images folder whose names carry a UDIM number (wood.1001.png, wood_1002.png) and puts each on its own UV tile of the material, filling the tile once with no scale or offset; it needs UV tiles on so the material's tiles share the layer, and sets projection tile_match with the image pattern. uv_set 1 lays a uv projection out on the mesh's second UV channel (lightmap or trim UVs) instead of the first; meshes without one keep UV0."""
     tiles = None
     if tile_images is not None:
         tiles = call("fill_tile_images", {"files": tile_images, "layer_id": layer_id}, timeout=180)
@@ -241,7 +242,7 @@ def formsurface_set_fill(
         warp = [float(c) for p in warp_points for c in p]
     settings = fill_settings(projection=projection, pattern=pattern, base_color=base_color, roughness=roughness, metallic=metallic, height=height, scale=scale,
                              rotation=rotation_degrees, offset_x=offset_u, offset_y=offset_v, planar_axis=planar_axis, sharpness=sharpness, opacity=amount, extra=extra, use_extra=use_extra,
-                             extra2=extra2, use_extra2=use_extra2, extra3=extra3, use_extra3=use_extra3,
+                             extra2=extra2, use_extra2=use_extra2, extra3=extra3, use_extra3=use_extra3, uv_set=uv_set,
                              warp=warp if reset_warp or warp_points is not None else None)
     result = call("set_fill", {"id": layer_id, "settings": settings})
     if tiles is not None:
