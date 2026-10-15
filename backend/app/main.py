@@ -10,6 +10,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, Response, Uploa
 from fastapi.responses import FileResponse, JSONResponse
 
 from app import ocio
+from app.agent import router as agent_router
 
 VERSION = "0.41.0"
 ROOT = Path(__file__).resolve().parents[2]
@@ -17,7 +18,8 @@ DATA = Path(os.environ.get("FORMSURFACE_DATA", ROOT / "workspace"))
 SAFE = re.compile(r"^[A-Za-z0-9 _.-]{1,80}$")
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
 
-app = FastAPI(title="FormSurface service", version=VERSION)
+app = FastAPI(title="FormSurface service", version=VERSION, lifespan=agent_router.lifespan)
+app.include_router(agent_router.router)
 
 
 @app.middleware("http")
@@ -406,3 +408,16 @@ def ocio_lut(name: str, display: str, view: str, look: str = "", source: str = "
     except Exception as error:
         raise HTTPException(422, f"OpenColorIO could not build {display} / {view}: {error}")
     return Response(array("f", data).tobytes(), media_type="application/octet-stream", headers={"X-Lut": json.dumps(meta)})
+
+
+STATIC = Path(os.environ.get("FORMSURFACE_STATIC", ROOT / "frontend" / "dist"))
+
+
+@app.get("/{path:path}", include_in_schema=False)
+def frontend_files(path: str):
+    if path.startswith("api/") or not (STATIC / "index.html").is_file():
+        raise HTTPException(404, "Not found")
+    target = (STATIC / path).resolve()
+    if path and target.is_file() and STATIC.resolve() in target.parents:
+        return FileResponse(target)
+    return FileResponse(STATIC / "index.html")
