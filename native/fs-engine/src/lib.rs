@@ -74,6 +74,7 @@ pub struct Engine {
     trace: Option<TraceRun>,
     polygons: Option<Vec<u32>>,
     hidden: Vec<bool>,
+    hidden_history: Vec<Vec<bool>>,
     normal_strength: f32,
     uv_tiles: bool,
     relaying: bool,
@@ -143,6 +144,7 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         trace: None,
         polygons: None,
         hidden: Vec::new(),
+        hidden_history: Vec::new(),
         normal_strength: 1.0,
         uv_tiles: false,
         relaying: false,
@@ -238,6 +240,7 @@ impl Engine {
         self.match_keys = None;
         self.polygons = None;
         self.hidden.clear();
+        self.hidden_history.clear();
         self.cage = None;
         self.instance_groups.clear();
         self.set_index = 0;
@@ -1353,6 +1356,10 @@ impl Engine {
             (1, Some(ids)) => (0..total).filter(|&t| ids[t as usize] == ids[hit.triangle as usize]).collect(),
             _ => fs_core::regions::select(mesh, hit.triangle, 0, total, fs_core::regions::Mode::from_code(mode)),
         };
+        self.hidden_history.push(self.hidden.clone());
+        if self.hidden_history.len() > 32 {
+            self.hidden_history.remove(0);
+        }
         if self.hidden.len() != total as usize {
             self.hidden = vec![false; total as usize];
         }
@@ -1371,8 +1378,22 @@ impl Engine {
     }
 
     pub fn show_all_parts(&mut self) {
-        self.hidden.clear();
+        if !self.hidden.is_empty() {
+            self.hidden_history.push(std::mem::take(&mut self.hidden));
+        }
         self.sync_hidden();
+    }
+
+    pub fn show_last_hidden(&mut self) -> u32 {
+        if let Some(previous) = self.hidden_history.pop() {
+            self.hidden = previous;
+        }
+        self.sync_hidden();
+        self.hidden_triangles()
+    }
+
+    pub fn hide_steps(&self) -> u32 {
+        self.hidden_history.len() as u32
     }
 
     pub fn hidden_triangles(&self) -> u32 {
@@ -1951,84 +1972,6 @@ impl Engine {
             (1, Some(ids)) => (first..last).filter(|&t| ids[t as usize] == ids[triangle as usize]).collect(),
             _ => fs_core::regions::select(mesh, triangle, first, last, fs_core::regions::Mode::from_code(mode)),
         };
-        self.gpu.begin_stroke(index);
-        self.gpu.mask_triangles(&mesh.indices, &region);
-        let (forward, right, up, eye) = self.basis();
-        let view_proj = gpu::view_projection(eye, forward, right, up, self.fov, 1.0, 0.1, 10.0);
-        let to_mask = self.paints_mask();
-        self.gpu.paint(&[], view_proj, eye, &self.brush, &self.channels, index, to_mask);
-        self.gpu.end_stroke();
-        let active = self.active;
-        self.each_sibling(|e| {
-            let i = e.layer_index(active);
-            e.gpu.begin_stroke(i);
-            e.gpu.end_stroke();
-        });
-        self.dirty = true;
-        Ok(region.len() as u32)
-    }
-
-    pub fn fill_screen_region(&mut self, points: &[f32], visible_only: bool) -> Result<u32, JsValue> {
-        if self.stroking {
-            return Err(JsValue::from_str("Finish the stroke first"));
-        }
-        if self.flat.is_some() {
-            return Err(JsValue::from_str("Lasso and rectangle selections work in the 3D view"));
-        }
-        if points.len() < 6 {
-            return Err(JsValue::from_str("A selection needs at least three corners"));
-        }
-        let index = self.layer_index(self.active);
-        if self.layers[index].kind != LayerKind::Paint && !self.layers[index].mask && self.gpu.quick_mode != 1 {
-            return Err(JsValue::from_str("Fill, filter and folder layers are filled through their mask: choose a mask first"));
-        }
-        if self.gpu.quick_mode != 1 && self.instance_copy(self.active) {
-            return Err(JsValue::from_str("This layer is an instance: paint actions only reach its source layer's texture set"));
-        }
-        let info = &self.sets[self.set_index].info;
-        let (first, last) = (info.start / 3, (info.start + info.count) / 3);
-        let corners: Vec<[f32; 2]> = points.chunks_exact(2).map(|p| [p[0], p[1]]).collect();
-        let inside = |x: f32, y: f32| {
-            let mut odd = false;
-            let mut j = corners.len() - 1;
-            for i in 0..corners.len() {
-                let (a, b) = (corners[i], corners[j]);
-                if (a[1] > y) != (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0] {
-                    odd = !odd;
-                }
-                j = i;
-            }
-            odd
-        };
-        let (_, _, _, eye) = self.basis();
-        let mut region = Vec::new();
-        {
-            let (mesh, _) = self.mesh.as_ref().ok_or_else(|| JsValue::from_str("Load a mesh first"))?;
-            for t in first..last {
-                if self.hidden.get(t as usize).copied().unwrap_or(false) {
-                    continue;
-                }
-                let i = t as usize * 3;
-                let [a, b, c] = [mesh.indices[i], mesh.indices[i + 1], mesh.indices[i + 2]].map(|v| mesh.positions[v as usize]);
-                let centroid = [(a[0] + b[0] + c[0]) / 3.0, (a[1] + b[1] + c[1]) / 3.0, (a[2] + b[2] + c[2]) / 3.0];
-                let screen = self.screen_point(centroid[0], centroid[1], centroid[2]);
-                if screen.len() != 2 || !inside(screen[0], screen[1]) {
-                    continue;
-                }
-                if visible_only {
-                    let distance = dot(sub(centroid, eye), sub(centroid, eye)).sqrt();
-                    match self.pick(screen[0], screen[1]) {
-                        Some(hit) if hit.triangle == t || hit.t >= distance - mesh.radius * 0.002 => {}
-                        _ => continue,
-                    }
-                }
-                region.push(t);
-            }
-        }
-        if region.is_empty() {
-            return Err(JsValue::from_str("The selection covers no visible surface of the active texture set"));
-        }
-        let (mesh, _) = self.mesh.as_ref().unwrap();
         self.gpu.begin_stroke(index);
         self.gpu.mask_triangles(&mesh.indices, &region);
         let (forward, right, up, eye) = self.basis();
