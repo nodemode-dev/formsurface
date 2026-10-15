@@ -30,6 +30,21 @@ Paint directly on 3D models, layer by layer, the way Substance 3D Painter works.
 - **Meshes:** glTF, GLB, OBJ, FBX, USD (USDA, USDC, USDZ), PLY and Collada with their material names, plus built-in samples (sphere, torus, capsule, torus knot, and a two-material figure on UDIM 1001 and 1002).
 - **Export:** templates for separate PBR maps, glTF (packed occlusion, roughness, metallic), Unreal Engine (ORM, DirectX normal), Unity HDRP (mask map), Unity URP, Unity Standard specular, Godot 4, Blender, Arnold, Redshift, USD Preview Surface, Sketchfab and PBR specular glossiness (diffuse and specular converted from base color and metallic), plus your own templates built in the Export panel (any source per R, G, B and A) and saved to the workspace library; PNG (8, 16-bit), TIFF (8, 16, 32-bit float), OpenEXR (16-bit half, 32-bit float), Radiance HDR, JPEG and Photoshop PSD (8, 16, 32-bit), with base color written linear in float files; padding outside the UV islands by infinite dilation or a dilation width followed by transparent, a color or a diffusion fill; one set of files per texture set (material_suffix, with .udim for tiled materials), each at its own size or at a chosen export size from 512 to 8192 (as the GPU allows), for which the stack is recomputed one layer at a time (so memory depends on the size, not the layer count) with fills, generators and mask effects rendered natively and paint resampled, leaving the working textures untouched; the mesh as OBJ with its UDIM UVs, keeping the quads and n-gons of meshes from OBJ or ASCII PLY or triangulated, optionally tessellated up to three levels and displaced by the height channel; and a viewport screenshot.
 
+## Claude Code inside the app
+
+- **Terminal dock (Ctrl+J, Cmd+J on macOS).** A real terminal in the bottom dock (xterm.js on a PTY in the service), with tabs, restart and a resizable height that survives reloads; programs keep running while it is hidden.
+- **Claude Code (Ctrl+Shift+J).** Starts your own Claude Code sign-in in a dock tab, already connected to the `formsurface` MCP server and told how to work on the model. Agent Link turns on by itself. The line under the dock sends a message to it.
+- **Chat (Ctrl+Alt+J).** The same Claude Code without a terminal: Markdown replies, the tools it ran, memory and cost, Stop, New Chat, and hand-off between the Chat tab and a Claude Code tab in either direction.
+- **Preferences (Ctrl+,).** The Claude Code program, the folder it starts in, a first message, and the interface language.
+
+## Commands, menus and shortcuts
+
+Every action is a command in one registry (`frontend/src/shell/commands.ts`), the same structure as formvis and formlit: the menu bar (File, Edit, Tools, Layer, Bake, View, Agent, Help), the title bar buttons, the command palette (Ctrl+K) and the keyboard all run the same commands. Edit > Keyboard Shortcuts rebinds any of them, and the bindings are kept per browser. New shortcuts include Add Paint Layer (Ctrl+Shift+N), Add Fill Layer (Ctrl+Shift+F), Add Fill Layer with Black Mask (Ctrl+Alt+Shift+F), Add Black Mask (Ctrl+Alt+M), Merge Down (Ctrl+E), Add Folder (Ctrl+G), Delete Layer (Ctrl+Backspace), Bake Mesh Maps (Ctrl+Shift+B), Pick Paint Color from Screen (I) and Alt+1 to Alt+5 for the Paint, Layers, Bake, Display and Export panels. Panel sections fold, and the fold state is remembered.
+
+## Languages
+
+The interface is in English by default and in 25 more languages: Spanish (Spain and Mexico), Brazilian Portuguese, French (France and Canada), German, Italian, Dutch, Danish, Finnish, Norwegian Bokmal, Swedish, Russian, Polish, Czech, Hungarian, Ukrainian, Turkish, Simplified and Traditional Chinese, Japanese, Korean, Indonesian, Thai and Vietnamese. Choose one in Preferences. English text is the key (`frontend/src/i18n/strings.json`), each language is a table in `frontend/src/i18n/locales` plus `more`, and the page translator swaps text before the first paint, so nothing flashes in English.
+
 ## Agents (MCP)
 
 FormSurface ships an MCP server with 56 `formsurface_*` tools that drive the editor you have open: image import with per-resource color space, post effects, custom bake cages, merge and flatten, layer export, environment lighting, smart masks, mesh loading, texture sets, the 2D view, paths, text resources, layer instances, layers, folders, export templates, fill layers, masks, baking (including from a high-poly mesh), generators, filters, smart materials, brush, paint and base material, camera, strokes, fill, undo, screenshot and map export. Claude Code picks it up from `.mcp.json`; other clients run `./formsurface mcp` (stdio). Press **Agent link** in the editor's top bar to let agents in; it is off by default. The `formsurface-painting` skill (`.claude/skills`, mirrored in `.agents/skills`) teaches agents the order of work.
@@ -67,6 +82,17 @@ Windows: `formsurface_oc_install.bat`, then `formsurface.bat`.
 | `./formsurface backend` | Backend only |
 | `./formsurface frontend` | Editor only |
 | `./formsurface batch script.json` | Run a JSON script of MCP tool calls against the linked editor |
+| `./formsurface build` | Build the engine and the editor into `frontend/dist` |
+| `./formsurface serve` | Serve the built editor from the service on 8766, one origin, no Vite |
+| `./formsurface claude` | Claude Code in your own terminal, connected to the formsurface MCP server |
+| `./formsurface doctor` | Check the toolchain, the builds and the running service |
+| `./formsurface install-desktop` | PyInstaller and the Tauri toolchain for the desktop app |
+| `./formsurface desktop dev` | Run the desktop app from source |
+| `./build_app` | Build the desktop app start to finish (macOS .app and .dmg, Linux .deb); `--open`, `--install`, `--clean` |
+
+## Desktop app
+
+`./build_app` is the single build script at the root: it checks Python, Node and Rust (installing Rust with rustup when missing), installs the engine toolchain, the service and the editor, builds the WebGPU engine and the editor, freezes the service with PyInstaller into a sidecar (`setup/freeze_backend`, which runs a self-check first), and packs everything with Tauri 2. The app shows a splash, starts the sidecar on 127.0.0.1:8766, and opens the editor served by it, so the terminal dock, Claude Code and Chat work exactly as in the browser. On macOS the app is copied to Applications; on Linux, `--install` installs the .deb. Every step is logged to `build_app.log`. Linux needs `libwebkit2gtk-4.1-dev` and its companions (the script names them when they are missing).
 
 ## Controls
 
@@ -84,6 +110,9 @@ Windows: `formsurface_oc_install.bat`, then `formsurface.bat`.
 | `T` | Quick mask: edit, then use |
 | `F` | Frame mesh |
 | Ctrl+Z, Ctrl+Shift+Z | Undo, redo |
+| Ctrl+K | Command palette |
+| Ctrl+J | Terminal dock |
+| Ctrl+/ | Keyboard shortcuts (rebind any command) |
 
 ## Layout
 
@@ -91,8 +120,13 @@ Windows: `formsurface_oc_install.bat`, then `formsurface.bat`.
 native/fs-core     mesh, BVH picking, brush and layer model (pure Rust)
 native/fs-engine   wgpu engine: projection paint, compositing, dilation, PBR viewport, export
 frontend/          TypeScript + Vite editor; three.js is used only for its file loaders
+frontend/src/shell command registry, menu bar, palette, dialogs, terminal dock and chat pane
+frontend/src/i18n  the page translator and the 25 language tables
 backend/           FastAPI service: saves projects and exported maps under workspace/
-setup/             install and engine build scripts
+backend/app/agent  PTY terminals, Claude Code launch, chat over claude -p, SSE events, the command bus
+src-tauri/         Tauri 2 desktop shell that starts the frozen service as a sidecar
+setup/             install, engine, editor, freeze and desktop build scripts
+build_app          the one root script that builds the desktop app
 ```
 
 ## Ports

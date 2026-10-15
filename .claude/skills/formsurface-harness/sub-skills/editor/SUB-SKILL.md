@@ -22,6 +22,14 @@ description: The FormSurface TypeScript and Vite editor. Load for panels, contro
 - DOM stability: write the one property that changed. Reserve width for text that changes length (see `#agent-label`, `#fps`). Never clear a container to re-render it.
 - Vite stays `host: false` on port 5176 with the `/api` proxy and `ws: true`.
 
+## Shell, commands and languages
+
+- `frontend/src/shell/app-shell.ts` registers every command (id, English label, keys, run, enabled, checked) and builds the menu bar, panel tabs and folds, dialogs and the terminal dock. Commands drive the existing controls by id, so `main.ts` keeps its handlers. A new action is a new command plus a menu entry; its default keys must not collide with an existing combo.
+- Menus, the palette and dialogs render into `#overlay-root` with `--z-menu` and `--z-modal`; never a raw z-index.
+- `html.shell-pending` and `html.i18n-pending` hide the app until the shell and the page translator have run, so tabs, folds and translations never flash. Keep that order in `main.ts`: `startLanguage`, `startShell`, `startPageTranslator`.
+- Text is written in English. Add each new string to `frontend/src/i18n/strings.json` and to all 25 tables (`locales` or `more`) in the same change; `{0}` placeholders stay intact. Elements whose text must not translate carry `translate="no"`.
+- The terminal dock and chat pane talk to `/api/commands/*`, `/api/terminal/{id}` (WebSocket) and `/api/events` (SSE). Opening Claude Code or Chat turns Agent link on, because the MCP tools reach the editor through it.
+
 ## Verifying
 
 Typecheck with `npx tsc --noEmit`. Exercise each touched control with CPU throttled 4x and watch for jumps or flashes; state whether the check ran on a real GPU.
