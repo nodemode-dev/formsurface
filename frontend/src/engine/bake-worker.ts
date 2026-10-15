@@ -10,6 +10,7 @@ export interface BakeJob {
   highKeys: Uint32Array;
   aoRays: number;
   cage: Float32Array;
+  offset: Float32Array;
 }
 
 export interface BakeResult {
@@ -29,8 +30,8 @@ const ready = init();
 self.onmessage = async (event: MessageEvent<BakeJob>) => {
   try {
     await ready;
-    const { low, high, size, front, rear, lowKeys, highKeys, aoRays, cage } = event.data;
-    const [normal, id, hits, texels, height, opacity, ao, bent] = bake_high_detached(low[0], low[1], low[2], low[3], high.positions, high.normals, high.indices, high.parts, size, front, rear, lowKeys, highKeys, aoRays, cage) as [Uint8Array, Uint8Array, number, number, Uint8Array, Uint8Array, Uint8Array, Uint8Array];
+    const { low, high, size, front, rear, lowKeys, highKeys, aoRays, cage, offset } = event.data;
+    const [normal, id, hits, texels, height, opacity, ao, bent] = bake_high_detached(low[0], low[1], low[2], low[3], high.positions, high.normals, high.indices, high.parts, size, front, rear, lowKeys, highKeys, aoRays, cage, offset) as [Uint8Array, Uint8Array, number, number, Uint8Array, Uint8Array, Uint8Array, Uint8Array];
     const result: BakeResult = { normal, id, height, opacity, ao, bent, hits, texels, size };
     (self as unknown as Worker).postMessage({ ok: true, ...result }, [normal.buffer, id.buffer, height.buffer, opacity.buffer, ao.buffer, bent.buffer]);
   } catch (error) {

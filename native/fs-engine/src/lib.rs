@@ -175,7 +175,7 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
 
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
-pub fn bake_high_detached(low_positions: &[f32], low_normals: &[f32], low_uvs: &[f32], low_indices: &[u32], high_positions: &[f32], high_normals: &[f32], high_indices: &[u32], parts: &[u32], size: u32, front: f32, rear: f32, low_keys: &[u32], high_keys: &[u32], ao_rays: u32, cage: &[f32]) -> Result<js_sys::Array, JsValue> {
+pub fn bake_high_detached(low_positions: &[f32], low_normals: &[f32], low_uvs: &[f32], low_indices: &[u32], high_positions: &[f32], high_normals: &[f32], high_indices: &[u32], parts: &[u32], size: u32, front: f32, rear: f32, low_keys: &[u32], high_keys: &[u32], ao_rays: u32, cage: &[f32], offset: &[f32]) -> Result<js_sys::Array, JsValue> {
     let low = Mesh::from_flat(low_positions, low_normals, low_uvs, low_indices).map_err(|e| JsValue::from_str(&e))?;
     let high = Mesh::geometry_only(high_positions, high_normals, high_indices).map_err(|e| JsValue::from_str(&e))?;
     let bvh = Bvh::build(&high);
@@ -185,7 +185,8 @@ pub fn bake_high_detached(low_positions: &[f32], low_normals: &[f32], low_uvs: &
     let size = size.clamp(64, 2048) as usize;
     let keys = if low_keys.len() * 3 == low.indices.len() && high_keys.len() == tris { Some((low_keys, high_keys)) } else { None };
     let cage = if !cage.is_empty() && cage.len() == low.indices.len() * 3 { Some(cage) } else { None };
-    let result = fs_core::bake::bake_high_matched(&low, &high, &bvh, &parts, size, front.max(0.0) * r, rear.max(0.0) * r, keys, ao_rays.min(64) as usize, cage);
+    let offset = if offset.len() == size * size { Some(offset) } else { None };
+    let result = fs_core::bake::bake_high_matched(&low, &high, &bvh, &parts, size, front.max(0.0) * r, rear.max(0.0) * r, keys, ao_rays.min(64) as usize, cage, offset);
     let out = js_sys::Array::new();
     out.push(&js_sys::Uint8Array::from(&result.normal[..]));
     out.push(&js_sys::Uint8Array::from(&result.id[..]));
@@ -2225,7 +2226,7 @@ impl Engine {
             let r = low.radius;
             let keys = engine.match_keys.as_ref().map(|(l, h)| (&l[(info.start / 3) as usize..((info.start + info.count) / 3) as usize], h.as_slice()));
             let cage = engine.cage.as_ref().map(|c| &c[(info.start * 3) as usize..((info.start + info.count) * 3) as usize]);
-            let result = fs_core::bake::bake_high_matched(&low, high, bvh, parts, size, front.max(0.0) * r, rear.max(0.0) * r, keys, 0, cage);
+            let result = fs_core::bake::bake_high_matched(&low, high, bvh, parts, size, front.max(0.0) * r, rear.max(0.0) * r, keys, 0, cage, None);
             hits += result.hits;
             texels += result.texels;
             engine.gpu.set_high_bake(size as u32, &result.normal, &result.id);

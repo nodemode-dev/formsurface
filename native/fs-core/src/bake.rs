@@ -102,7 +102,7 @@ fn id_color(part: u32) -> [u8; 3] {
 }
 
 pub fn bake_high(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[u32], size: usize, front: f32, rear: f32) -> HighBake {
-    bake_high_matched(low, high, high_bvh, high_parts, size, front, rear, None, 0, None)
+    bake_high_matched(low, high, high_bvh, high_parts, size, front, rear, None, 0, None, None)
 }
 
 pub struct Reprojection {
@@ -155,7 +155,9 @@ fn cage_ray(cage: Option<&[f32]>, tx: &Texel, front: f32) -> (Vec3, Vec3, f32) {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn bake_high_matched(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[u32], size: usize, front: f32, rear: f32, keys: Option<(&[u32], &[u32])>, ao_rays: usize, cage: Option<&[f32]>) -> HighBake {
+pub fn bake_high_matched(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[u32], size: usize, front: f32, rear: f32, keys: Option<(&[u32], &[u32])>, ao_rays: usize, cage: Option<&[f32]>, offset: Option<&[f32]>) -> HighBake {
+    let base_front = front;
+    let base_rear = rear;
     let texels = rasterize(low, size);
     let mut normal = vec![0u8; size * size * 4];
     let mut id = vec![0u8; size * size * 4];
@@ -171,7 +173,9 @@ pub fn bake_high_matched(low: &Mesh, high: &Mesh, high_bvh: &Bvh, high_parts: &[
         let Some(tx) = texel else { continue };
         count += 1;
         covered[index] = true;
-        let (origin, dir, front) = cage_ray(cage, tx, front);
+        let k = offset.and_then(|o| o.get(index)).map(|v| 1.0 + 3.0 * v.clamp(0.0, 1.0)).unwrap_or(1.0);
+        let rear = base_rear * k;
+        let (origin, dir, front) = cage_ray(cage, tx, base_front * k);
         let reach = (front + rear).max(1e-6);
         let mut ts = [0.0, 0.0, 1.0];
         let mut bent_ts = [0.0, 0.0, 1.0];
