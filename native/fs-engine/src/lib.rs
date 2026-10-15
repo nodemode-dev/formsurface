@@ -2775,15 +2775,30 @@ impl Engine {
         match symmetry {
             Symmetry::Off => {}
             Symmetry::Mirror => {
-                let flip = |mut v: Vec3, about: f32| {
-                    v[axis] = 2.0 * about - v[axis];
-                    v
+                // symmetry_axis 0, 1, 2 mirror across X, Y or Z; 3 to 6 combine axes (XY, XZ, YZ, XYZ), giving every
+                // combination of flips: up to seven copies. Every copy is flagged as a symmetry copy, so like the single
+                // mirror it paints even where the view cannot see it; the flipped tangent carries the tip's orientation.
+                let axes: u32 = match b.symmetry_axis {
+                    3 => 0b011,
+                    4 => 0b101,
+                    5 => 0b110,
+                    6 => 0b111,
+                    _ => 1 << axis,
                 };
-                let flipn = |mut v: Vec3| {
-                    v[axis] = -v[axis];
-                    v
-                };
-                self.pending.push(stamp(flip(p, center[axis]), flipn(n), flipn(t), 1.0));
+                for m in 1u32..8 {
+                    if m & axes != m {
+                        continue;
+                    }
+                    let (mut q, mut qn, mut qt) = (p, n, t);
+                    for a in 0..3 {
+                        if m & (1 << a) != 0 {
+                            q[a] = 2.0 * center[a] - q[a];
+                            qn[a] = -qn[a];
+                            qt[a] = -qt[a];
+                        }
+                    }
+                    self.pending.push(stamp(q, qn, qt, 1.0));
+                }
             }
             Symmetry::Radial => {
                 let count = b.radial_count.clamp(2, 32);
