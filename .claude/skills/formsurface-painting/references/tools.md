@@ -38,6 +38,11 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_remove_layer` | layer_id | layers |
 | `formsurface_fill_layer` | none | filled layer id |
 | `formsurface_paint_stroke` | points: list of [x, y] in 0 to 1, pressure | points, points_on_surface, layer |
+| `formsurface_list_commands` | none | every editor menu command: id, label, keys, enabled, checked |
+| `formsurface_run_command` | id from list_commands | runs it as the menu would; window-opening commands refused |
+| `formsurface_pick_layer` | x, y normalized | selects the top visible paint or fill layer covering that point |
+| `formsurface_hide_part` | x, y, mode triangle, polygon, mesh or uv_island, isolate | hidden triangle count; strokes reach what was behind |
+| `formsurface_show_all_parts` | none | shows every hidden part |
 | `formsurface_undo` | steps 1 to 24 | undone count |
 | `formsurface_redo` | steps 1 to 24 | redone count |
 | `formsurface_screenshot` | none | PNG image of the viewport (post effects included) |
