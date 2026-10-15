@@ -2668,6 +2668,7 @@ function snapshotState(): Record<string, unknown> {
     texture_size: e.texture_size(),
     texture_sets: textureSets(),
     active_texture_set: e.active_texture_set(),
+    blank_mask_layers_skipped: e.skipped_layers(),
     quick_mask: ['off', 'edit', 'on'][e.quick_mask_mode()],
     uv_tiles: e.uv_tiles(),
     view: e.view_2d() ? '2d' : '3d',
