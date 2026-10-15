@@ -19,6 +19,11 @@ struct LayerTex {
     set: Set,
     effects: Vec<Effect>,
     fx: Option<[wgpu::Texture; 2]>,
+    /// True only while the mask is known to be all black (set by a black mask, cleared by any write that may reach
+    /// the mask). With no mask effects such a layer adds nothing on this texture set, so its fill and composite are skipped.
+    blank: bool,
+    /// The fill uniform not yet rendered because the mask was blank; rendered as soon as the mask is touched.
+    pending_fill: Option<[f32; 76]>,
 }
 
 #[derive(Clone)]
@@ -1021,7 +1026,7 @@ impl Gpu {
             let next = new_set(&self.device, size);
             self.resample_set(&layer.set, &next);
             let fx = layer.fx.as_ref().map(|_| [texture(&self.device, size, LAYER_FORMAT, "mask effects"), texture(&self.device, size, LAYER_FORMAT, "mask effects")]);
-            resized.push(LayerTex { id: layer.id, set: next, effects: layer.effects.clone(), fx });
+            resized.push(LayerTex { id: layer.id, set: next, effects: layer.effects.clone(), fx, blank: layer.blank, pending_fill: layer.pending_fill });
         }
         self.layers = resized;
         let quick = texture(&self.device, size, LAYER_FORMAT, "quick mask");
@@ -1275,13 +1280,53 @@ impl Gpu {
     }
 
     pub fn fill_mask_value(&mut self, index: usize, value: f64) {
+        if value == 0.0 {
+            if let Some(layer) = self.layers.get_mut(index) {
+                layer.blank = true;
+            }
+        } else {
+            self.touched(index);
+        }
         let view = view_of(&self.layers[index].set.mask);
         let mut encoder = self.device.create_command_encoder(&Default::default());
         encoder.begin_render_pass(&wgpu::RenderPassDescriptor { color_attachments: &[attach(&view, wgpu::LoadOp::Clear(wgpu::Color { r: value, g: value, b: value, a: 1.0 }))], ..Default::default() });
         self.queue.submit([encoder.finish()]);
     }
 
+    /// Something may have written the layer's mask: it is no longer known blank, and a fill held back renders now.
+    fn touched(&mut self, index: usize) {
+        let Some(layer) = self.layers.get_mut(index) else { return };
+        layer.blank = false;
+        self.ensure_fill(index);
+    }
+
+    /// Renders a fill held back by a blank mask before anything reads the layer's own textures (export, merge, flatten).
+    fn ensure_fill(&mut self, index: usize) {
+        let Some(layer) = self.layers.get_mut(index) else { return };
+        if let Some(uniform) = layer.pending_fill.take() {
+            self.fill_into(self.layers[index].id, &self.layers[index].set, &uniform);
+        }
+    }
+
+    fn touched_all(&mut self) {
+        for index in 0..self.layers.len() {
+            self.touched(index);
+        }
+    }
+
+    /// Layers this texture set skips because their mask is known blank (no effects): counted for the status line.
+    pub fn skipped_layers(&self) -> usize {
+        self.layers.iter().filter(|l| l.blank && l.effects.is_empty()).count()
+    }
+
     pub fn fill_layer_content(&mut self, index: usize, uniform: &[f32; 76]) {
+        if let Some(layer) = self.layers.get_mut(index) {
+            if layer.blank && layer.effects.is_empty() {
+                layer.pending_fill = Some(*uniform);
+                return;
+            }
+            layer.pending_fill = None;
+        }
         self.fill_into(self.layers[index].id, &self.layers[index].set, uniform);
     }
 
@@ -1301,6 +1346,7 @@ impl Gpu {
     }
 
     pub fn mask_from_fill(&mut self, index: usize, uniform: &[f32; 76]) {
+        self.touched(index);
         self.fill_target(self.layers[index].id, &self.scratch, uniform);
         let extent = wgpu::Extent3d { width: self.size, height: self.size, depth_or_array_layers: 1 };
         let mut encoder = self.device.create_command_encoder(&Default::default());
@@ -1321,6 +1367,7 @@ impl Gpu {
     }
 
     pub fn mask_from_image(&mut self, index: usize, width: u32, height: u32, rgba: &[u8]) -> Result<(), String> {
+        self.touched(index);
         if width == 0 || height == 0 || width > 8192 || height > 8192 || rgba.len() != (width * height * 4) as usize {
             return Err("Mask images must be RGBA, 1 to 8192 pixels per side".into());
         }
@@ -1335,6 +1382,7 @@ impl Gpu {
         if !self.high_baked {
             return Err("Bake normal and ID from a high-poly mesh first; color selection reads the ID map".into());
         }
+        self.touched(index);
         self.queue.write_buffer(&self.export_uniform, 0, bytemuck::cast_slice(&[color[0], color[1], color[2], tolerance, 0.0, 0.0, 0.0, 0.0]));
         let view = view_of(&self.baked_id);
         let group = bind(&self.device, &self.mask_id_pipe, &[self.export_uniform.as_entire_binding(), wgpu::BindingResource::TextureView(&view)]);
@@ -1343,6 +1391,7 @@ impl Gpu {
     }
 
     pub fn flatten_into(&mut self, index: usize) {
+        self.touched(index);
         let (fc, fm, fa) = (view_of(&self.final_set.color), view_of(&self.final_set.mat), view_of(&self.final_set.aux));
         let group = bind(&self.device, &self.flatten_pipe, &[wgpu::BindingResource::TextureView(&fc), wgpu::BindingResource::TextureView(&fm), wgpu::BindingResource::TextureView(&fa)]);
         let set = &self.layers[index].set;
@@ -1359,6 +1408,9 @@ impl Gpu {
     }
 
     pub fn merge_layers(&mut self, top: usize, bottom: usize, target: usize, top_params: [f32; 2], bottom_params: [f32; 2], blend: u32) {
+        self.ensure_fill(top);
+        self.ensure_fill(bottom);
+        self.touched(target);
         let data: [f32; 12] = [top_params[0], top_params[1], 0.0, 0.0, bottom_params[0], bottom_params[1], 0.0, 0.0, f32::from_bits(blend), 0.0, 0.0, 0.0];
         self.queue.write_buffer(&self.merge_uniform, 0, bytemuck::cast_slice(&data));
         let out = self.take_set();
@@ -1388,6 +1440,7 @@ impl Gpu {
     }
 
     pub fn reproject_layers(&mut self, map: &[f32]) -> Result<(), String> {
+        self.touched_all();
         let size = self.size;
         if map.len() != (size * size * 4) as usize {
             return Err("Reprojection map does not match the texture size".into());
@@ -1450,6 +1503,7 @@ impl Gpu {
     }
 
     pub fn copy_mask(&mut self, from: usize, to: usize) {
+        self.touched(to);
         let extent = wgpu::Extent3d { width: self.size, height: self.size, depth_or_array_layers: 1 };
         let mut encoder = self.device.create_command_encoder(&Default::default());
         encoder.copy_texture_to_texture(self.layers[from].set.mask.as_image_copy(), self.layers[to].set.mask.as_image_copy(), extent);
@@ -1500,6 +1554,7 @@ impl Gpu {
     }
 
     pub fn export_layer(&mut self, index: usize, channel: u32) -> js_sys::Promise {
+        self.ensure_fill(index);
         let size = self.size;
         let target = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("layer export"),
@@ -2112,7 +2167,7 @@ impl Gpu {
     pub fn insert_layer(&mut self, at: usize, id: u32) {
         let set = self.take_set();
         self.clear_set(&set);
-        self.layers.insert(at, LayerTex { id, set, effects: Vec::new(), fx: None });
+        self.layers.insert(at, LayerTex { id, set, effects: Vec::new(), fx: None, blank: false, pending_fill: None });
     }
 
     pub fn remove_layer(&mut self, index: usize, id: u32) {
@@ -2147,6 +2202,7 @@ impl Gpu {
     }
 
     pub fn begin_stroke(&mut self, index: usize) {
+        self.touched(index);
         if let Some((_, snap)) = self.stroke.take() {
             self.pool.push(snap.set);
         }
@@ -2250,6 +2306,7 @@ impl Gpu {
 
     fn swap(&mut self, entry: &Snapshot, layer_ids: &[u32]) -> bool {
         let Some(index) = layer_ids.iter().position(|id| *id == entry.layer) else { return false };
+        self.touched(index);
         let mut encoder = self.device.create_command_encoder(&Default::default());
         self.copy_set(&mut encoder, &self.layers[index].set, &self.scratch);
         self.copy_set(&mut encoder, &entry.set, &self.layers[index].set);
@@ -2487,6 +2544,9 @@ impl Gpu {
     }
 
     pub fn set_layer_effects(&mut self, index: usize, effects: Vec<Effect>) {
+        if !effects.is_empty() {
+            self.ensure_fill(index);
+        }
         let size = self.size;
         let Some(layer) = self.layers.get_mut(index) else { return };
         layer.fx = if effects.is_empty() { None } else { Some([texture(&self.device, size, LAYER_FORMAT, "mask effects"), texture(&self.device, size, LAYER_FORMAT, "mask effects")]) };
@@ -2644,6 +2704,12 @@ impl Gpu {
         self.queue.submit([encoder.finish()]);
     }
 
+    /// A layer adds nothing on this texture set when its own mask, or a masked folder above it, is known blank with no effects.
+    fn blank_masked(&self, infos: &[LayerInfo], chain: &[usize], info: &LayerInfo) -> bool {
+        let blank = |id: u32| self.layers.iter().find(|l| l.id == id).map(|l| l.blank && l.effects.is_empty()).unwrap_or(false);
+        (info.mask && blank(info.id)) || chain.iter().any(|&a| infos[a].mask && blank(infos[a].id))
+    }
+
     pub fn composite_scaled(&mut self, infos: &[LayerInfo], filters: &std::collections::HashMap<u32, FilterSettings>, fills: &std::collections::HashMap<u32, [f32; 76]>, gens: &std::collections::HashMap<u32, [f32; 76]>) {
         if self.export_scale.is_none() {
             return;
@@ -2659,7 +2725,7 @@ impl Gpu {
                 continue;
             }
             let chain = fs_core::ancestors(infos, info.id);
-            if chain.iter().any(|&a| !infos[a].visible) {
+            if chain.iter().any(|&a| !infos[a].visible) || self.blank_masked(infos, &chain, info) {
                 continue;
             }
             let opacity = chain.iter().fold(info.opacity, |o, &a| o * infos[a].opacity);
@@ -2708,7 +2774,7 @@ impl Gpu {
                 continue;
             }
             let chain = fs_core::ancestors(infos, info.id);
-            if chain.iter().any(|&a| !infos[a].visible) {
+            if chain.iter().any(|&a| !infos[a].visible) || self.blank_masked(infos, &chain, info) {
                 continue;
             }
             let opacity = chain.iter().fold(info.opacity, |o, &a| o * infos[a].opacity);

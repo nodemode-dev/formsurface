@@ -577,6 +577,11 @@ impl Engine {
         Ok(format!("second UV channel on {vertices} vertices"))
     }
 
+    /// Layers of the active texture set whose fill and composite are skipped because their mask is known blank.
+    pub fn skipped_layers(&self) -> u32 {
+        self.gpu.skipped_layers() as u32
+    }
+
     pub fn has_uv1(&self) -> bool {
         self.uv1.is_some()
     }
