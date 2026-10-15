@@ -16,7 +16,7 @@ Paint directly on 3D models, layer by layer, the way Substance 3D Painter works.
 - **Text:** render text in a built-in or loaded font (TTF, OTF, WOFF) as a brush tip, a stencil or a fill layer image.
 - **Flatten, merge and export:** collapse a texture set or a folder into one paint layer, merge a layer down into the one below, and save any layer (color, roughness, metallic, height with coverage in alpha) or layer mask as PNG.
 - **Quick mask (T):** paint a temporary mask, shown in red where protected, that limits every stroke and fill until you turn it off; clear, allow all and invert.
-- **Brush:** size in screen or object space, hardness, flow, stroke opacity, spacing, pen pressure on size or flow, backface culling, eraser.
+- **Brush:** size in screen or object space, hardness, flow, stroke opacity, spacing, pen pressure on size or flow, backface culling, eraser; symmetry that mirrors across one axis or several at once (up to eight copies) or repeats radially.
 - **Paint across texture sets:** with the switch on (Texture sets panel, or `across_sets` on the brush tool), a stroke that crosses onto another material keeps painting there, into its layer of the same name and kind, and one undo takes it back in every set; Painter paints one texture set at a time.
 - **Color:** a docked hue ring and saturation and value square under the base color (drag, or arrow keys with Shift for larger steps), a twelve-color recent strip with a lock, and Pick Paint Color from Screen (I).
 - **Alignment and tips:** Painter's camera, tangent wrap, tangent planar and UV alignments; round, square and spray tips or any image as a brush alpha; angle, follow path, size, angle, position and flow jitter, lazy mouse.

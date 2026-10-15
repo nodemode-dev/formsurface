@@ -115,12 +115,12 @@ def formsurface_set_brush(
     jitter_position: Annotated[float | None, Field(ge=0, le=2)] = None,
     jitter_flow: Unit | None = None,
     symmetry: Literal["off", "mirror", "radial"] | None = None,
-    symmetry_axis: Literal["x", "y", "z"] | None = None,
+    symmetry_axis: Literal["x", "y", "z", "xy", "xz", "yz", "xyz"] | None = None,
     radial_count: Annotated[int | None, Field(ge=2, le=32)] = None,
     across_sets: bool | None = None,
 ) -> dict:
-    """Change brush settings. Size is in screen pixels (size_space screen) or thousandths of the mesh radius (object). alignment picks how the tip lies on the surface: camera projects it from the view, tangent_wrap follows curvature, tangent_planar lays it flat on the hit plane, uv paints in texture space. across_sets true lets a stroke that crosses onto another texture set keep painting there, into that set's layer of the same name and kind (sets without one are skipped; one undo takes the stroke back in every set). Only the values you pass change."""
-    axis = {"x": 0, "y": 1, "z": 2}.get(symmetry_axis) if symmetry_axis else None
+    """Change brush settings. Size is in screen pixels (size_space screen) or thousandths of the mesh radius (object). alignment picks how the tip lies on the surface: camera projects it from the view, tangent_wrap follows curvature, tangent_planar lays it flat on the hit plane, uv paints in texture space. symmetry mirror takes one axis or several (xy, xz, yz, xyz mirror across each and their combinations, up to eight copies); radial turns around one axis. across_sets true lets a stroke that crosses onto another texture set keep painting there, into that set's layer of the same name and kind (sets without one are skipped; one undo takes the stroke back in every set). Only the values you pass change."""
+    axis = {"x": 0, "y": 1, "z": 2, "xy": 3, "xz": 4, "yz": 5, "xyz": 6}.get(symmetry_axis) if symmetry_axis else None
     return call("brush", drop_none(
         size_px=size_px, hardness=hardness, flow=flow, opacity=stroke_opacity, spacing=spacing, eraser=eraser, mirror_x=mirror_x, backface_culling=backface_culling,
         alignment=alignment, size_space=size_space, angle=angle_degrees, follow_path=follow_path, tip=tip, spray_density=spray_density, lazy_px=lazy_px,
