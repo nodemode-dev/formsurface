@@ -43,6 +43,7 @@ Load one specialist for a narrow change; for a feature that crosses layers (a ne
 - No emojis, no em dashes in markdown, no icon libraries, Vite host stays false, z-index only from tokens.
 - No self-written tests; testing intent goes to the sidecar TEST_PLAN.md for a fresh context.
 - Never claim a capability that was not exercised. State what ran and on what hardware.
+- GPU readbacks (screenshot, layer pick, bake, export) need a WebGPU adapter that can map buffers: headless SwiftShader cannot. On a machine without a GPU, run Chromium headful under `xvfb-run` on Mesa lavapipe (`VK_ICD_FILENAMES=.../lvp_icd.json`, flags `--enable-unsafe-webgpu --enable-features=Vulkan --use-vulkan=native --ignore-gpu-blocklist --disable-gpu-watchdog`). Without `--disable-gpu-watchdog` Chrome kills the slow software GPU process during heavy passes (path cover, bakes) and every later map fails with "Error occurred when trying to async map a buffer" and the console warning "A valid external Instance reference no longer exists"; that is the watchdog, not an engine fault.
 
 ## Evaluations
 
