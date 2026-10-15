@@ -244,6 +244,7 @@ impl Engine {
         self.match_keys = None;
         self.polygons = None;
         self.uv1 = None;
+        self.gpu.clear_uv1_maps();
         self.hidden.clear();
         self.hidden_history.clear();
         self.cage = None;
@@ -555,8 +556,25 @@ impl Engine {
                 out[to * 2 + 1] = uvs[from * 2 + 1];
             }
         }
+        let pairs: Vec<[f32; 2]> = out.chunks_exact(2).map(|p| [p[0], p[1]]).collect();
+        let size = self.gpu.size.min(2048);
+        let maps: Vec<Vec<f32>> = self.sets.iter().map(|s| {
+            let range = &mesh.indices[s.info.start as usize..(s.info.start + s.info.count) as usize];
+            fs_core::uvmap::uv1_lookup(&mesh.uvs, &pairs, range, size as usize, 2)
+        }).collect();
+        let vertices = mesh.positions.len();
         self.uv1 = Some(out);
-        Ok(format!("second UV channel on {} vertices", mesh.positions.len()))
+        self.gpu.clear_uv1_maps();
+        for (k, data) in maps.iter().enumerate() {
+            self.gpu.set_uv1_map(k, size, data);
+        }
+        self.each_set(|engine| {
+            engine.render_fills();
+            Ok(())
+        })
+        .map_err(|e| JsValue::from_str(&e))?;
+        self.dirty = true;
+        Ok(format!("second UV channel on {vertices} vertices"))
     }
 
     pub fn has_uv1(&self) -> bool {

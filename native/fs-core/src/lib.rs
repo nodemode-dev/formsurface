@@ -4,6 +4,7 @@ pub mod document;
 pub mod mesh;
 pub mod regions;
 pub mod sets;
+pub mod uvmap;
 
 pub use bvh::{Bvh, Hit};
 pub use document::{ancestors, descendants, tree_order, Alignment, BlendMode, BrushSettings, ChannelValues, ExtraRole, FillSettings, FilterSettings, Generator, LayerInfo, MaskBlend, MaskEffect, MaskEffectKind, LayerKind, Pattern, Projection, SizeSpace, StrokeMode, Symmetry, Tip};

@@ -1172,6 +1172,25 @@ fn fbm3(p: vec3<f32>) -> f32 {
     return v / 0.96875;
 }
 @group(0) @binding(5) var bake_tex: texture_2d<f32>;
+@group(0) @binding(6) var uv1_map: texture_2d<f32>;
+
+// UV1 at a UV0 position: bilinear inside an island (the mapping is affine per triangle), nearest at island edges.
+fn uv1_at(uv: vec2<f32>) -> vec2<f32> {
+    let dims = vec2<i32>(textureDimensions(uv1_map));
+    let f = uv * vec2<f32>(dims) - 0.5;
+    let p = clamp(vec2<i32>(floor(f)), vec2<i32>(0), dims - vec2<i32>(1));
+    let q = min(p + vec2<i32>(1), dims - vec2<i32>(1));
+    let a = textureLoad(uv1_map, p, 0);
+    let b = textureLoad(uv1_map, vec2<i32>(q.x, p.y), 0);
+    let c = textureLoad(uv1_map, vec2<i32>(p.x, q.y), 0);
+    let d = textureLoad(uv1_map, q, 0);
+    if (min(min(a.w, b.w), min(c.w, d.w)) > 0.75) {
+        let t = clamp(f - floor(f), vec2<f32>(0.0), vec2<f32>(1.0));
+        return mix(mix(a.xy, b.xy, t.x), mix(c.xy, d.xy, t.x), t.y);
+    }
+    let n = clamp(vec2<i32>(uv * vec2<f32>(dims)), vec2<i32>(0), dims - vec2<i32>(1));
+    return textureLoad(uv1_map, n, 0).xy;
+}
 @group(0) @binding(1) var pos_map: texture_2d<f32>;
 @group(0) @binding(2) var normal_map: texture_2d<f32>;
 @group(0) @binding(3) var pattern_tex: texture_2d<f32>;
@@ -1246,7 +1265,7 @@ fn fs(@builtin(position) frag: vec4<f32>) -> Out {
     let mode = fill.proj.x;
     var s = vec4<f32>(1.0);
     if (mode < 0.5) {
-        s = pattern(uv);
+        if (fill.extra.w > 0.5) { s = pattern(uv1_at(uv)); } else { s = pattern(uv); }
     } else if (mode < 1.5) {
         var w = pow(abs(n), vec3<f32>(fill.proj2.z));
         w = w / max(w.x + w.y + w.z, 1e-6);

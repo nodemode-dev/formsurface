@@ -112,6 +112,8 @@ pub struct Gpu {
     pub extra_role: f32,
     pub aux_roles: [f32; 2],
     _instance: wgpu::Instance,
+    /// Per texture set: UV1 at every UV0 texel (Rgba32Float u1, v1, 0, coverage), read by fills projected through UV1.
+    uv1_maps: std::collections::HashMap<usize, wgpu::Texture>,
     _adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -762,6 +764,7 @@ impl Gpu {
             surface,
             config,
             _instance: instance,
+            uv1_maps: Default::default(),
             _adapter: adapter,
             device,
             queue,
@@ -1287,6 +1290,7 @@ impl Gpu {
         let c = self.working_color([uniform[0], uniform[1], uniform[2]]);
         working[..3].copy_from_slice(&c);
         working[70] = if self.ap1 { 1.0 } else { 0.0 };
+        working[71] = if uniform[71] > 0.5 && self.uv1_maps.contains_key(&self.current) { 1.0 } else { 0.0 };
         if self.aux_roles[0] < 0.5 {
             working[73] = 0.0;
         }
@@ -1567,13 +1571,42 @@ impl Gpu {
         read_rgba(buffer, size, size, size * 4, false, false)
     }
 
+    /// Stores the UV1 lookup for texture set `set` (size by size RGBA floats from fs_core::uvmap::uv1_lookup).
+    pub fn set_uv1_map(&mut self, set: usize, size: u32, data: &[f32]) {
+        let map = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("uv1 lookup"),
+            size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba32Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(map.as_image_copy(), bytemuck::cast_slice(data), wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(size * 16), rows_per_image: Some(size) }, wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 });
+        if let Some(old) = self.uv1_maps.insert(set, map) {
+            old.destroy();
+        }
+    }
+
+    pub fn clear_uv1_maps(&mut self) {
+        for (_, map) in self.uv1_maps.drain() {
+            map.destroy();
+        }
+    }
+
     fn fill_target(&self, id: u32, set: &Set, uniform: &[f32; 76]) {
         let Some(geometry) = &self.geometry else { return };
-        self.queue.write_buffer(&self.fill_uniform, 0, bytemuck::cast_slice(uniform));
+        let mut uniform = *uniform;
+        if !self.uv1_maps.contains_key(&self.current) {
+            uniform[71] = 0.0;
+        }
+        self.queue.write_buffer(&self.fill_uniform, 0, bytemuck::cast_slice(&uniform));
         let (pv, nv) = (view_of(&geometry.0), view_of(&geometry.1));
         let tile = if uniform[12] > 5.5 { self.tile_patterns.get(&(self.current, id)) } else { None };
         let pattern = view_of(tile.or(self.patterns.get(&id)).unwrap_or(&self.white));
         let bake = view_of(&self.bake);
+        let uv1 = view_of(self.uv1_maps.get(&self.current).unwrap_or(&geometry.0));
         let group = bind(&self.device, &self.fill_pipe, &[
             self.fill_uniform.as_entire_binding(),
             wgpu::BindingResource::TextureView(&pv),
@@ -1581,6 +1614,7 @@ impl Gpu {
             wgpu::BindingResource::TextureView(&pattern),
             wgpu::BindingResource::Sampler(&self.sampler),
             wgpu::BindingResource::TextureView(&bake),
+            wgpu::BindingResource::TextureView(&uv1),
         ]);
         let (c, v, k, x) = (view_of(&set.color), view_of(&set.val), view_of(&set.cov), view_of(&set.aux));
         let mut encoder = self.device.create_command_encoder(&Default::default());

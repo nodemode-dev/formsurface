@@ -438,6 +438,8 @@ pub struct FillSettings {
     pub use_extra2: bool,
     pub extra3: f32,
     pub use_extra3: bool,
+    /// UV projection reads the first UV channel (0) or the mesh's second one (1, lightmap or trim UVs).
+    pub uv_set: u32,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -621,6 +623,7 @@ impl Default for FillSettings {
             use_extra2: false,
             extra3: 1.0,
             use_extra3: false,
+            uv_set: 0,
         }
     }
 }
@@ -678,6 +681,7 @@ impl FillSettings {
         }
         out[68] = self.extra.clamp(0.0, 1.0);
         out[69] = flag(self.use_extra);
+        out[71] = flag(self.uv_set == 1);
         out[72] = self.extra2.clamp(0.0, 1.0);
         out[73] = flag(self.use_extra2);
         out[74] = self.extra3.clamp(0.0, 1.0);
