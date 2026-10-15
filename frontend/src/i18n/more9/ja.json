@@ -1,0 +1,5 @@
+{
+  "Needs WebGPU; this window runs on WebGL 2": "WebGPU が必要です。このウィンドウは WebGL 2 で動作しています",
+  "The path tracer needs WebGPU; this window runs on WebGL 2 (the Linux desktop app, or a browser without WebGPU)": "パストレーサーには WebGPU が必要です。このウィンドウは WebGL 2 で動作しています（Linux デスクトップアプリ、または WebGPU のないブラウザ）",
+  "This needs WebGPU: the path tracer and the ray-traced bake read storage buffers, which WebGL 2 (the Linux desktop app, or a browser without WebGPU) does not have. Use the mesh bake here, or open FormSurface in a browser with WebGPU": "この機能には WebGPU が必要です。パストレーサーとレイトレーシングによるベイクはストレージバッファを読み取りますが、WebGL 2（Linux デスクトップアプリ、または WebGPU のないブラウザ）にはありません。ここではメッシュベイクを使うか、WebGPU 対応のブラウザで FormSurface を開いてください"
+}

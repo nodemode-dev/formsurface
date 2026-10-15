@@ -1,0 +1,5 @@
+{
+  "Needs WebGPU; this window runs on WebGL 2": "WebGPU가 필요합니다. 이 창은 WebGL 2에서 실행 중입니다",
+  "The path tracer needs WebGPU; this window runs on WebGL 2 (the Linux desktop app, or a browser without WebGPU)": "패스 트레이서에는 WebGPU가 필요합니다. 이 창은 WebGL 2에서 실행 중입니다(Linux 데스크톱 앱 또는 WebGPU가 없는 브라우저)",
+  "This needs WebGPU: the path tracer and the ray-traced bake read storage buffers, which WebGL 2 (the Linux desktop app, or a browser without WebGPU) does not have. Use the mesh bake here, or open FormSurface in a browser with WebGPU": "WebGPU가 필요합니다. 패스 트레이서와 레이 트레이싱 베이크는 스토리지 버퍼를 읽는데, WebGL 2(Linux 데스크톱 앱 또는 WebGPU가 없는 브라우저)에는 이것이 없습니다. 여기서는 메시 베이크를 사용하거나 WebGPU를 지원하는 브라우저에서 FormSurface를 여세요"
+}

@@ -1,0 +1,5 @@
+{
+  "Needs WebGPU; this window runs on WebGL 2": "需要 WebGPU；此窗口运行在 WebGL 2 上",
+  "The path tracer needs WebGPU; this window runs on WebGL 2 (the Linux desktop app, or a browser without WebGPU)": "路径追踪器需要 WebGPU；此窗口运行在 WebGL 2 上（Linux 桌面应用，或不支持 WebGPU 的浏览器）",
+  "This needs WebGPU: the path tracer and the ray-traced bake read storage buffers, which WebGL 2 (the Linux desktop app, or a browser without WebGPU) does not have. Use the mesh bake here, or open FormSurface in a browser with WebGPU": "此功能需要 WebGPU：路径追踪器和光线追踪烘焙会读取存储缓冲区，而 WebGL 2（Linux 桌面应用，或不支持 WebGPU 的浏览器）不具备该功能。请在此使用网格烘焙，或在支持 WebGPU 的浏览器中打开 FormSurface"
+}

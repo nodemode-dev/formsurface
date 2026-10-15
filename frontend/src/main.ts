@@ -1065,6 +1065,13 @@ async function boot(): Promise<void> {
     engine = undefined;
     engine = await create_engine(canvas, Number($<HTMLSelectElement>('tex-size').value));
     $('gpu-info').textContent = `${engine.backend()} · ${engine.texture_size()} px`;
+    // WebGL 2 has no storage buffers: the path tracer and the ray-traced bake stay off there, with the reason on hover.
+    const webgl = engine.backend() === 'Gl';
+    const needsWebGpu = 'Needs WebGPU; this window runs on WebGL 2';
+    $<HTMLInputElement>('d-path').disabled = webgl;
+    $<HTMLOptionElement>('k-method-traced').disabled = webgl;
+    for (const id of ['d-path', 'k-method-traced']) $(id).title = webgl ? needsWebGpu : '';
+    if (webgl && sel('k-method') === 'traced') $<HTMLSelectElement>('k-method').value = 'depth';
     syncBrush(); syncChannels(); syncBase(); syncView();
     if (sel('d-working') === 'acescg') engine.set_working_space('acescg');
     if (sel('d-env')) useEnvironment(sel('d-env'));
@@ -3152,7 +3159,7 @@ const agentLink = new AgentLink({
     setControl('d-path-bounces', bounces);
     setControl('d-path', on, 'change');
     const state = JSON.parse(e.path_trace_json()) as { on: boolean };
-    if (on && !state.on) throw new Error('Load a mesh before path tracing');
+    if (on && !state.on) throw new Error(e.backend() === 'Gl' ? 'The path tracer needs WebGPU; this window runs on WebGL 2 (the Linux desktop app, or a browser without WebGPU)' : 'Load a mesh before path tracing');
     if (state.on && samples !== undefined && samples !== null) {
       const goal = Number(samples);
       let done = 0;

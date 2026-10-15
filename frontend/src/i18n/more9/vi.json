@@ -1,0 +1,5 @@
+{
+  "Needs WebGPU; this window runs on WebGL 2": "Cần WebGPU; cửa sổ này chạy trên WebGL 2",
+  "The path tracer needs WebGPU; this window runs on WebGL 2 (the Linux desktop app, or a browser without WebGPU)": "Path tracer cần WebGPU; cửa sổ này chạy trên WebGL 2 (ứng dụng máy tính Linux, hoặc trình duyệt không có WebGPU)",
+  "This needs WebGPU: the path tracer and the ray-traced bake read storage buffers, which WebGL 2 (the Linux desktop app, or a browser without WebGPU) does not have. Use the mesh bake here, or open FormSurface in a browser with WebGPU": "Tính năng này cần WebGPU: path tracer và ray-traced bake đọc storage buffer, thứ mà WebGL 2 (ứng dụng máy tính Linux, hoặc trình duyệt không có WebGPU) không có. Hãy dùng mesh bake ở đây, hoặc mở FormSurface trong trình duyệt có WebGPU"
+}

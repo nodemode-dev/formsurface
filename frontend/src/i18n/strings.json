@@ -969,5 +969,8 @@
 "Write the maps in the layout you painted (UV0) or move them onto the mesh's second UV channel (UV1), for lightmap or trim layouts; tangent-space normals keep UV0's frame",
 "This mesh has no second UV channel; load a glTF, FBX or Collada mesh with one (TEXCOORD_1), or export on UV0",
 "UV set",
-"With UV projection, lay the pattern out on the first UV channel or on the mesh's second one (lightmap or trim UVs)"
+"With UV projection, lay the pattern out on the first UV channel or on the mesh's second one (lightmap or trim UVs)",
+"Needs WebGPU; this window runs on WebGL 2",
+"The path tracer needs WebGPU; this window runs on WebGL 2 (the Linux desktop app, or a browser without WebGPU)",
+"This needs WebGPU: the path tracer and the ray-traced bake read storage buffers, which WebGL 2 (the Linux desktop app, or a browser without WebGPU) does not have. Use the mesh bake here, or open FormSurface in a browser with WebGPU"
 ]

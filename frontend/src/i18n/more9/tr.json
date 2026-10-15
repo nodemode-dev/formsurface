@@ -1,0 +1,5 @@
+{
+  "Needs WebGPU; this window runs on WebGL 2": "WebGPU gerekir; bu pencere WebGL 2 üzerinde çalışıyor",
+  "The path tracer needs WebGPU; this window runs on WebGL 2 (the Linux desktop app, or a browser without WebGPU)": "Path tracer için WebGPU gerekir; bu pencere WebGL 2 üzerinde çalışıyor (Linux masaüstü uygulaması veya WebGPU olmayan bir tarayıcı)",
+  "This needs WebGPU: the path tracer and the ray-traced bake read storage buffers, which WebGL 2 (the Linux desktop app, or a browser without WebGPU) does not have. Use the mesh bake here, or open FormSurface in a browser with WebGPU": "Bunun için WebGPU gerekir: path tracer ve ışın izlemeli bake, WebGL 2'de (Linux masaüstü uygulaması veya WebGPU olmayan bir tarayıcı) bulunmayan depolama arabelleklerini okur. Burada mesh bake kullanın veya FormSurface'i WebGPU destekleyen bir tarayıcıda açın"
+}
