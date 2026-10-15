@@ -11,16 +11,39 @@ export interface MaskEffectSpec {
   radius: number;
   layer: number;
   fill: Record<string, unknown>;
+  count?: number;
 }
 
-export const EFFECT_KINDS: [string, string][] = [['fill', 'Fill'], ['generator', 'Generator'], ['levels', 'Levels'], ['invert', 'Invert'], ['blur', 'Blur'], ['compare', 'Compare mask']];
+export const EFFECT_KINDS: [string, string][] = [['fill', 'Fill'], ['generator', 'Generator'], ['levels', 'Levels'], ['invert', 'Invert'], ['blur', 'Blur'], ['compare', 'Compare mask'], ['group', 'Group']];
+
+/** For every effect: its nesting depth and the exclusive end index of the group that holds it (or the list length). */
+export function effectNesting(specs: MaskEffectSpec[]): { depth: number; limit: number }[] {
+  const out: { depth: number; limit: number }[] = [];
+  const ends: number[] = [];
+  specs.forEach((spec, i) => {
+    while (ends.length && ends[ends.length - 1] <= i) ends.pop();
+    const limit = ends.length ? ends[ends.length - 1] : specs.length;
+    out.push({ depth: ends.length, limit });
+    if (spec.kind === 'group') ends.push(Math.min(i + 1 + Math.max(0, spec.count ?? 0), limit));
+  });
+  return out;
+}
+
+/** Removes effect i and shrinks every group that held it, so the rest keep their places. */
+export function removeEffect(specs: MaskEffectSpec[], i: number): void {
+  for (let j = 0; j < i; j++) {
+    const s = specs[j];
+    if (s.kind === 'group' && j + (s.count ?? 0) >= i) s.count = Math.max(0, (s.count ?? 0) - 1);
+  }
+  specs.splice(i, 1);
+}
 const BLENDS: [string, string][] = [['normal', 'Normal'], ['multiply', 'Multiply'], ['add', 'Add'], ['subtract', 'Subtract'], ['lighten', 'Lighten (max)'], ['darken', 'Darken (min)'], ['screen', 'Screen']];
 const GENERATORS: [string, string][] = [['cavity', 'Cavity'], ['edges', 'Edges'], ['thin', 'Thin parts'], ['top', 'From top'], ['light', 'Light'], ['position', 'Position'], ['noise', 'Noise'], ['dirt', 'Dirt'], ['metal_edge_wear', 'Metal edge wear'], ['mask_builder', 'Mask builder']];
 
 export function newEffect(kind: string): MaskEffectSpec {
   return {
     kind, blend: kind === 'generator' || kind === 'compare' ? 'multiply' : 'normal', opacity: 1, visible: true, value: kind === 'fill' ? 0 : 1,
-    in_low: 0, in_high: 1, out_low: 0, out_high: 1, radius: 4, layer: 0, fill: { generator: 'cavity', generator_level: 0.5, generator_softness: 0.1 },
+    in_low: 0, in_high: 1, out_low: 0, out_high: 1, radius: 4, layer: 0, fill: { generator: 'cavity', generator_level: 0.5, generator_softness: 0.1 }, count: 0,
   };
 }
 
@@ -50,9 +73,11 @@ function row(label: string, control: HTMLElement, out?: HTMLOutputElement): HTML
 
 export function renderEffects(host: HTMLElement, specs: MaskEffectSpec[], layers: { id: number; name: string }[], onChange: (specs: MaskEffectSpec[]) => void): void {
   const nodes: HTMLElement[] = [];
+  const nesting = effectNesting(specs);
   specs.forEach((spec, i) => {
     const box = document.createElement('div');
     box.className = 'mfx';
+    box.style.marginLeft = `${nesting[i].depth * 12}px`;
     const head = document.createElement('div');
     head.className = 'row';
     head.style.gridTemplateColumns = '1fr auto auto';
@@ -66,7 +91,7 @@ export function renderEffects(host: HTMLElement, specs: MaskEffectSpec[], layers
     const remove = document.createElement('button');
     remove.className = 'btn';
     remove.textContent = 'Remove';
-    remove.addEventListener('click', () => { specs.splice(i, 1); renderEffects(host, specs, layers, onChange); onChange(specs); });
+    remove.addEventListener('click', () => { removeEffect(specs, i); renderEffects(host, specs, layers, onChange); onChange(specs); });
     head.append(name, vis, remove);
     box.append(head);
     const bind = (input: HTMLInputElement, apply: (v: number) => void, label: string) => {
@@ -75,7 +100,18 @@ export function renderEffects(host: HTMLElement, specs: MaskEffectSpec[], layers
       input.addEventListener('input', () => { out.textContent = Number(input.value).toFixed(2); apply(Number(input.value)); onChange(specs); });
       box.append(row(label, input, out));
     };
-    if (spec.kind === 'fill' || spec.kind === 'generator' || spec.kind === 'compare') {
+    if (spec.kind === 'group') {
+      const most = Math.max(0, nesting[i].limit - i - 1);
+      const holds = range(0, most, 1, Math.min(spec.count ?? 0, most));
+      holds.disabled = most === 0;
+      holds.title = 'How many of the effects below belong to this group; they run on their own black mask and the result blends in here';
+      const out = document.createElement('output');
+      out.textContent = holds.value;
+      holds.addEventListener('change', () => { spec.count = Number(holds.value); renderEffects(host, specs, layers, onChange); onChange(specs); });
+      holds.addEventListener('input', () => { out.textContent = holds.value; });
+      box.append(row('Holds', holds, out));
+    }
+    if (spec.kind === 'fill' || spec.kind === 'generator' || spec.kind === 'compare' || spec.kind === 'group') {
       const b = select(BLENDS, spec.blend, 'Effect blend');
       b.addEventListener('change', () => { spec.blend = b.value; onChange(specs); });
       box.append(row('Blend', b));

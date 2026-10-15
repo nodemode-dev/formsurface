@@ -958,5 +958,8 @@
 "Select a paint or fill layer to edit in another app",
 "{0} is open in {1}; save it there and the new fill layer above {2} updates (the original is hidden, not changed)",
 "Updated {0} (external) from the saved file",
-"The service could not save the image"
+"The service could not save the image",
+"Group",
+"Holds",
+"How many of the effects below belong to this group; they run on their own black mask and the result blends in here"
 ]
