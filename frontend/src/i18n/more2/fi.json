@@ -1,0 +1,13 @@
+{
+  "Select Layer Under Cursor": "Valitse kohdistimen alla oleva taso",
+  "Hide Part Under Cursor": "Piilota kohdistimen alla oleva osa",
+  "Hide UV Island Under Cursor": "Piilota kohdistimen alla oleva UV-saareke",
+  "Isolate Part Under Cursor": "Eristä kohdistimen alla oleva osa",
+  "Show All Parts": "Näytä kaikki osat",
+  "Selected layer {0}": "Taso {0} valittu",
+  "No visible layer paints this point": "Mikään näkyvä taso ei maalaa tätä pistettä",
+  "Point at the model, then press the shortcut to select the layer under the cursor": "Osoita mallia ja paina pikanäppäintä valitaksesi kohdistimen alla olevan tason",
+  "Point at the model, then press the shortcut to hide the part under the cursor": "Osoita mallia ja paina pikanäppäintä piilottaaksesi kohdistimen alla olevan osan",
+  "{0} triangles hidden; brushes reach what was behind them; Alt+H shows everything": "{0} kolmiota piilotettu; siveltimet yltävät sen taakse jääneeseen; Alt+H näyttää kaiken",
+  "Every part is visible": "Kaikki osat ovat näkyvissä"
+}

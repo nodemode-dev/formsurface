@@ -1,0 +1,13 @@
+{
+  "Select Layer Under Cursor": "Kurzor alatti réteg kijelölése",
+  "Hide Part Under Cursor": "Kurzor alatti rész elrejtése",
+  "Hide UV Island Under Cursor": "Kurzor alatti UV-sziget elrejtése",
+  "Isolate Part Under Cursor": "Kurzor alatti rész elkülönítése",
+  "Show All Parts": "Minden rész megjelenítése",
+  "Selected layer {0}": "Kijelölt réteg: {0}",
+  "No visible layer paints this point": "Egyetlen látható réteg sem fest erre a pontra",
+  "Point at the model, then press the shortcut to select the layer under the cursor": "Mutasson a modellre, majd nyomja meg a gyorsbillentyűt a kurzor alatti réteg kijelöléséhez",
+  "Point at the model, then press the shortcut to hide the part under the cursor": "Mutasson a modellre, majd nyomja meg a gyorsbillentyűt a kurzor alatti rész elrejtéséhez",
+  "{0} triangles hidden; brushes reach what was behind them; Alt+H shows everything": "{0} háromszög elrejtve; az ecsetek elérik, ami mögötte volt; az Alt+H mindent megjelenít",
+  "Every part is visible": "Minden rész látható"
+}

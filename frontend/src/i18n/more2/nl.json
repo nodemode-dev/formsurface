@@ -1,0 +1,13 @@
+{
+  "Select Layer Under Cursor": "Laag onder de cursor selecteren",
+  "Hide Part Under Cursor": "Onderdeel onder de cursor verbergen",
+  "Hide UV Island Under Cursor": "UV-eiland onder de cursor verbergen",
+  "Isolate Part Under Cursor": "Onderdeel onder de cursor isoleren",
+  "Show All Parts": "Alle onderdelen tonen",
+  "Selected layer {0}": "Laag {0} geselecteerd",
+  "No visible layer paints this point": "Geen zichtbare laag schildert dit punt",
+  "Point at the model, then press the shortcut to select the layer under the cursor": "Wijs naar het model en druk op de sneltoets om de laag onder de cursor te selecteren",
+  "Point at the model, then press the shortcut to hide the part under the cursor": "Wijs naar het model en druk op de sneltoets om het onderdeel onder de cursor te verbergen",
+  "{0} triangles hidden; brushes reach what was behind them; Alt+H shows everything": "{0} driehoeken verborgen; penselen bereiken wat erachter lag; Alt+H toont alles",
+  "Every part is visible": "Alle onderdelen zijn zichtbaar"
+}

@@ -1,0 +1,13 @@
+{
+  "Select Layer Under Cursor": "Chọn layer dưới con trỏ",
+  "Hide Part Under Cursor": "Ẩn phần dưới con trỏ",
+  "Hide UV Island Under Cursor": "Ẩn đảo UV dưới con trỏ",
+  "Isolate Part Under Cursor": "Tách riêng phần dưới con trỏ",
+  "Show All Parts": "Hiện tất cả các phần",
+  "Selected layer {0}": "Đã chọn layer {0}",
+  "No visible layer paints this point": "Không có layer hiển thị nào vẽ lên điểm này",
+  "Point at the model, then press the shortcut to select the layer under the cursor": "Trỏ vào mô hình, rồi nhấn phím tắt để chọn layer dưới con trỏ",
+  "Point at the model, then press the shortcut to hide the part under the cursor": "Trỏ vào mô hình, rồi nhấn phím tắt để ẩn phần dưới con trỏ",
+  "{0} triangles hidden; brushes reach what was behind them; Alt+H shows everything": "Đã ẩn {0} tam giác; cọ chạm được vào phần phía sau; Alt+H hiện tất cả",
+  "Every part is visible": "Mọi phần đều hiển thị"
+}

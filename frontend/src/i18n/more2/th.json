@@ -1,0 +1,13 @@
+{
+  "Select Layer Under Cursor": "เลือกเลเยอร์ใต้เคอร์เซอร์",
+  "Hide Part Under Cursor": "ซ่อนส่วนใต้เคอร์เซอร์",
+  "Hide UV Island Under Cursor": "ซ่อน UV ไอแลนด์ใต้เคอร์เซอร์",
+  "Isolate Part Under Cursor": "แยกส่วนใต้เคอร์เซอร์",
+  "Show All Parts": "แสดงทุกส่วน",
+  "Selected layer {0}": "เลือกเลเยอร์ {0} แล้ว",
+  "No visible layer paints this point": "ไม่มีเลเยอร์ที่มองเห็นได้วาดที่จุดนี้",
+  "Point at the model, then press the shortcut to select the layer under the cursor": "ชี้ไปที่โมเดล แล้วกดชอร์ตคัตเพื่อเลือกเลเยอร์ใต้เคอร์เซอร์",
+  "Point at the model, then press the shortcut to hide the part under the cursor": "ชี้ไปที่โมเดล แล้วกดชอร์ตคัตเพื่อซ่อนส่วนใต้เคอร์เซอร์",
+  "{0} triangles hidden; brushes reach what was behind them; Alt+H shows everything": "ซ่อนสามเหลี่ยม {0} รูป แปรงเข้าถึงสิ่งที่อยู่ด้านหลังได้ กด Alt+H เพื่อแสดงทั้งหมด",
+  "Every part is visible": "ทุกส่วนมองเห็นได้"
+}

@@ -1,0 +1,13 @@
+{
+  "Select Layer Under Cursor": "Sélectionner le calque sous le curseur",
+  "Hide Part Under Cursor": "Masquer la partie sous le curseur",
+  "Hide UV Island Under Cursor": "Masquer l'îlot UV sous le curseur",
+  "Isolate Part Under Cursor": "Isoler la partie sous le curseur",
+  "Show All Parts": "Afficher toutes les parties",
+  "Selected layer {0}": "Calque {0} sélectionné",
+  "No visible layer paints this point": "Aucun calque visible ne peint ce point",
+  "Point at the model, then press the shortcut to select the layer under the cursor": "Pointez le modèle, puis appuyez sur le raccourci pour sélectionner le calque sous le curseur",
+  "Point at the model, then press the shortcut to hide the part under the cursor": "Pointez le modèle, puis appuyez sur le raccourci pour masquer la partie sous le curseur",
+  "{0} triangles hidden; brushes reach what was behind them; Alt+H shows everything": "{0} triangles masqués; les pinceaux atteignent ce qui était derrière; Alt+H affiche tout",
+  "Every part is visible": "Toutes les parties sont visibles"
+}

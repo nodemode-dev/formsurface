@@ -1,0 +1,13 @@
+{
+  "Select Layer Under Cursor": "İmlecin Altındaki Katmanı Seç",
+  "Hide Part Under Cursor": "İmlecin Altındaki Parçayı Gizle",
+  "Hide UV Island Under Cursor": "İmlecin Altındaki UV Adasını Gizle",
+  "Isolate Part Under Cursor": "İmlecin Altındaki Parçayı Yalıt",
+  "Show All Parts": "Tüm Parçaları Göster",
+  "Selected layer {0}": "{0} katmanı seçildi",
+  "No visible layer paints this point": "Görünür hiçbir katman bu noktayı boyamıyor",
+  "Point at the model, then press the shortcut to select the layer under the cursor": "Modele yönelin, ardından imlecin altındaki katmanı seçmek için kısayola basın",
+  "Point at the model, then press the shortcut to hide the part under the cursor": "Modele yönelin, ardından imlecin altındaki parçayı gizlemek için kısayola basın",
+  "{0} triangles hidden; brushes reach what was behind them; Alt+H shows everything": "{0} üçgen gizlendi; fırçalar arkasında kalana ulaşır; Alt+H her şeyi gösterir",
+  "Every part is visible": "Tüm parçalar görünür"
+}

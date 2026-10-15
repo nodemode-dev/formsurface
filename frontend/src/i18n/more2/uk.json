@@ -1,0 +1,13 @@
+{
+  "Select Layer Under Cursor": "Вибрати шар під курсором",
+  "Hide Part Under Cursor": "Приховати частину під курсором",
+  "Hide UV Island Under Cursor": "Приховати UV-острів під курсором",
+  "Isolate Part Under Cursor": "Ізолювати частину під курсором",
+  "Show All Parts": "Показати всі частини",
+  "Selected layer {0}": "Вибрано шар {0}",
+  "No visible layer paints this point": "Жоден видимий шар не малює цю точку",
+  "Point at the model, then press the shortcut to select the layer under the cursor": "Наведіть курсор на модель і натисніть гарячу клавішу, щоб вибрати шар під курсором",
+  "Point at the model, then press the shortcut to hide the part under the cursor": "Наведіть курсор на модель і натисніть гарячу клавішу, щоб приховати частину під курсором",
+  "{0} triangles hidden; brushes reach what was behind them; Alt+H shows everything": "Приховано трикутників: {0}; пензлі сягають того, що було за ними; Alt+H показує все",
+  "Every part is visible": "Усі частини видимі"
+}

@@ -1,0 +1,13 @@
+{
+  "Select Layer Under Cursor": "Vybrat vrstvu pod kurzorem",
+  "Hide Part Under Cursor": "Skrýt část pod kurzorem",
+  "Hide UV Island Under Cursor": "Skrýt UV ostrov pod kurzorem",
+  "Isolate Part Under Cursor": "Izolovat část pod kurzorem",
+  "Show All Parts": "Zobrazit všechny části",
+  "Selected layer {0}": "Vybrána vrstva {0}",
+  "No visible layer paints this point": "Žádná viditelná vrstva nemaluje tento bod",
+  "Point at the model, then press the shortcut to select the layer under the cursor": "Zamiřte na model a stiskněte zkratku pro výběr vrstvy pod kurzorem",
+  "Point at the model, then press the shortcut to hide the part under the cursor": "Zamiřte na model a stiskněte zkratku pro skrytí části pod kurzorem",
+  "{0} triangles hidden; brushes reach what was behind them; Alt+H shows everything": "Skryté trojúhelníky: {0}; štětce dosáhnou na to, co bylo za nimi; Alt+H zobrazí vše",
+  "Every part is visible": "Všechny části jsou viditelné"
+}

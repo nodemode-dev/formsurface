@@ -1,0 +1,13 @@
+{
+  "Select Layer Under Cursor": "選取游標下的圖層",
+  "Hide Part Under Cursor": "隱藏游標下的部分",
+  "Hide UV Island Under Cursor": "隱藏游標下的 UV 島",
+  "Isolate Part Under Cursor": "隔離游標下的部分",
+  "Show All Parts": "顯示所有部分",
+  "Selected layer {0}": "已選取圖層 {0}",
+  "No visible layer paints this point": "沒有可見圖層會繪製此點",
+  "Point at the model, then press the shortcut to select the layer under the cursor": "將游標指向模型，然後按快速鍵選取游標下的圖層",
+  "Point at the model, then press the shortcut to hide the part under the cursor": "將游標指向模型，然後按快速鍵隱藏游標下的部分",
+  "{0} triangles hidden; brushes reach what was behind them; Alt+H shows everything": "已隱藏 {0} 個三角形；筆刷可觸及其後方的內容；按 Alt+H 顯示全部",
+  "Every part is visible": "所有部分皆可見"
+}

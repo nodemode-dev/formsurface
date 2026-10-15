@@ -1,0 +1,13 @@
+{
+  "Select Layer Under Cursor": "Выбрать слой под курсором",
+  "Hide Part Under Cursor": "Скрыть часть под курсором",
+  "Hide UV Island Under Cursor": "Скрыть UV-остров под курсором",
+  "Isolate Part Under Cursor": "Изолировать часть под курсором",
+  "Show All Parts": "Показать все части",
+  "Selected layer {0}": "Выбран слой {0}",
+  "No visible layer paints this point": "Ни один видимый слой не рисует эту точку",
+  "Point at the model, then press the shortcut to select the layer under the cursor": "Наведите курсор на модель и нажмите горячую клавишу, чтобы выбрать слой под курсором",
+  "Point at the model, then press the shortcut to hide the part under the cursor": "Наведите курсор на модель и нажмите горячую клавишу, чтобы скрыть часть под курсором",
+  "{0} triangles hidden; brushes reach what was behind them; Alt+H shows everything": "Скрыто треугольников: {0}; кисти достают до того, что было за ними; Alt+H показывает всё",
+  "Every part is visible": "Все части видимы"
+}

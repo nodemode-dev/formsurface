@@ -1,0 +1,13 @@
+{
+  "Select Layer Under Cursor": "Pilih Lapisan di Bawah Kursor",
+  "Hide Part Under Cursor": "Sembunyikan Bagian di Bawah Kursor",
+  "Hide UV Island Under Cursor": "Sembunyikan Pulau UV di Bawah Kursor",
+  "Isolate Part Under Cursor": "Isolasi Bagian di Bawah Kursor",
+  "Show All Parts": "Tampilkan Semua Bagian",
+  "Selected layer {0}": "Lapisan {0} dipilih",
+  "No visible layer paints this point": "Tidak ada lapisan terlihat yang melukis titik ini",
+  "Point at the model, then press the shortcut to select the layer under the cursor": "Arahkan ke model, lalu tekan pintasan untuk memilih lapisan di bawah kursor",
+  "Point at the model, then press the shortcut to hide the part under the cursor": "Arahkan ke model, lalu tekan pintasan untuk menyembunyikan bagian di bawah kursor",
+  "{0} triangles hidden; brushes reach what was behind them; Alt+H shows everything": "{0} segitiga disembunyikan; kuas menjangkau apa yang ada di belakangnya; Alt+H menampilkan semuanya",
+  "Every part is visible": "Semua bagian terlihat"
+}

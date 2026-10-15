@@ -1,0 +1,13 @@
+{
+  "Select Layer Under Cursor": "カーソル下のレイヤーを選択",
+  "Hide Part Under Cursor": "カーソル下のパーツを隠す",
+  "Hide UV Island Under Cursor": "カーソル下の UV アイランドを隠す",
+  "Isolate Part Under Cursor": "カーソル下のパーツを分離",
+  "Show All Parts": "すべてのパーツを表示",
+  "Selected layer {0}": "レイヤー {0} を選択しました",
+  "No visible layer paints this point": "このポイントにペイントする表示中のレイヤーはありません",
+  "Point at the model, then press the shortcut to select the layer under the cursor": "モデルにカーソルを合わせ、ショートカットを押してカーソル下のレイヤーを選択します",
+  "Point at the model, then press the shortcut to hide the part under the cursor": "モデルにカーソルを合わせ、ショートカットを押してカーソル下のパーツを隠します",
+  "{0} triangles hidden; brushes reach what was behind them; Alt+H shows everything": "{0} 個の三角形を隠しました。ブラシは背後にあったものにも届きます。Alt+H ですべて表示します",
+  "Every part is visible": "すべてのパーツが表示されています"
+}

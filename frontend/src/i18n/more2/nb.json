@@ -1,0 +1,13 @@
+{
+  "Select Layer Under Cursor": "Velg laget under markøren",
+  "Hide Part Under Cursor": "Skjul delen under markøren",
+  "Hide UV Island Under Cursor": "Skjul UV-øya under markøren",
+  "Isolate Part Under Cursor": "Isoler delen under markøren",
+  "Show All Parts": "Vis alle deler",
+  "Selected layer {0}": "Lag {0} valgt",
+  "No visible layer paints this point": "Ingen synlige lag maler dette punktet",
+  "Point at the model, then press the shortcut to select the layer under the cursor": "Pek på modellen og trykk på hurtigtasten for å velge laget under markøren",
+  "Point at the model, then press the shortcut to hide the part under the cursor": "Pek på modellen og trykk på hurtigtasten for å skjule delen under markøren",
+  "{0} triangles hidden; brushes reach what was behind them; Alt+H shows everything": "{0} trekanter skjult; penslene når det som lå bak; Alt+H viser alt",
+  "Every part is visible": "Alle deler er synlige"
+}

@@ -1,0 +1,13 @@
+{
+  "Select Layer Under Cursor": "커서 아래 레이어 선택",
+  "Hide Part Under Cursor": "커서 아래 파트 숨기기",
+  "Hide UV Island Under Cursor": "커서 아래 UV 아일랜드 숨기기",
+  "Isolate Part Under Cursor": "커서 아래 파트 분리",
+  "Show All Parts": "모든 파트 표시",
+  "Selected layer {0}": "레이어 {0} 선택됨",
+  "No visible layer paints this point": "이 지점에 페인트하는 보이는 레이어가 없습니다",
+  "Point at the model, then press the shortcut to select the layer under the cursor": "모델을 가리킨 다음 단축키를 눌러 커서 아래 레이어를 선택하세요",
+  "Point at the model, then press the shortcut to hide the part under the cursor": "모델을 가리킨 다음 단축키를 눌러 커서 아래 파트를 숨기세요",
+  "{0} triangles hidden; brushes reach what was behind them; Alt+H shows everything": "삼각형 {0}개 숨김. 브러시가 뒤에 있던 부분에도 닿습니다. Alt+H로 모두 표시합니다",
+  "Every part is visible": "모든 파트가 보입니다"
+}

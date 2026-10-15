@@ -907,5 +907,16 @@
 "Pick Paint Color from Screen",
 "Merge texture sets into one map set",
 "Write one map per channel for all texture sets that share a UV tile, each set filling its own UV islands; needs every set at the same size",
-"Merging texture sets needs every set at the same size; choose an export size or match the set sizes"
+"Merging texture sets needs every set at the same size; choose an export size or match the set sizes",
+"Select Layer Under Cursor",
+"Hide Part Under Cursor",
+"Hide UV Island Under Cursor",
+"Isolate Part Under Cursor",
+"Show All Parts",
+"Selected layer {0}",
+"No visible layer paints this point",
+"Point at the model, then press the shortcut to select the layer under the cursor",
+"Point at the model, then press the shortcut to hide the part under the cursor",
+"{0} triangles hidden; brushes reach what was behind them; Alt+H shows everything",
+"Every part is visible"
 ]
