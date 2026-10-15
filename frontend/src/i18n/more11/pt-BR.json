@@ -1,0 +1,6 @@
+{
+  "Paint across texture sets": "Pintar entre conjuntos de texturas",
+  "A stroke that crosses onto another texture set keeps painting there, into its layer of the same name and kind; sets without such a layer are left alone; undo takes the stroke back everywhere at once": "Um traço que passa para outro conjunto de texturas continua pintando lá, na camada de mesmo nome e tipo; conjuntos sem essa camada ficam intactos; desfazer reverte o traço em todos os lugares de uma só vez",
+  "Strokes now paint across texture sets, into layers of the same name": "Agora os traços pintam entre conjuntos de texturas, em camadas de mesmo nome",
+  "Strokes paint the active texture set only": "Os traços pintam apenas o conjunto de texturas ativo"
+}

@@ -1,0 +1,6 @@
+{
+  "Paint across texture sets": "Lukis lintas set tekstur",
+  "A stroke that crosses onto another texture set keeps painting there, into its layer of the same name and kind; sets without such a layer are left alone; undo takes the stroke back everywhere at once": "Goresan yang melintas ke set tekstur lain terus melukis di sana, pada lapisannya yang bernama dan berjenis sama; set tanpa lapisan seperti itu dibiarkan; membatalkan menarik kembali goresan di semua tempat sekaligus",
+  "Strokes now paint across texture sets, into layers of the same name": "Goresan kini melukis lintas set tekstur, pada lapisan bernama sama",
+  "Strokes paint the active texture set only": "Goresan hanya melukis set tekstur aktif"
+}

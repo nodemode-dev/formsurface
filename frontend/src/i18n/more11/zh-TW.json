@@ -1,0 +1,6 @@
+{
+  "Paint across texture sets": "跨紋理組繪製",
+  "A stroke that crosses onto another texture set keeps painting there, into its layer of the same name and kind; sets without such a layer are left alone; undo takes the stroke back everywhere at once": "跨入另一個紋理組的筆觸會在該紋理組中繼續繪製，繪製到同名同類型的圖層中；沒有此類圖層的紋理組不受影響；復原會一次性在所有位置復原該筆觸",
+  "Strokes now paint across texture sets, into layers of the same name": "筆觸現在會跨紋理組繪製到同名圖層中",
+  "Strokes paint the active texture set only": "筆觸僅繪製目前紋理組"
+}

@@ -1,0 +1,6 @@
+{
+  "Paint across texture sets": "Рисовать по наборам текстур",
+  "A stroke that crosses onto another texture set keeps painting there, into its layer of the same name and kind; sets without such a layer are left alone; undo takes the stroke back everywhere at once": "Мазок, переходящий на другой набор текстур, продолжает рисовать там, в слое с тем же именем и типом; наборы без такого слоя не затрагиваются; отмена убирает мазок сразу везде",
+  "Strokes now paint across texture sets, into layers of the same name": "Теперь мазки рисуют по наборам текстур, в слоях с тем же именем",
+  "Strokes paint the active texture set only": "Мазки рисуют только в активном наборе текстур"
+}

@@ -1,0 +1,6 @@
+{
+  "Paint across texture sets": "Malovat napříč sadami textur",
+  "A stroke that crosses onto another texture set keeps painting there, into its layer of the same name and kind; sets without such a layer are left alone; undo takes the stroke back everywhere at once": "Tah, který přejde na jinou sadu textur, tam dál maluje, do vrstvy stejného názvu a druhu; sady bez takové vrstvy zůstanou nedotčené; vrácení zpět vezme tah zpět všude najednou",
+  "Strokes now paint across texture sets, into layers of the same name": "Tahy nyní malují napříč sadami textur, do vrstev stejného názvu",
+  "Strokes paint the active texture set only": "Tahy malují pouze do aktivní sady textur"
+}

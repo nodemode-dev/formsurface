@@ -1,0 +1,6 @@
+{
+  "Paint across texture sets": "Über Texturensets hinweg malen",
+  "A stroke that crosses onto another texture set keeps painting there, into its layer of the same name and kind; sets without such a layer are left alone; undo takes the stroke back everywhere at once": "Ein Strich, der auf ein anderes Texturenset übergeht, malt dort weiter, in dessen Ebene mit gleichem Namen und gleicher Art; Sets ohne eine solche Ebene bleiben unberührt; Rückgängig machen nimmt den Strich überall auf einmal zurück",
+  "Strokes now paint across texture sets, into layers of the same name": "Striche malen jetzt über Texturensets hinweg, in Ebenen mit gleichem Namen",
+  "Strokes paint the active texture set only": "Striche malen nur auf das aktive Texturenset"
+}

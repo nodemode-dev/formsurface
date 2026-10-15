@@ -1,0 +1,6 @@
+{
+  "Paint across texture sets": "Maalaa tekstuurisettien yli",
+  "A stroke that crosses onto another texture set keeps painting there, into its layer of the same name and kind; sets without such a layer are left alone; undo takes the stroke back everywhere at once": "Siveltimenveto, joka ylittää toiseen tekstuurisettiin, jatkaa maalaamista siellä, saman nimisellä ja tyyppisellä tasolla; setit ilman sellaista tasoa jätetään ennalleen; kumoa peruu vedon kaikkialla kerralla",
+  "Strokes now paint across texture sets, into layers of the same name": "Siveltimenvedot maalaavat nyt tekstuurisettien yli, saman nimisille tasoille",
+  "Strokes paint the active texture set only": "Siveltimenvedot maalaavat vain aktiivista tekstuurisettiä"
+}

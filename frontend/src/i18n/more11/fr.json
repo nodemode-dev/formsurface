@@ -1,0 +1,6 @@
+{
+  "Paint across texture sets": "Peindre entre les jeux de textures",
+  "A stroke that crosses onto another texture set keeps painting there, into its layer of the same name and kind; sets without such a layer are left alone; undo takes the stroke back everywhere at once": "Un trait qui passe sur un autre jeu de textures continue d'y peindre, dans son calque de même nom et de même type ; les jeux sans ce calque restent intacts ; annuler retire le trait partout en une seule fois",
+  "Strokes now paint across texture sets, into layers of the same name": "Les traits peignent désormais entre les jeux de textures, dans les calques de même nom",
+  "Strokes paint the active texture set only": "Les traits peignent uniquement le jeu de textures actif"
+}

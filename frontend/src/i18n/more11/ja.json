@@ -1,0 +1,6 @@
+{
+  "Paint across texture sets": "テクスチャセットをまたいでペイント",
+  "A stroke that crosses onto another texture set keeps painting there, into its layer of the same name and kind; sets without such a layer are left alone; undo takes the stroke back everywhere at once": "別のテクスチャセットにまたがったストロークは、そこでも同じ名前と種類のレイヤーに引き続きペイントされます。該当するレイヤーがないセットは変更されません。元に戻すと、ストロークはすべての場所で一度に取り消されます",
+  "Strokes now paint across texture sets, into layers of the same name": "ストロークは、テクスチャセットをまたいで同じ名前のレイヤーにペイントされるようになりました",
+  "Strokes paint the active texture set only": "ストロークはアクティブなテクスチャセットのみにペイントされます"
+}

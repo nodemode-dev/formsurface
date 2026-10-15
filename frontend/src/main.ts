@@ -382,6 +382,11 @@ $('uv-tiles').addEventListener('change', () => {
   try { setUvTiles(checked('uv-tiles')); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
 });
 
+$('ts-cross').addEventListener('change', () => {
+  engine?.set_cross_sets(checked('ts-cross'));
+  status(checked('ts-cross') ? 'Strokes now paint across texture sets, into layers of the same name' : 'Strokes paint the active texture set only');
+});
+
 const MASK_GENERATORS = ['cavity', 'edges', 'thin', 'top', 'light', 'position', 'noise', 'mask_builder', 'dirt', 'metal_edge_wear'];
 let pickingId = false;
 
@@ -1074,6 +1079,7 @@ async function boot(): Promise<void> {
     if (webgl && sel('k-method') === 'traced') $<HTMLSelectElement>('k-method').value = 'depth';
     syncBrush(); syncChannels(); syncBase(); syncView();
     if (sel('d-working') === 'acescg') engine.set_working_space('acescg');
+    engine.set_cross_sets(checked('ts-cross'));
     if (sel('d-env')) useEnvironment(sel('d-env'));
     if (!sel('d-ocio')) refreshOcioConfigs().catch(() => { $('d-ocio-state').textContent = 'OpenColorIO needs the FormSurface service'; });
     applyMesh(mesh ?? sampleMesh('sphere'), mesh ? meshName : 'sphere');
@@ -2676,6 +2682,7 @@ function snapshotState(): Record<string, unknown> {
     texture_sets: textureSets(),
     active_texture_set: e.active_texture_set(),
     blank_mask_layers_skipped: e.skipped_layers(),
+    paint_across_sets: e.cross_sets(),
     quick_mask: ['off', 'edit', 'on'][e.quick_mask_mode()],
     uv_tiles: e.uv_tiles(),
     view: e.view_2d() ? '2d' : '3d',
@@ -2747,6 +2754,7 @@ const agentLink = new AgentLink({
     if (args.eraser !== undefined) setTool(args.eraser ? 'erase' : 'paint');
     if (args.tool === 'paint' || args.tool === 'erase' || args.tool === 'clone') setTool(args.tool);
     if (args.mirror_x !== undefined && Boolean(args.mirror_x) !== mirror) $('tool-mirror').click();
+    if (args.across_sets !== undefined && args.across_sets !== null) setControl('ts-cross', Boolean(args.across_sets), 'change');
     setControl('b-size', args.size_px); setControl('b-hardness', args.hardness); setControl('b-flow', args.flow);
     setControl('b-opacity', args.opacity); setControl('b-spacing', args.spacing); setControl('b-cull', args.backface_culling, 'change');
     setControl('b-align', args.alignment, 'change'); setControl('b-space', args.size_space, 'change'); setControl('b-angle', args.angle);

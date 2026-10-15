@@ -1,0 +1,6 @@
+{
+  "Paint across texture sets": "Måla över texturuppsättningar",
+  "A stroke that crosses onto another texture set keeps painting there, into its layer of the same name and kind; sets without such a layer are left alone; undo takes the stroke back everywhere at once": "Ett penseldrag som går över till en annan texturuppsättning fortsätter att måla där, i dess lager med samma namn och typ; uppsättningar utan ett sådant lager lämnas orörda; ångra tar tillbaka penseldraget överallt på en gång",
+  "Strokes now paint across texture sets, into layers of the same name": "Penseldrag målar nu över texturuppsättningar, i lager med samma namn",
+  "Strokes paint the active texture set only": "Penseldrag målar bara den aktiva texturuppsättningen"
+}

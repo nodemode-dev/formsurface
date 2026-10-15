@@ -1,0 +1,6 @@
+{
+  "Paint across texture sets": "Doku setleri arasında boya",
+  "A stroke that crosses onto another texture set keeps painting there, into its layer of the same name and kind; sets without such a layer are left alone; undo takes the stroke back everywhere at once": "Başka bir doku setine geçen fırça darbesi orada da boyamaya devam eder, aynı ada ve türe sahip katmanına; böyle bir katmanı olmayan setlere dokunulmaz; geri al, darbeyi her yerde bir seferde geri alır",
+  "Strokes now paint across texture sets, into layers of the same name": "Fırça darbeleri artık doku setleri arasında, aynı adlı katmanlara boyuyor",
+  "Strokes paint the active texture set only": "Fırça darbeleri yalnızca etkin doku setine boyar"
+}

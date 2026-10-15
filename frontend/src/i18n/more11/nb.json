@@ -1,0 +1,6 @@
+{
+  "Paint across texture sets": "Mal på tvers av teksturssett",
+  "A stroke that crosses onto another texture set keeps painting there, into its layer of the same name and kind; sets without such a layer are left alone; undo takes the stroke back everywhere at once": "Et penselstrøk som går over på et annet teksturssett fortsetter å male der, i laget med samme navn og type; sett uten et slikt lag røres ikke; angre tar penselstrøket tilbake overalt på én gang",
+  "Strokes now paint across texture sets, into layers of the same name": "Penselstrøk maler nå på tvers av teksturssett, i lag med samme navn",
+  "Strokes paint the active texture set only": "Penselstrøk maler bare det aktive teksturssettet"
+}
