@@ -43,7 +43,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_pick_layer` | x, y normalized | selects the top visible paint or fill layer covering that point |
 | `formsurface_hide_part` | x, y, mode triangle, polygon, mesh or uv_island, isolate | hidden triangle count; strokes reach what was behind |
 | `formsurface_show_all_parts` | none | shows every hidden part |
-| `formsurface_select_region` | points (3 or more normalized corners), limit | fills the visible surface inside with the paint material, or with limit makes it the quick mask and turns quick mask on |
+| `formsurface_select_region` | points (3 or more normalized corners), limit | fills the visible surface inside with the paint material per texel, or with limit makes it the quick mask and turns quick mask on; returns the screen area |
 | `formsurface_undo` | steps 1 to 24 | undone count |
 | `formsurface_redo` | steps 1 to 24 | redone count |
 | `formsurface_screenshot` | none | PNG image of the viewport (post effects included) |
