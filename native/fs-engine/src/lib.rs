@@ -73,6 +73,8 @@ pub struct Engine {
     view_transform: u32,
     trace: Option<TraceRun>,
     polygons: Option<Vec<u32>>,
+    /// Second UV channel (lightmap or trim UVs) per split vertex, two floats each; None when the mesh has only UV0.
+    uv1: Option<Vec<f32>>,
     hidden: Vec<bool>,
     hidden_history: Vec<Vec<bool>>,
     normal_strength: f32,
@@ -143,6 +145,7 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
         view_transform: 0,
         trace: None,
         polygons: None,
+        uv1: None,
         hidden: Vec::new(),
         hidden_history: Vec::new(),
         normal_strength: 1.0,
@@ -240,6 +243,7 @@ impl Engine {
         self.tri_order = split.order;
         self.match_keys = None;
         self.polygons = None;
+        self.uv1 = None;
         self.hidden.clear();
         self.hidden_history.clear();
         self.cage = None;
@@ -528,6 +532,40 @@ impl Engine {
         let count = distinct.len();
         self.polygons = Some(split);
         Ok(format!("{count} polygons over {} triangles", self.tri_order.len()))
+    }
+
+    /// Takes the mesh's second UV channel in the order given to set_mesh (two floats per input vertex, with the same
+    /// input indices) and carries it through the texture set split, corner by corner.
+    pub fn set_uv1(&mut self, uvs: &[f32], indices: &[u32]) -> Result<String, JsValue> {
+        let (mesh, _) = self.mesh.as_ref().ok_or_else(|| JsValue::from_str("Load a mesh first"))?;
+        if indices.len() != self.tri_order.len() * 3 || indices.len() != mesh.indices.len() {
+            self.uv1 = None;
+            return Err(JsValue::from_str("The second UV channel does not match the loaded mesh; it was ignored"));
+        }
+        let mut out = vec![0.0f32; mesh.positions.len() * 2];
+        for (k, &t) in self.tri_order.iter().enumerate() {
+            for c in 0..3 {
+                let from = indices[t as usize * 3 + c] as usize;
+                let to = mesh.indices[k * 3 + c] as usize;
+                if from * 2 + 1 >= uvs.len() {
+                    self.uv1 = None;
+                    return Err(JsValue::from_str("The second UV channel is shorter than the vertex list; it was ignored"));
+                }
+                out[to * 2] = uvs[from * 2];
+                out[to * 2 + 1] = uvs[from * 2 + 1];
+            }
+        }
+        self.uv1 = Some(out);
+        Ok(format!("second UV channel on {} vertices", mesh.positions.len()))
+    }
+
+    pub fn has_uv1(&self) -> bool {
+        self.uv1.is_some()
+    }
+
+    /// The second UV channel for every vertex of the loaded mesh (index with texture_set_mesh's indices), or empty.
+    pub fn uv1(&self) -> js_sys::Float32Array {
+        js_sys::Float32Array::from(self.uv1.as_deref().unwrap_or(&[]))
     }
 
     pub fn has_polygons(&self) -> bool {
