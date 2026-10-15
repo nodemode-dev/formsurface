@@ -68,6 +68,9 @@ fn main() {
                 .sidecar("formsurface-engine")
                 .expect("sidecar binary is bundled")
                 .env("FORMSURFACE_PORT", ENGINE_PORT)
+                // The engine exits on its own when this process is gone, so a killed app (SIGTERM at logout,
+                // a crash) never leaves it holding the port.
+                .env("FORMSURFACE_PARENT_PID", std::process::id().to_string())
                 .spawn()
                 .expect("the FormSurface engine failed to spawn");
             app.state::<Backend>().0.lock().unwrap().replace(child);

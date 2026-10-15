@@ -47,6 +47,44 @@ def run_mcp() -> int:
     return 0
 
 
+def exit_with_parent() -> None:
+    """When the desktop app passes its process id, end this engine as soon as that process is gone."""
+    raw = os.environ.get("FORMSURFACE_PARENT_PID", "")
+    if not raw.isdigit():
+        return
+    parent = int(raw)
+
+    def alive() -> bool:
+        if os.name == "nt":
+            import ctypes
+
+            handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, parent)
+            if not handle:
+                return False
+            code = ctypes.c_ulong()
+            ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+            ctypes.windll.kernel32.CloseHandle(handle)
+            return code.value == 259
+        try:
+            os.kill(parent, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def watch() -> None:
+        import time
+
+        while alive():
+            time.sleep(1.5)
+        os._exit(0)
+
+    import threading
+
+    threading.Thread(target=watch, name="parent-watch", daemon=True).start()
+
+
 def main() -> int:
     if "--selfcheck" in sys.argv:
         return selfcheck()
@@ -60,6 +98,7 @@ def main() -> int:
 
     from app.main import app as fastapi_app
 
+    exit_with_parent()
     port = usable_port(int(os.environ.get("FORMSURFACE_PORT", "8766") or 8766)) or free_port()
     os.environ["FORMSURFACE_PORT"] = str(port)
     print(f"FormSurface engine on http://127.0.0.1:{port}", flush=True)
