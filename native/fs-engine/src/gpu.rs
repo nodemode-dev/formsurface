@@ -136,6 +136,10 @@ pub struct Gpu {
     pub high_baked: bool,
     light_uniform: wgpu::Buffer,
     bake_depth_pipe: wgpu::RenderPipeline,
+    occlusion_pipe: wgpu::RenderPipeline,
+    bake_depth_color_pipe: wgpu::RenderPipeline,
+    /// WebGL 2 only: viewport depth as R32Float plus its own depth buffer, read by painting and path cover.
+    occlusion: Option<(wgpu::Texture, wgpu::Texture)>,
     bake_accum_pipe: wgpu::RenderPipeline,
     bake_final_pipe: wgpu::RenderPipeline,
     fill_pipe: wgpu::RenderPipeline,
@@ -599,14 +603,36 @@ impl Gpu {
         let size = size.clamp(256, 4096).next_power_of_two();
         let navigator = js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str("navigator")).unwrap_or(JsValue::UNDEFINED);
         let has_webgpu = !navigator.is_undefined() && js_sys::Reflect::get(&navigator, &JsValue::from_str("gpu")).map(|g| !g.is_undefined() && !g.is_null()).unwrap_or(false);
-        let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
-        descriptor.backends = if has_webgpu { wgpu::Backends::BROWSER_WEBGPU } else { wgpu::Backends::GL };
-        let instance = wgpu::Instance::new(descriptor);
-        let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas)).map_err(|e| format!("Could not create a drawing surface: {e}"))?;
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, compatible_surface: Some(&surface), force_fallback_adapter: false, apply_limit_buckets: false })
-            .await
-            .map_err(|e| format!("No GPU adapter is available: {e}"))?;
+        // WebGPU first, asking for an adapter before touching the canvas: a canvas that has handed out a WebGPU
+        // context can never give a WebGL 2 one, so when navigator.gpu exists but has no adapter (blocklisted GPU,
+        // WebGPU switched off) the WebGL 2 path still gets a clean canvas.
+        let mut chosen = None;
+        if has_webgpu {
+            let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
+            descriptor.backends = wgpu::Backends::BROWSER_WEBGPU;
+            let instance = wgpu::Instance::new(descriptor);
+            let options = wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, compatible_surface: None, force_fallback_adapter: false, apply_limit_buckets: false };
+            if let Ok(adapter) = instance.request_adapter(&options).await {
+                let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone())).map_err(|e| format!("Could not create a drawing surface: {e}"))?;
+                chosen = Some((instance, surface, adapter));
+            } else {
+                web_sys::console::warn_1(&JsValue::from_str("FormSurface: WebGPU has no adapter here; using WebGL 2"));
+            }
+        }
+        let (instance, surface, adapter) = match chosen {
+            Some(found) => found,
+            None => {
+                let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
+                descriptor.backends = wgpu::Backends::GL;
+                let instance = wgpu::Instance::new(descriptor);
+                let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas)).map_err(|e| format!("Could not create a drawing surface: {e}"))?;
+                let adapter = instance
+                    .request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, compatible_surface: Some(&surface), force_fallback_adapter: false, apply_limit_buckets: false })
+                    .await
+                    .map_err(|e| format!("No GPU adapter is available: {e}"))?;
+                (instance, surface, adapter)
+            }
+        };
         let backend = format!("{:?}", adapter.get_info().backend);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor { label: Some("formsurface"), required_limits: adapter.limits(), ..Default::default() })
@@ -706,6 +732,9 @@ impl Gpu {
             high_baked: false,
             light_uniform: uniform("bake light", 96),
             bake_depth_pipe: depth_only_pipeline(&device),
+            occlusion_pipe: pipeline(&device, "occlusion depth", shaders::OCCLUSION, true, &[wgpu::TextureFormat::R32Float], None, true),
+            occlusion: None,
+            bake_depth_color_pipe: pipeline(&device, "bake depth color", shaders::BAKE_DEPTH, true, &[wgpu::TextureFormat::R32Float], None, true),
             bake_accum_pipe: pipeline(&device, "bake accumulate", shaders::BAKE_ACCUM, false, &[LAYER_FORMAT], Some(wgpu::BlendState {
                 color: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::One, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
                 alpha: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::One, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
@@ -1260,6 +1289,49 @@ impl Gpu {
         }
     }
 
+    /// The viewport depth as a shader can read it. WebGPU reads the depth texture itself; WebGL 2 cannot (its reads
+    /// return 0, so nothing would count as visible), so there the mesh is drawn once more into an R32Float target,
+    /// with the camera already written and hidden parts left out as in the viewport.
+    fn occlusion_view(&mut self) -> wgpu::TextureView {
+        if self.backend != "Gl" {
+            return self.depth.create_view(&wgpu::TextureViewDescriptor { aspect: wgpu::TextureAspect::DepthOnly, ..Default::default() });
+        }
+        let (w, h) = (self.depth.width(), self.depth.height());
+        if self.occlusion.as_ref().map(|(c, _)| c.width() != w || c.height() != h).unwrap_or(true) {
+            let color = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("occlusion depth"),
+                size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::R32Float,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            });
+            self.occlusion = Some((color, depth_texture(&self.device, w, h)));
+        }
+        let (color, depth) = self.occlusion.as_ref().expect("occlusion targets were just made");
+        let (cv, dv) = (view_of(color), view_of(depth));
+        let group = bind(&self.device, &self.occlusion_pipe, &[self.camera.as_entire_binding()]);
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                color_attachments: &[attach(&cv, wgpu::LoadOp::Clear(wgpu::Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }))],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &dv, depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }), stencil_ops: None }),
+                ..Default::default()
+            });
+            pass.set_pipeline(&self.occlusion_pipe);
+            pass.set_bind_group(0, &group, &[]);
+            if let (Some(v), Some(i)) = (&self.vertices, self.view_indices.as_ref().or(self.indices.as_ref())) {
+                pass.set_vertex_buffer(0, v.slice(..));
+                pass.set_index_buffer(i.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..self.total, 0, 0..1);
+            }
+        }
+        self.queue.submit([encoder.finish()]);
+        view_of(color)
+    }
+
     fn draw_all(&self, pass: &mut wgpu::RenderPass) {
         if let (Some(v), Some(i)) = (&self.vertices, &self.indices) {
             pass.set_vertex_buffer(0, v.slice(..));
@@ -1689,6 +1761,23 @@ impl Gpu {
         let depth = depth_texture(&self.device, res, res);
         let depth_view = view_of(&depth);
         let depth_sample = depth.create_view(&wgpu::TextureViewDescriptor { aspect: wgpu::TextureAspect::DepthOnly, ..Default::default() });
+        // WebGL 2 cannot read a depth texture in a shader, so there the depth pass also writes it as R32Float.
+        let gl = self.backend == "Gl";
+        let depth_color = gl.then(|| {
+            self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("bake depth color"),
+                size: wgpu::Extent3d { width: res, height: res, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::R32Float,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+        });
+        let depth_color_view = depth_color.as_ref().map(view_of);
+        let depth_sample = depth_color_view.clone().unwrap_or(depth_sample);
+        let depth_pipe = if gl { &self.bake_depth_color_pipe } else { &self.bake_depth_pipe };
         let accum = texture(&self.device, self.size, LAYER_FORMAT, "bake accumulation");
         let accum_view = view_of(&accum);
         let (pv, nv) = (view_of(pos), view_of(normal));
@@ -1724,7 +1813,7 @@ impl Gpu {
             data[16..20].copy_from_slice(&[dir[0], dir[1], dir[2], 0.0]);
             data[20..24].copy_from_slice(&[0.003, range, r, 0.05 * r]);
             self.queue.write_buffer(&self.light_uniform, 0, bytemuck::cast_slice(&data));
-            let depth_group = bind(&self.device, &self.bake_depth_pipe, &[self.light_uniform.as_entire_binding()]);
+            let depth_group = bind(&self.device, depth_pipe, &[self.light_uniform.as_entire_binding()]);
             let accum_group = bind(&self.device, &self.bake_accum_pipe, &[
                 self.light_uniform.as_entire_binding(),
                 wgpu::BindingResource::TextureView(&pv),
@@ -1733,12 +1822,16 @@ impl Gpu {
             ]);
             let mut encoder = self.device.create_command_encoder(&Default::default());
             {
+                let colors = match &depth_color_view {
+                    Some(view) => vec![attach(view, wgpu::LoadOp::Clear(wgpu::Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }))],
+                    None => Vec::new(),
+                };
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    color_attachments: &[],
+                    color_attachments: &colors,
                     depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: &depth_view, depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }), stencil_ops: None }),
                     ..Default::default()
                 });
-                pass.set_pipeline(&self.bake_depth_pipe);
+                pass.set_pipeline(depth_pipe);
                 pass.set_bind_group(0, &depth_group, &[]);
                 self.draw_all(&mut pass);
             }
@@ -2238,7 +2331,7 @@ impl Gpu {
         self.queue.submit([encoder.finish()]);
     }
 
-    pub fn mask_cover(&self, width: u32, height: u32, rgba: &[u8], bounds: [f32; 4], uv: bool, cull: bool, view_proj: [f32; 16], eye: Vec3) -> Result<(), String> {
+    pub fn mask_cover(&mut self, width: u32, height: u32, rgba: &[u8], bounds: [f32; 4], uv: bool, cull: bool, view_proj: [f32; 16], eye: Vec3) -> Result<(), String> {
         if width == 0 || height == 0 || width > 8192 || height > 8192 || rgba.len() != (width * height * 4) as usize {
             return Err("A path coverage image must be RGBA, 1 to 8192 pixels per side".into());
         }
@@ -2258,7 +2351,7 @@ impl Gpu {
         let params = [bounds[0], bounds[1], bounds[2], bounds[3], if uv { 1.0 } else { 0.0 }, if cull { 1.0 } else { 0.0 }, 0.0, 0.0];
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("path cover"), size: 32, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
         self.queue.write_buffer(&buffer, 0, bytemuck::cast_slice(&params));
-        let depth_view = self.depth.create_view(&wgpu::TextureViewDescriptor { aspect: wgpu::TextureAspect::DepthOnly, ..Default::default() });
+        let depth_view = self.occlusion_view();
         let cover_view = view_of(&texture);
         let group = bind(&self.device, &self.cover_pipe, &[
             self.camera.as_entire_binding(),
@@ -2405,7 +2498,7 @@ impl Gpu {
             return;
         }
         self.queue.write_buffer(&self.camera, 0, bytemuck::cast_slice(&camera_bytes(view_proj, eye, None, 1.0, 1.0, 0.0)));
-        let depth_view = self.depth.create_view(&wgpu::TextureViewDescriptor { aspect: wgpu::TextureAspect::DepthOnly, ..Default::default() });
+        let depth_view = self.occlusion_view();
         let (alpha_view, stencil_view) = (view_of(&self.alpha_tex), view_of(&self.stencil_tex));
         let group = bind(&self.device, &self.paint_pipe, &[
             self.camera.as_entire_binding(),

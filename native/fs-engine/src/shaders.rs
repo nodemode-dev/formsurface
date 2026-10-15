@@ -288,13 +288,13 @@ pub const POST: &str = r#"
 @group(0) @binding(0) var<uniform> post: Post;
 @group(0) @binding(1) var scene: texture_2d<f32>;
 @group(0) @binding(2) var bloom: texture_2d<f32>;
-@group(0) @binding(3) var depth: texture_depth_2d;
+@group(0) @binding(3) var depth: texture_2d<f32>;
 @group(0) @binding(4) var samp: sampler;
 
 fn linear_depth(uv: vec2<f32>) -> f32 {
     let dims = vec2<i32>(textureDimensions(depth));
     let q = clamp(vec2<i32>(uv * vec2<f32>(dims)), vec2<i32>(0), dims - vec2<i32>(1));
-    let z = textureLoad(depth, q, 0);
+    let z = textureLoad(depth, q, 0).r;
     let near = post.e.x;
     let far = post.e.y;
     let a = far / (near - far);
@@ -582,7 +582,7 @@ struct Stamps {
 };
 @group(0) @binding(0) var<uniform> cam: Camera;
 @group(0) @binding(1) var<uniform> stamps: Stamps;
-@group(0) @binding(2) var depth_tex: texture_depth_2d;
+@group(0) @binding(2) var depth_tex: texture_2d<f32>;
 @group(0) @binding(3) var alpha_tex: texture_2d<f32>;
 @group(0) @binding(4) var stencil_tex: texture_2d<f32>;
 @group(0) @binding(5) var clamp_samp: sampler;
@@ -653,7 +653,7 @@ fn fs(i: VOut) -> @location(0) vec4<f32> {
     let px = vec2<i32>(frag_px);
     var visible = false;
     if (px.x >= 0 && px.y >= 0 && px.x < i32(size.x) && px.y < i32(size.y) && clip.w > 0.0) {
-        let stored = textureLoad(depth_tex, px, 0);
+        let stored = textureLoad(depth_tex, px, 0).r;
         visible = ndc.z <= stored + 0.0015;
     }
     let facing = dot(n, normalize(cam.eye.xyz - i.world)) > 0.0;
@@ -1637,7 +1637,7 @@ struct Camera {
 struct Cover { bounds: vec4<f32>, params: vec4<f32>, };
 @group(0) @binding(0) var<uniform> cam: Camera;
 @group(0) @binding(1) var<uniform> cover: Cover;
-@group(0) @binding(2) var depth_tex: texture_depth_2d;
+@group(0) @binding(2) var depth_tex: texture_2d<f32>;
 @group(0) @binding(3) var cover_tex: texture_2d<f32>;
 @group(0) @binding(4) var clamp_samp: sampler;
 
@@ -1669,7 +1669,7 @@ fn fs(i: VOut) -> @location(0) vec4<f32> {
         at = vec2<f32>((ndc.x * 0.5 + 0.5) * size.x, (0.5 - ndc.y * 0.5) * size.y);
         let px = vec2<i32>(at);
         if (px.x < 0 || px.y < 0 || px.x >= i32(size.x) || px.y >= i32(size.y)) { return vec4<f32>(0.0); }
-        if (ndc.z > textureLoad(depth_tex, px, 0) + 0.0015) { return vec4<f32>(0.0); }
+        if (ndc.z > textureLoad(depth_tex, px, 0).r + 0.0015) { return vec4<f32>(0.0); }
         let facing = dot(normalize(i.normal), normalize(cam.eye.xyz - i.world)) > 0.0;
         if (cover.params.y > 0.5 && !facing) { return vec4<f32>(0.0); }
     }
@@ -1680,12 +1680,37 @@ fn fs(i: VOut) -> @location(0) vec4<f32> {
 }
 "#;
 
+// Viewport depth written as a color, for backends that cannot read a depth texture in a shader (WebGL 2 returns 0).
+pub const OCCLUSION: &str = r#"
+struct Camera {
+    view_proj: mat4x4<f32>,
+    eye: vec4<f32>,
+    cursor: vec4<f32>,
+    cursor_normal: vec4<f32>,
+    params: vec4<f32>,
+};
+@group(0) @binding(0) var<uniform> cam: Camera;
+@vertex
+fn vs(@location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) uv: vec2<f32>) -> @builtin(position) vec4<f32> {
+    return cam.view_proj * vec4<f32>(p, 1.0);
+}
+@fragment
+fn fs(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+    return vec4<f32>(frag.z, 0.0, 0.0, 1.0);
+}
+"#;
+
 pub const BAKE_DEPTH: &str = r#"
 struct Light { view_proj: mat4x4<f32>, dir: vec4<f32>, params: vec4<f32>, };
 @group(0) @binding(0) var<uniform> light: Light;
 @vertex
 fn vs(@location(0) p: vec3<f32>, @location(1) n: vec3<f32>, @location(2) uv: vec2<f32>) -> @builtin(position) vec4<f32> {
     return light.view_proj * vec4<f32>(p, 1.0);
+}
+// WebGL 2 only: the same depth written as a color the accumulation pass can read.
+@fragment
+fn fs(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+    return vec4<f32>(frag.z, 0.0, 0.0, 1.0);
 }
 "#;
 
@@ -1694,7 +1719,7 @@ struct Light { view_proj: mat4x4<f32>, dir: vec4<f32>, params: vec4<f32>, };
 @group(0) @binding(0) var<uniform> light: Light;
 @group(0) @binding(1) var pos_map: texture_2d<f32>;
 @group(0) @binding(2) var normal_map: texture_2d<f32>;
-@group(0) @binding(3) var depth_map: texture_depth_2d;
+@group(0) @binding(3) var depth_map: texture_2d<f32>;
 
 @fragment
 fn fs(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
@@ -1707,7 +1732,7 @@ fn fs(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let ndc = c.xyz / c.w;
     let size = vec2<f32>(textureDimensions(depth_map));
     let tp = vec2<i32>(i32((ndc.x * 0.5 + 0.5) * size.x), i32((0.5 - ndc.y * 0.5) * size.y));
-    let stored = textureLoad(depth_map, clamp(tp, vec2<i32>(0), vec2<i32>(size) - 1), 0);
+    let stored = textureLoad(depth_map, clamp(tp, vec2<i32>(0), vec2<i32>(size) - 1), 0).r;
     let facing = dot(n, d);
     var o = vec4<f32>(0.0);
     if (facing > 0.0) {
