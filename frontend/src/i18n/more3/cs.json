@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "Výplň lasem",
+  "Rectangle Fill": "Výplň obdélníkem",
+  "Limit Strokes to Lasso": "Omezit tahy na laso",
+  "Limit Strokes to Rectangle": "Omezit tahy na obdélník",
+  "Recent colors": "Nedávné barvy",
+  "Recent color": "Nedávná barva",
+  "Lock the palette: picked colors no longer replace these": "Zamknout paletu: vybrané barvy tyto už nenahrazují",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "Laso: táhněte po modelu a vyplňte jej materiálem malby; Esc zruší",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "Laso: táhněte po modelu a omezte tahy na tuto oblast; Esc zruší",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "Obdélník: táhněte po modelu a vyplňte jej materiálem malby; Esc zruší",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "Obdélník: táhněte po modelu a omezte tahy na tuto oblast; Esc zruší",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "Tahy nyní zůstávají uvnitř výběru (trojúhelníků: {0}); T nebo Rychlá maska Vyp. omezení zruší",
+  "Filled {0} triangles with the paint material": "Materiálem malby vyplněno trojúhelníků: {0}",
+  "The selection was too small": "Výběr byl příliš malý",
+  "Selection cancelled": "Výběr zrušen",
+  "The selection covers no visible surface of the active texture set": "Výběr nepokrývá žádný viditelný povrch aktivní sady textur",
+  "Lasso and rectangle selections work in the 3D view": "Výběr lasem a obdélníkem funguje v pohledu 3D",
+  "A selection needs at least three corners": "Výběr potřebuje alespoň tři rohy",
+  "Hiding parts works in the 3D view": "Skrývání částí funguje v pohledu 3D",
+  "Click on the mesh to hide a part": "Kliknutím na mesh skryjete část",
+  "Click on the mesh to pick a layer": "Kliknutím na mesh vyberete vrstvu"
+}

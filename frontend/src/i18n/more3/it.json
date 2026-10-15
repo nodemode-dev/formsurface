@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "Riempimento con lazo",
+  "Rectangle Fill": "Riempimento con rettangolo",
+  "Limit Strokes to Lasso": "Limita le pennellate al lazo",
+  "Limit Strokes to Rectangle": "Limita le pennellate al rettangolo",
+  "Recent colors": "Colori recenti",
+  "Recent color": "Colore recente",
+  "Lock the palette: picked colors no longer replace these": "Blocca la tavolozza: i colori scelti non sostituiscono più questi",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "Lazo: trascina sul modello per riempirlo con il materiale di pittura; Esc annulla",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "Lazo: trascina sul modello per limitare le pennellate a quell'area; Esc annulla",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "Rettangolo: trascina sul modello per riempirlo con il materiale di pittura; Esc annulla",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "Rettangolo: trascina sul modello per limitare le pennellate a quell'area; Esc annulla",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "Ora le pennellate restano dentro la selezione ({0} triangoli); T o Maschera rapida Disattivato la rimuove",
+  "Filled {0} triangles with the paint material": "Riempiti {0} triangoli con il materiale di pittura",
+  "The selection was too small": "La selezione era troppo piccola",
+  "Selection cancelled": "Selezione annullata",
+  "The selection covers no visible surface of the active texture set": "La selezione non copre nessuna superficie visibile del set di texture attivo",
+  "Lasso and rectangle selections work in the 3D view": "Le selezioni a lazo e a rettangolo funzionano nella vista 3D",
+  "A selection needs at least three corners": "Una selezione richiede almeno tre angoli",
+  "Hiding parts works in the 3D view": "Nascondere parti funziona nella vista 3D",
+  "Click on the mesh to hide a part": "Fai clic sulla mesh per nascondere una parte",
+  "Click on the mesh to pick a layer": "Fai clic sulla mesh per scegliere un livello"
+}

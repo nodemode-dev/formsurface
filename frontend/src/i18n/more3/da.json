@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "Lassofyldning",
+  "Rectangle Fill": "Rektangelfyldning",
+  "Limit Strokes to Lasso": "Begræns strøg til lasso",
+  "Limit Strokes to Rectangle": "Begræns strøg til rektangel",
+  "Recent colors": "Seneste farver",
+  "Recent color": "Seneste farve",
+  "Lock the palette: picked colors no longer replace these": "Lås paletten: valgte farver erstatter ikke længere disse",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "Lasso: træk på modellen for at fylde den med malematerialet; Esc annullerer",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "Lasso: træk på modellen for at begrænse strøg til det område; Esc annullerer",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "Rektangel: træk på modellen for at fylde den med malematerialet; Esc annullerer",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "Rektangel: træk på modellen for at begrænse strøg til det område; Esc annullerer",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "Strøg bliver nu inden for markeringen ({0} trekanter); T eller Hurtigmaske Fra ophæver det",
+  "Filled {0} triangles with the paint material": "Udfyldte {0} trekanter med malematerialet",
+  "The selection was too small": "Markeringen var for lille",
+  "Selection cancelled": "Markering annulleret",
+  "The selection covers no visible surface of the active texture set": "Markeringen dækker ingen synlig overflade på det aktive teksturset",
+  "Lasso and rectangle selections work in the 3D view": "Lasso- og rektangelmarkeringer fungerer i 3D-visningen",
+  "A selection needs at least three corners": "En markering kræver mindst tre hjørner",
+  "Hiding parts works in the 3D view": "Skjulning af dele fungerer i 3D-visningen",
+  "Click on the mesh to hide a part": "Klik på meshet for at skjule en del",
+  "Click on the mesh to pick a layer": "Klik på meshet for at vælge et lag"
+}

@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "Lasso-Füllung",
+  "Rectangle Fill": "Rechteck-Füllung",
+  "Limit Strokes to Lasso": "Striche auf Lasso beschränken",
+  "Limit Strokes to Rectangle": "Striche auf Rechteck beschränken",
+  "Recent colors": "Zuletzt verwendete Farben",
+  "Recent color": "Zuletzt verwendete Farbe",
+  "Lock the palette: picked colors no longer replace these": "Palette sperren: gewählte Farben ersetzen diese nicht mehr",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "Lasso: Ziehe auf dem Modell, um es mit dem Malmaterial zu füllen; Esc bricht ab",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "Lasso: Ziehe auf dem Modell, um die Striche auf diesen Bereich zu beschränken; Esc bricht ab",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "Rechteck: Ziehe auf dem Modell, um es mit dem Malmaterial zu füllen; Esc bricht ab",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "Rechteck: Ziehe auf dem Modell, um die Striche auf diesen Bereich zu beschränken; Esc bricht ab",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "Striche bleiben jetzt innerhalb der Auswahl ({0} Dreiecke); T oder Schnellmaske Aus hebt das auf",
+  "Filled {0} triangles with the paint material": "{0} Dreiecke mit dem Malmaterial gefüllt",
+  "The selection was too small": "Die Auswahl war zu klein",
+  "Selection cancelled": "Auswahl abgebrochen",
+  "The selection covers no visible surface of the active texture set": "Die Auswahl deckt keine sichtbare Oberfläche des aktiven Texturensatzes ab",
+  "Lasso and rectangle selections work in the 3D view": "Lasso- und Rechteckauswahlen funktionieren in der 3D-Ansicht",
+  "A selection needs at least three corners": "Eine Auswahl braucht mindestens drei Ecken",
+  "Hiding parts works in the 3D view": "Das Ausblenden von Teilen funktioniert in der 3D-Ansicht",
+  "Click on the mesh to hide a part": "Klicke auf das Mesh, um einen Teil auszublenden",
+  "Click on the mesh to pick a layer": "Klicke auf das Mesh, um eine Ebene auszuwählen"
+}

@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "Remplissage au lasso",
+  "Rectangle Fill": "Remplissage au rectangle",
+  "Limit Strokes to Lasso": "Limiter les traits au lasso",
+  "Limit Strokes to Rectangle": "Limiter les traits au rectangle",
+  "Recent colors": "Couleurs récentes",
+  "Recent color": "Couleur récente",
+  "Lock the palette: picked colors no longer replace these": "Verrouiller la palette : les couleurs choisies ne remplacent plus celles-ci",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "Lasso : faites glisser sur le modèle pour le remplir avec le matériau de peinture ; Échap annule",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "Lasso : faites glisser sur le modèle pour limiter les traits à cette zone ; Échap annule",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "Rectangle : faites glisser sur le modèle pour le remplir avec le matériau de peinture ; Échap annule",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "Rectangle : faites glisser sur le modèle pour limiter les traits à cette zone ; Échap annule",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "Les traits restent désormais dans la sélection ({0} triangles) ; T ou Masque rapide Désactivé la lève",
+  "Filled {0} triangles with the paint material": "{0} triangles remplis avec le matériau de peinture",
+  "The selection was too small": "La sélection était trop petite",
+  "Selection cancelled": "Sélection annulée",
+  "The selection covers no visible surface of the active texture set": "La sélection ne couvre aucune surface visible du jeu de textures actif",
+  "Lasso and rectangle selections work in the 3D view": "Les sélections au lasso et au rectangle fonctionnent dans la vue 3D",
+  "A selection needs at least three corners": "Une sélection nécessite au moins trois coins",
+  "Hiding parts works in the 3D view": "Le masquage de parties fonctionne dans la vue 3D",
+  "Click on the mesh to hide a part": "Cliquez sur le maillage pour masquer une partie",
+  "Click on the mesh to pick a layer": "Cliquez sur le maillage pour choisir un calque"
+}

@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "Relleno con lazo",
+  "Rectangle Fill": "Relleno con rectángulo",
+  "Limit Strokes to Lasso": "Limitar los trazos al lazo",
+  "Limit Strokes to Rectangle": "Limitar los trazos al rectángulo",
+  "Recent colors": "Colores recientes",
+  "Recent color": "Color reciente",
+  "Lock the palette: picked colors no longer replace these": "Bloquear la paleta: los colores elegidos ya no sustituyen a estos",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "Lazo: arrastra sobre el modelo para rellenarlo con el material de pintura; Esc cancela",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "Lazo: arrastra sobre el modelo para limitar los trazos a esa zona; Esc cancela",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "Rectángulo: arrastra sobre el modelo para rellenarlo con el material de pintura; Esc cancela",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "Rectángulo: arrastra sobre el modelo para limitar los trazos a esa zona; Esc cancela",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "Ahora los trazos se quedan dentro de la selección ({0} triángulos); T o Máscara rápida Desactivado la quita",
+  "Filled {0} triangles with the paint material": "Rellenados {0} triángulos con el material de pintura",
+  "The selection was too small": "La selección era demasiado pequeña",
+  "Selection cancelled": "Selección cancelada",
+  "The selection covers no visible surface of the active texture set": "La selección no cubre ninguna superficie visible del conjunto de texturas activo",
+  "Lasso and rectangle selections work in the 3D view": "Las selecciones de lazo y rectángulo funcionan en la vista 3D",
+  "A selection needs at least three corners": "Una selección necesita al menos tres esquinas",
+  "Hiding parts works in the 3D view": "Ocultar partes funciona en la vista 3D",
+  "Click on the mesh to hide a part": "Haz clic en la malla para ocultar una parte",
+  "Click on the mesh to pick a layer": "Haz clic en la malla para elegir una capa"
+}

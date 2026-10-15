@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "套索填充",
+  "Rectangle Fill": "矩形填充",
+  "Limit Strokes to Lasso": "将笔触限制在套索内",
+  "Limit Strokes to Rectangle": "将笔触限制在矩形内",
+  "Recent colors": "最近使用的颜色",
+  "Recent color": "最近使用的颜色",
+  "Lock the palette: picked colors no longer replace these": "锁定调色板：之后选取的颜色不再替换这些颜色",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "套索：在模型上拖动，用绘制材质填充该区域；按 Esc 取消",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "套索：在模型上拖动，将笔触限制在该区域；按 Esc 取消",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "矩形：在模型上拖动，用绘制材质填充该区域；按 Esc 取消",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "矩形：在模型上拖动，将笔触限制在该区域；按 Esc 取消",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "笔触现在会保持在选区内（{0} 个三角形）；按 T 或将快速蒙版设为关即可解除",
+  "Filled {0} triangles with the paint material": "已用绘制材质填充 {0} 个三角形",
+  "The selection was too small": "选区太小",
+  "Selection cancelled": "已取消选区",
+  "The selection covers no visible surface of the active texture set": "选区未覆盖当前纹理集的任何可见表面",
+  "Lasso and rectangle selections work in the 3D view": "套索和矩形选区在 3D 视图中可用",
+  "A selection needs at least three corners": "选区至少需要三个角点",
+  "Hiding parts works in the 3D view": "隐藏部件在 3D 视图中可用",
+  "Click on the mesh to hide a part": "在网格上点击以隐藏一个部件",
+  "Click on the mesh to pick a layer": "在网格上点击以选取一个图层"
+}

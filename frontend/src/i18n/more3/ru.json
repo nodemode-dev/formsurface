@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "Заливка лассо",
+  "Rectangle Fill": "Заливка прямоугольником",
+  "Limit Strokes to Lasso": "Ограничить мазки лассо",
+  "Limit Strokes to Rectangle": "Ограничить мазки прямоугольником",
+  "Recent colors": "Недавние цвета",
+  "Recent color": "Недавний цвет",
+  "Lock the palette: picked colors no longer replace these": "Заблокировать палитру: выбранные цвета больше не заменяют эти",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "Лассо: проведите по модели, чтобы залить её материалом рисования; Esc отменяет",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "Лассо: проведите по модели, чтобы ограничить мазки этой областью; Esc отменяет",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "Прямоугольник: проведите по модели, чтобы залить её материалом рисования; Esc отменяет",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "Прямоугольник: проведите по модели, чтобы ограничить мазки этой областью; Esc отменяет",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "Теперь мазки остаются внутри выделения (треугольников: {0}); T или Быстрая маска Выкл. снимает ограничение",
+  "Filled {0} triangles with the paint material": "Залито треугольников: {0} материалом рисования",
+  "The selection was too small": "Выделение было слишком маленьким",
+  "Selection cancelled": "Выделение отменено",
+  "The selection covers no visible surface of the active texture set": "Выделение не охватывает видимую поверхность активного набора текстур",
+  "Lasso and rectangle selections work in the 3D view": "Выделение лассо и прямоугольником работает в 3D-виде",
+  "A selection needs at least three corners": "Для выделения нужно как минимум три угла",
+  "Hiding parts works in the 3D view": "Скрытие частей работает в 3D-виде",
+  "Click on the mesh to hide a part": "Щёлкните по мешу, чтобы скрыть часть",
+  "Click on the mesh to pick a layer": "Щёлкните по мешу, чтобы выбрать слой"
+}

@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "投げ縄フィル",
+  "Rectangle Fill": "長方形フィル",
+  "Limit Strokes to Lasso": "ストロークを投げ縄に制限",
+  "Limit Strokes to Rectangle": "ストロークを長方形に制限",
+  "Recent colors": "最近使った色",
+  "Recent color": "最近使った色",
+  "Lock the palette: picked colors no longer replace these": "パレットをロック：選んだ色がこれらを置き換えなくなります",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "投げ縄：モデル上をドラッグしてペイントマテリアルでフィルします。Esc でキャンセル",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "投げ縄：モデル上をドラッグしてストロークをその範囲に制限します。Esc でキャンセル",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "長方形：モデル上をドラッグしてペイントマテリアルでフィルします。Esc でキャンセル",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "長方形：モデル上をドラッグしてストロークをその範囲に制限します。Esc でキャンセル",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "ストロークは選択範囲内に収まります（三角形 {0} 個）。T またはクイックマスクをオフにすると解除されます",
+  "Filled {0} triangles with the paint material": "ペイントマテリアルで {0} 個の三角形をフィルしました",
+  "The selection was too small": "選択範囲が小さすぎます",
+  "Selection cancelled": "選択をキャンセルしました",
+  "The selection covers no visible surface of the active texture set": "選択範囲がアクティブなテクスチャセットの見える面を含んでいません",
+  "Lasso and rectangle selections work in the 3D view": "投げ縄と長方形の選択は 3D ビューで使えます",
+  "A selection needs at least three corners": "選択には少なくとも 3 つの角が必要です",
+  "Hiding parts works in the 3D view": "パーツの非表示は 3D ビューで使えます",
+  "Click on the mesh to hide a part": "メッシュをクリックしてパーツを非表示にします",
+  "Click on the mesh to pick a layer": "メッシュをクリックしてレイヤーを選択します"
+}

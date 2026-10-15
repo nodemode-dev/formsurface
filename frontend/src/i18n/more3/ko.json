@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "올가미 채우기",
+  "Rectangle Fill": "사각형 채우기",
+  "Limit Strokes to Lasso": "스트로크를 올가미로 제한",
+  "Limit Strokes to Rectangle": "스트로크를 사각형으로 제한",
+  "Recent colors": "최근 색상",
+  "Recent color": "최근 색상",
+  "Lock the palette: picked colors no longer replace these": "팔레트 잠금: 선택한 색상이 더 이상 이 색상들을 대체하지 않습니다",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "올가미: 모델 위에서 드래그해 페인트 머티리얼로 채웁니다. Esc로 취소",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "올가미: 모델 위에서 드래그해 스트로크를 해당 영역으로 제한합니다. Esc로 취소",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "사각형: 모델 위에서 드래그해 페인트 머티리얼로 채웁니다. Esc로 취소",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "사각형: 모델 위에서 드래그해 스트로크를 해당 영역으로 제한합니다. Esc로 취소",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "이제 스트로크가 선택 영역 안에만 적용됩니다 (삼각형 {0}개). T 또는 퀵 마스크 꺼짐으로 해제합니다",
+  "Filled {0} triangles with the paint material": "페인트 머티리얼로 삼각형 {0}개를 채웠습니다",
+  "The selection was too small": "선택 영역이 너무 작습니다",
+  "Selection cancelled": "선택을 취소했습니다",
+  "The selection covers no visible surface of the active texture set": "선택 영역이 활성 텍스처 세트의 보이는 표면을 포함하지 않습니다",
+  "Lasso and rectangle selections work in the 3D view": "올가미 및 사각형 선택은 3D 뷰에서 작동합니다",
+  "A selection needs at least three corners": "선택에는 최소 세 개의 모서리가 필요합니다",
+  "Hiding parts works in the 3D view": "부분 숨기기는 3D 뷰에서 작동합니다",
+  "Click on the mesh to hide a part": "메시를 클릭해 부분을 숨깁니다",
+  "Click on the mesh to pick a layer": "메시를 클릭해 레이어를 선택합니다"
+}

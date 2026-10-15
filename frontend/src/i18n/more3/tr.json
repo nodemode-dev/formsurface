@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "Kement Dolgusu",
+  "Rectangle Fill": "Dikdörtgen Dolgusu",
+  "Limit Strokes to Lasso": "Fırça Darbelerini Kementle Sınırla",
+  "Limit Strokes to Rectangle": "Fırça Darbelerini Dikdörtgenle Sınırla",
+  "Recent colors": "Son renkler",
+  "Recent color": "Son renk",
+  "Lock the palette: picked colors no longer replace these": "Paleti kilitle: seçilen renkler artık bunların yerini almaz",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "Kement: modeli boyama malzemesiyle doldurmak için üzerinde sürükleyin; Esc iptal eder",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "Kement: fırça darbelerini o alanla sınırlamak için modelin üzerinde sürükleyin; Esc iptal eder",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "Dikdörtgen: modeli boyama malzemesiyle doldurmak için üzerinde sürükleyin; Esc iptal eder",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "Dikdörtgen: fırça darbelerini o alanla sınırlamak için modelin üzerinde sürükleyin; Esc iptal eder",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "Fırça darbeleri artık seçimin içinde kalıyor ({0} üçgen); T veya Hızlı maske Kapalı bunu kaldırır",
+  "Filled {0} triangles with the paint material": "{0} üçgen boyama malzemesiyle dolduruldu",
+  "The selection was too small": "Seçim çok küçüktü",
+  "Selection cancelled": "Seçim iptal edildi",
+  "The selection covers no visible surface of the active texture set": "Seçim, etkin doku setinin görünür hiçbir yüzeyini kapsamıyor",
+  "Lasso and rectangle selections work in the 3D view": "Kement ve dikdörtgen seçimleri 3D görünümde çalışır",
+  "A selection needs at least three corners": "Bir seçim için en az üç köşe gerekir",
+  "Hiding parts works in the 3D view": "Parçaları gizleme 3D görünümde çalışır",
+  "Click on the mesh to hide a part": "Bir parçayı gizlemek için mesh'e tıklayın",
+  "Click on the mesh to pick a layer": "Bir katman seçmek için mesh'e tıklayın"
+}

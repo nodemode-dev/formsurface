@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "Lassovulling",
+  "Rectangle Fill": "Rechthoekvulling",
+  "Limit Strokes to Lasso": "Streken beperken tot lasso",
+  "Limit Strokes to Rectangle": "Streken beperken tot rechthoek",
+  "Recent colors": "Recente kleuren",
+  "Recent color": "Recente kleur",
+  "Lock the palette: picked colors no longer replace these": "Palet vergrendelen: gekozen kleuren vervangen deze niet meer",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "Lasso: sleep over het model om het te vullen met het schildermateriaal; Esc annuleert",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "Lasso: sleep over het model om streken tot dat gebied te beperken; Esc annuleert",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "Rechthoek: sleep over het model om het te vullen met het schildermateriaal; Esc annuleert",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "Rechthoek: sleep over het model om streken tot dat gebied te beperken; Esc annuleert",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "Streken blijven nu binnen de selectie ({0} driehoeken); T of Snel masker Uit heft dit op",
+  "Filled {0} triangles with the paint material": "{0} driehoeken gevuld met het schildermateriaal",
+  "The selection was too small": "De selectie was te klein",
+  "Selection cancelled": "Selectie geannuleerd",
+  "The selection covers no visible surface of the active texture set": "De selectie bedekt geen zichtbaar oppervlak van de actieve textuurset",
+  "Lasso and rectangle selections work in the 3D view": "Lasso- en rechthoekselecties werken in de 3D-weergave",
+  "A selection needs at least three corners": "Een selectie heeft minstens drie hoeken nodig",
+  "Hiding parts works in the 3D view": "Onderdelen verbergen werkt in de 3D-weergave",
+  "Click on the mesh to hide a part": "Klik op de mesh om een onderdeel te verbergen",
+  "Click on the mesh to pick a layer": "Klik op de mesh om een laag te kiezen"
+}

@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "Lassotäyttö",
+  "Rectangle Fill": "Suorakulmiotäyttö",
+  "Limit Strokes to Lasso": "Rajaa vedot lassoon",
+  "Limit Strokes to Rectangle": "Rajaa vedot suorakulmioon",
+  "Recent colors": "Viimeisimmät värit",
+  "Recent color": "Viimeisin väri",
+  "Lock the palette: picked colors no longer replace these": "Lukitse paletti: valitut värit eivät enää korvaa näitä",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "Lasso: vedä mallin päällä täyttääksesi sen maalimateriaalilla; Esc peruuttaa",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "Lasso: vedä mallin päällä rajataksesi vedot kyseiselle alueelle; Esc peruuttaa",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "Suorakulmio: vedä mallin päällä täyttääksesi sen maalimateriaalilla; Esc peruuttaa",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "Suorakulmio: vedä mallin päällä rajataksesi vedot kyseiselle alueelle; Esc peruuttaa",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "Vedot pysyvät nyt valinnan sisällä ({0} kolmiota); T tai Pikamaski Pois poistaa rajauksen",
+  "Filled {0} triangles with the paint material": "Täytettiin {0} kolmiota maalimateriaalilla",
+  "The selection was too small": "Valinta oli liian pieni",
+  "Selection cancelled": "Valinta peruttu",
+  "The selection covers no visible surface of the active texture set": "Valinta ei kata mitään aktiivisen tekstuurijoukon näkyvää pintaa",
+  "Lasso and rectangle selections work in the 3D view": "Lasso- ja suorakulmiovalinnat toimivat 3D-näkymässä",
+  "A selection needs at least three corners": "Valinta tarvitsee vähintään kolme kulmaa",
+  "Hiding parts works in the 3D view": "Osien piilottaminen toimii 3D-näkymässä",
+  "Click on the mesh to hide a part": "Napsauta meshiä piilottaaksesi osan",
+  "Click on the mesh to pick a layer": "Napsauta meshiä valitaksesi tason"
+}

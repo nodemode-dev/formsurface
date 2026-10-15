@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "Isi Lasso",
+  "Rectangle Fill": "Isi Persegi Panjang",
+  "Limit Strokes to Lasso": "Batasi Goresan ke Lasso",
+  "Limit Strokes to Rectangle": "Batasi Goresan ke Persegi Panjang",
+  "Recent colors": "Warna terbaru",
+  "Recent color": "Warna terbaru",
+  "Lock the palette: picked colors no longer replace these": "Kunci palet: warna yang dipilih tidak lagi menggantikan warna ini",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "Lasso: seret pada model untuk mengisinya dengan material lukis; Esc membatalkan",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "Lasso: seret pada model untuk membatasi goresan pada area itu; Esc membatalkan",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "Persegi panjang: seret pada model untuk mengisinya dengan material lukis; Esc membatalkan",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "Persegi panjang: seret pada model untuk membatasi goresan pada area itu; Esc membatalkan",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "Goresan kini tetap berada di dalam seleksi ({0} segitiga); T atau Masker cepat Mati melepasnya",
+  "Filled {0} triangles with the paint material": "Mengisi {0} segitiga dengan material lukis",
+  "The selection was too small": "Seleksi terlalu kecil",
+  "Selection cancelled": "Seleksi dibatalkan",
+  "The selection covers no visible surface of the active texture set": "Seleksi tidak mencakup permukaan yang terlihat dari set tekstur aktif",
+  "Lasso and rectangle selections work in the 3D view": "Seleksi lasso dan persegi panjang berfungsi di tampilan 3D",
+  "A selection needs at least three corners": "Seleksi memerlukan setidaknya tiga sudut",
+  "Hiding parts works in the 3D view": "Menyembunyikan bagian berfungsi di tampilan 3D",
+  "Click on the mesh to hide a part": "Klik pada mesh untuk menyembunyikan sebuah bagian",
+  "Click on the mesh to pick a layer": "Klik pada mesh untuk memilih sebuah lapisan"
+}

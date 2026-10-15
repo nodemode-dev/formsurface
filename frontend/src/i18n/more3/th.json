@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "เติมสีด้วยลาสโซ",
+  "Rectangle Fill": "เติมสีด้วยสี่เหลี่ยม",
+  "Limit Strokes to Lasso": "จำกัดเส้นพู่กันไว้ในลาสโซ",
+  "Limit Strokes to Rectangle": "จำกัดเส้นพู่กันไว้ในสี่เหลี่ยม",
+  "Recent colors": "สีล่าสุด",
+  "Recent color": "สีล่าสุด",
+  "Lock the palette: picked colors no longer replace these": "ล็อกจานสี: สีที่เลือกจะไม่แทนที่สีเหล่านี้อีกต่อไป",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "ลาสโซ: ลากบนโมเดลเพื่อเติมด้วยแมทีเรียลสำหรับวาด; กด Esc เพื่อยกเลิก",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "ลาสโซ: ลากบนโมเดลเพื่อจำกัดเส้นพู่กันไว้ในพื้นที่นั้น; กด Esc เพื่อยกเลิก",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "สี่เหลี่ยม: ลากบนโมเดลเพื่อเติมด้วยแมทีเรียลสำหรับวาด; กด Esc เพื่อยกเลิก",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "สี่เหลี่ยม: ลากบนโมเดลเพื่อจำกัดเส้นพู่กันไว้ในพื้นที่นั้น; กด Esc เพื่อยกเลิก",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "เส้นพู่กันจะอยู่ภายในส่วนที่เลือกแล้ว (สามเหลี่ยม {0} รูป); กด T หรือตั้งมาสก์ด่วนเป็นปิดเพื่อยกเลิก",
+  "Filled {0} triangles with the paint material": "เติมสามเหลี่ยม {0} รูปด้วยแมทีเรียลสำหรับวาดแล้ว",
+  "The selection was too small": "ส่วนที่เลือกเล็กเกินไป",
+  "Selection cancelled": "ยกเลิกการเลือกแล้ว",
+  "The selection covers no visible surface of the active texture set": "ส่วนที่เลือกไม่ครอบคลุมพื้นผิวที่มองเห็นได้ของชุดเท็กซ์เจอร์ที่ใช้งานอยู่",
+  "Lasso and rectangle selections work in the 3D view": "การเลือกแบบลาสโซและสี่เหลี่ยมใช้ได้ในมุมมอง 3D",
+  "A selection needs at least three corners": "การเลือกต้องมีอย่างน้อยสามมุม",
+  "Hiding parts works in the 3D view": "การซ่อนส่วนต่าง ๆ ใช้ได้ในมุมมอง 3D",
+  "Click on the mesh to hide a part": "คลิกบนเมชเพื่อซ่อนส่วนหนึ่ง",
+  "Click on the mesh to pick a layer": "คลิกบนเมชเพื่อเลือกเลเยอร์"
+}

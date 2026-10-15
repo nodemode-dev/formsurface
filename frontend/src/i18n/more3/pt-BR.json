@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "Preenchimento com laço",
+  "Rectangle Fill": "Preenchimento com retângulo",
+  "Limit Strokes to Lasso": "Limitar pinceladas ao laço",
+  "Limit Strokes to Rectangle": "Limitar pinceladas ao retângulo",
+  "Recent colors": "Cores recentes",
+  "Recent color": "Cor recente",
+  "Lock the palette: picked colors no longer replace these": "Travar a paleta: as cores escolhidas não substituem mais estas",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "Laço: arraste sobre o modelo para preenchê-lo com o material de pintura; Esc cancela",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "Laço: arraste sobre o modelo para limitar as pinceladas a essa área; Esc cancela",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "Retângulo: arraste sobre o modelo para preenchê-lo com o material de pintura; Esc cancela",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "Retângulo: arraste sobre o modelo para limitar as pinceladas a essa área; Esc cancela",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "As pinceladas agora ficam dentro da seleção ({0} triângulos); T ou Máscara rápida Desativado remove isso",
+  "Filled {0} triangles with the paint material": "{0} triângulos preenchidos com o material de pintura",
+  "The selection was too small": "A seleção ficou pequena demais",
+  "Selection cancelled": "Seleção cancelada",
+  "The selection covers no visible surface of the active texture set": "A seleção não cobre nenhuma superfície visível do conjunto de texturas ativo",
+  "Lasso and rectangle selections work in the 3D view": "As seleções de laço e retângulo funcionam na visualização 3D",
+  "A selection needs at least three corners": "Uma seleção precisa de pelo menos três cantos",
+  "Hiding parts works in the 3D view": "Ocultar partes funciona na visualização 3D",
+  "Click on the mesh to hide a part": "Clique na malha para ocultar uma parte",
+  "Click on the mesh to pick a layer": "Clique na malha para escolher uma camada"
+}

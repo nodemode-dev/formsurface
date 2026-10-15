@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "Wypełnienie lassem",
+  "Rectangle Fill": "Wypełnienie prostokątem",
+  "Limit Strokes to Lasso": "Ogranicz pociągnięcia do lasso",
+  "Limit Strokes to Rectangle": "Ogranicz pociągnięcia do prostokąta",
+  "Recent colors": "Ostatnie kolory",
+  "Recent color": "Ostatni kolor",
+  "Lock the palette: picked colors no longer replace these": "Zablokuj paletę: wybrane kolory nie zastępują już tych",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "Lasso: przeciągnij po modelu, aby wypełnić go materiałem malowania; Esc anuluje",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "Lasso: przeciągnij po modelu, aby ograniczyć pociągnięcia do tego obszaru; Esc anuluje",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "Prostokąt: przeciągnij po modelu, aby wypełnić go materiałem malowania; Esc anuluje",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "Prostokąt: przeciągnij po modelu, aby ograniczyć pociągnięcia do tego obszaru; Esc anuluje",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "Pociągnięcia pozostają teraz wewnątrz zaznaczenia (trójkątów: {0}); T lub Szybka maska Wył. znosi to ograniczenie",
+  "Filled {0} triangles with the paint material": "Wypełniono materiałem malowania trójkątów: {0}",
+  "The selection was too small": "Zaznaczenie było za małe",
+  "Selection cancelled": "Zaznaczenie anulowane",
+  "The selection covers no visible surface of the active texture set": "Zaznaczenie nie obejmuje żadnej widocznej powierzchni aktywnego zestawu tekstur",
+  "Lasso and rectangle selections work in the 3D view": "Zaznaczanie lassem i prostokątem działa w widoku 3D",
+  "A selection needs at least three corners": "Zaznaczenie wymaga co najmniej trzech narożników",
+  "Hiding parts works in the 3D view": "Ukrywanie części działa w widoku 3D",
+  "Click on the mesh to hide a part": "Kliknij siatkę, aby ukryć część",
+  "Click on the mesh to pick a layer": "Kliknij siatkę, aby wybrać warstwę"
+}

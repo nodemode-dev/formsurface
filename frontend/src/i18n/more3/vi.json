@@ -1,0 +1,23 @@
+{
+  "Lasso Fill": "Tô bằng lasso",
+  "Rectangle Fill": "Tô bằng hình chữ nhật",
+  "Limit Strokes to Lasso": "Giới hạn nét vẽ trong lasso",
+  "Limit Strokes to Rectangle": "Giới hạn nét vẽ trong hình chữ nhật",
+  "Recent colors": "Màu gần đây",
+  "Recent color": "Màu gần đây",
+  "Lock the palette: picked colors no longer replace these": "Khóa bảng màu: các màu được chọn sẽ không còn thay thế những màu này",
+  "Lasso: drag on the model to fill it with the paint material; Esc cancels": "Lasso: kéo trên mô hình để tô bằng vật liệu vẽ; Esc để hủy",
+  "Lasso: drag on the model to limit strokes to that area; Esc cancels": "Lasso: kéo trên mô hình để giới hạn nét vẽ trong vùng đó; Esc để hủy",
+  "Rectangle: drag on the model to fill it with the paint material; Esc cancels": "Hình chữ nhật: kéo trên mô hình để tô bằng vật liệu vẽ; Esc để hủy",
+  "Rectangle: drag on the model to limit strokes to that area; Esc cancels": "Hình chữ nhật: kéo trên mô hình để giới hạn nét vẽ trong vùng đó; Esc để hủy",
+  "Strokes now stay inside the selection ({0} triangles); T or Quick mask Off lifts it": "Các nét vẽ giờ nằm trong vùng chọn ({0} tam giác); T hoặc Quick mask Tắt sẽ bỏ giới hạn",
+  "Filled {0} triangles with the paint material": "Đã tô {0} tam giác bằng vật liệu vẽ",
+  "The selection was too small": "Vùng chọn quá nhỏ",
+  "Selection cancelled": "Đã hủy vùng chọn",
+  "The selection covers no visible surface of the active texture set": "Vùng chọn không bao phủ bề mặt nhìn thấy nào của texture set đang dùng",
+  "Lasso and rectangle selections work in the 3D view": "Vùng chọn lasso và hình chữ nhật hoạt động trong chế độ xem 3D",
+  "A selection needs at least three corners": "Vùng chọn cần ít nhất ba góc",
+  "Hiding parts works in the 3D view": "Ẩn các phần hoạt động trong chế độ xem 3D",
+  "Click on the mesh to hide a part": "Nhấp lên mesh để ẩn một phần",
+  "Click on the mesh to pick a layer": "Nhấp lên mesh để chọn một layer"
+}
