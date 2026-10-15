@@ -684,6 +684,15 @@ def formsurface_hide_part(
 
 
 @server.tool()
+def formsurface_select_region(
+    points: Annotated[list[tuple[float, float]], Field(min_length=3, max_length=512)],
+    limit: bool = False,
+) -> dict:
+    """Select the visible surface inside a screen polygon (normalized viewport corners, 0,0 top left; four corners make a rectangle). With limit false the area is filled with the paint material on the active layer as one undo step; with limit true it becomes the quick mask and quick mask turns on, so later strokes and fills stay inside it until quick mask is turned off."""
+    return call("select_region", {"points": [list(p) for p in points], "limit": limit}, timeout=120)
+
+
+@server.tool()
 def formsurface_show_all_parts() -> dict:
     """Show every part hidden with formsurface_hide_part."""
     return call("show_all_parts")

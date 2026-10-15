@@ -16,6 +16,9 @@ const DOCK_KEY = 'formsurface.dock';
 const TAB_KEY = 'formsurface.panelTab';
 const FOLD_KEY = 'formsurface.folded';
 const PANEL_KEY = 'formsurface.panel';
+const SWATCH_KEY = 'formsurface.swatches';
+const SWATCH_LOCK_KEY = 'formsurface.swatchesLocked';
+const SWATCHES = 12;
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
 const click = (id: string): void => { byId(id)?.click(); };
@@ -42,6 +45,10 @@ function nudgeBrush(factor: number): void {
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+function select(kind: 'lasso' | 'rect', limit: boolean): void {
+  byId('canvas')?.dispatchEvent(new CustomEvent('fs-select', { detail: { kind, limit } }));
+}
+
 function hidePart(mode: number, isolate: boolean): void {
   byId('canvas')?.dispatchEvent(new CustomEvent('fs-hide-part', { detail: { mode, isolate } }));
 }
@@ -54,6 +61,7 @@ async function pickColor(): Promise<void> {
     const { sRGBHex } = await new Picker().open();
     input.value = sRGBHex;
     input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
   } catch { return; }
 }
 
@@ -111,7 +119,7 @@ export class Shell {
     return [
       { label: 'File', items: ['file.open', sample, '-', 'file.save', 'file.screenshot', '-', 'file.exportMaps', 'file.exportMesh', '-', 'file.preferences'] },
       { label: 'Edit', items: ['edit.undo', 'edit.redo', '-', 'edit.palette', 'edit.shortcuts'] },
-      { label: 'Tools', items: ['tool.paint', 'tool.erase', 'tool.clone', 'tool.polyfill', 'tool.path', '-', 'tool.mirror', 'tool.quickMask', '-', 'tool.brushBigger', 'tool.brushSmaller', 'tool.pickColor'] },
+      { label: 'Tools', items: ['tool.paint', 'tool.erase', 'tool.clone', 'tool.polyfill', 'tool.path', '-', 'tool.mirror', 'tool.quickMask', '-', 'tool.lassoFill', 'tool.rectFill', 'tool.lassoLimit', 'tool.rectLimit', '-', 'tool.brushBigger', 'tool.brushSmaller', 'tool.pickColor'] },
       { label: 'Layer', items: ['layer.addPaint', 'layer.addFill', 'layer.addFillBlack', 'layer.addFilter', 'layer.addFolder', '-', 'layer.maskBlack', 'layer.maskWhite', 'layer.maskNone', '-', 'layer.pickUnderCursor', '-', 'layer.mergeDown', 'layer.flattenFolder', 'layer.flatten', '-', 'layer.export', 'layer.exportMask', '-', 'layer.delete'] },
       { label: 'Bake', items: ['bake.mesh', 'bake.loadHigh', 'bake.high'] },
       { label: 'View', items: ['view.frame', 'view.2d', '-', 'view.hidePart', 'view.hideIsland', 'view.isolatePart', 'view.showParts', '-', ...PANEL_TABS.map((p) => `view.tab.${p.id}`), 'view.panel', '-', 'view.render'] },
@@ -144,6 +152,10 @@ export class Shell {
       { id: 'tool.quickMask', label: 'Toggle Quick Mask', keys: ['T'], run: () => setSelect('qm-mode', byId<HTMLSelectElement>('qm-mode')?.value === '1' ? '2' : '1') },
       { id: 'tool.brushBigger', label: 'Increase Brush Size', keys: [']'], run: () => nudgeBrush(1.15) },
       { id: 'tool.brushSmaller', label: 'Decrease Brush Size', keys: ['['], run: () => nudgeBrush(0.87) },
+      { id: 'tool.lassoFill', label: 'Lasso Fill', keys: ['Q'], run: () => select('lasso', false) },
+      { id: 'tool.rectFill', label: 'Rectangle Fill', keys: ['Shift+Q'], run: () => select('rect', false) },
+      { id: 'tool.lassoLimit', label: 'Limit Strokes to Lasso', keys: ['Alt+Q'], run: () => select('lasso', true) },
+      { id: 'tool.rectLimit', label: 'Limit Strokes to Rectangle', keys: ['Alt+Shift+Q'], run: () => select('rect', true) },
       { id: 'tool.pickColor', label: 'Pick Paint Color from Screen', keys: ['I'], enabled: () => 'EyeDropper' in window, run: () => void pickColor() },
       btn('layer.addPaint', 'Add Paint Layer', 'layer-add', ['Shift+Mod+N']),
       btn('layer.addFill', 'Add Fill Layer', 'layer-add-fill', ['Shift+Mod+F']),
@@ -250,9 +262,53 @@ export class Shell {
       head.addEventListener('dblclick', (e) => { if (!(e.target as HTMLElement).closest('button:not(.fs-fold), select, input')) this.fold(name, !this.folded.has(name)); });
       if (this.folded.has(name)) this.applyFold(section, fold, true);
     }
+    this.buildSwatches();
     if (!PANEL_TABS.some((p) => p.id === this.tab)) this.tab = 'paint';
     this.showTab(this.tab);
     if (read<boolean>(PANEL_KEY, true) === false) this.app.classList.add('is-panel-hidden');
+  }
+
+  private buildSwatches(): void {
+    const input = byId<HTMLInputElement>('c-color');
+    const row = input?.closest('.channel');
+    if (!input || !row) return;
+    let colors = read<string[]>(SWATCH_KEY, []).filter((c) => /^#[0-9a-f]{6}$/i.test(c)).slice(0, SWATCHES);
+    let locked = read<boolean>(SWATCH_LOCK_KEY, false);
+    const strip = el<HTMLElement>(`<div class="fs-swatches" role="group" aria-label="Recent colors"></div>`);
+    const chips: HTMLButtonElement[] = [];
+    for (let i = 0; i < SWATCHES; i++) {
+      const chip = el<HTMLButtonElement>('<button type="button" class="fs-swatch" aria-label="Recent color"></button>');
+      chip.addEventListener('click', () => {
+        const c = colors[i];
+        if (!c) return;
+        input.value = c;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      chips.push(chip);
+      strip.appendChild(chip);
+    }
+    const lock = el<HTMLButtonElement>(`<button type="button" class="fs-swatch-lock" aria-pressed="false" title="Lock the palette: picked colors no longer replace these">${icon('lock', 12)}</button>`);
+    strip.appendChild(lock);
+    const sync = () => {
+      chips.forEach((chip, i) => {
+        const c = colors[i] ?? '';
+        if (chip.style.backgroundColor !== c) chip.style.backgroundColor = c;
+        setClass(chip, 'is-empty', !c);
+        chip.title = c;
+      });
+      lock.setAttribute('aria-pressed', String(locked));
+    };
+    lock.addEventListener('click', () => { locked = !locked; write(SWATCH_LOCK_KEY, locked); sync(); });
+    input.addEventListener('change', () => {
+      if (locked) return;
+      const c = input.value.toLowerCase();
+      colors = [c, ...colors.filter((x) => x !== c)].slice(0, SWATCHES);
+      write(SWATCH_KEY, colors);
+      sync();
+    });
+    row.after(strip);
+    sync();
   }
 
   private applyFold(section: HTMLElement, fold: HTMLElement, on: boolean): void {

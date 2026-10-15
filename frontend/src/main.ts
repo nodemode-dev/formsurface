@@ -874,6 +874,91 @@ async function pickLayerAt(x: number, y: number): Promise<{ id: number; name: st
   return null;
 }
 
+type Selecting = { kind: 'lasso' | 'rect'; limit: boolean; points: [number, number][]; active: boolean };
+let selecting: Selecting | null = null;
+
+function selectionCorners(s: Selecting): [number, number][] {
+  if (s.kind === 'lasso' || s.points.length < 2) return s.points;
+  const [a, b] = [s.points[0], s.points[s.points.length - 1]];
+  return [a, [b[0], a[1]], b, [a[0], b[1]]];
+}
+
+function drawSelection(s: Selecting): void {
+  const ratio = canvas.width / Math.max(1, canvas.getBoundingClientRect().width);
+  const rect = pathOverlay.getBoundingClientRect();
+  const w = Math.max(1, Math.round(rect.width * ratio)), h = Math.max(1, Math.round(rect.height * ratio));
+  if (pathOverlay.width !== w || pathOverlay.height !== h) { pathOverlay.width = w; pathOverlay.height = h; }
+  const ctx = pathOverlay.getContext('2d');
+  if (!ctx) return;
+  ctx.clearRect(0, 0, w, h);
+  const corners = selectionCorners(s);
+  if (corners.length < 2) return;
+  ctx.beginPath();
+  corners.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(249, 115, 22, 0.14)';
+  ctx.fill();
+  ctx.setLineDash([6 * ratio, 4 * ratio]);
+  ctx.lineWidth = 1.5 * ratio;
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#f97316';
+  ctx.stroke();
+}
+
+function fillSelection(corners: [number, number][], limit: boolean): number {
+  const e = requireEngine();
+  if (limit && e.quick_mask_mode() !== 1) setQuickMask(1);
+  const count = e.fill_screen_region(new Float32Array(corners.flat()), true);
+  if (limit) setQuickMask(2);
+  refreshLayers();
+  return count;
+}
+
+canvas.addEventListener('fs-select', (event) => {
+  const { kind, limit } = (event as CustomEvent<{ kind: 'lasso' | 'rect'; limit: boolean }>).detail;
+  selecting = { kind, limit, points: [], active: false };
+  status(`${kind === 'lasso' ? 'Lasso' : 'Rectangle'}: drag on the model${limit ? ' to limit strokes to that area' : ' to fill it with the paint material'}; Esc cancels`);
+});
+
+canvas.addEventListener('pointerdown', (event) => {
+  if (!selecting || event.button !== 0 || event.altKey) return;
+  event.stopImmediatePropagation();
+  canvas.setPointerCapture(event.pointerId);
+  selecting.active = true;
+  selecting.points = [local(event)];
+}, { capture: true });
+
+canvas.addEventListener('pointermove', (event) => {
+  if (!selecting?.active) return;
+  event.stopImmediatePropagation();
+  const p = local(event);
+  if (selecting.kind === 'rect') selecting.points = [selecting.points[0], p];
+  else {
+    const last = selecting.points[selecting.points.length - 1];
+    if (Math.hypot(p[0] - last[0], p[1] - last[1]) > 3) selecting.points.push(p);
+  }
+  drawSelection(selecting);
+}, { capture: true });
+
+canvas.addEventListener('pointerup', (event) => {
+  if (!selecting?.active) return;
+  event.stopImmediatePropagation();
+  const s = selecting;
+  selecting = null;
+  clearOverlay(pathOverlay);
+  const corners = selectionCorners(s);
+  if (corners.length < 3) { status('The selection was too small', true); return; }
+  try {
+    const count = fillSelection(corners, s.limit);
+    status(s.limit ? `Strokes now stay inside the selection (${count} triangles); T or Quick mask Off lifts it` : `Filled ${count} triangles with the paint material`);
+  } catch (error) {
+    status(error instanceof Error ? error.message : String(error), true);
+  }
+}, { capture: true });
+
+window.addEventListener('keydown', (event) => {
+  if (selecting && event.key === 'Escape') { selecting = null; clearOverlay(pathOverlay); status('Selection cancelled'); }
+});
+
 let hoverAt: [number, number] | null = null;
 canvas.addEventListener('pointermove', (event) => { hoverAt = local(event); });
 canvas.addEventListener('pointerleave', () => { hoverAt = null; });
@@ -2493,6 +2578,14 @@ const agentLink = new AgentLink({
     return { hidden_triangles: hidePartAt(Number(x) * canvas.width, Number(y) * canvas.height, code, Boolean(isolate)) };
   },
   show_all_parts: () => { engine?.show_all_parts(); return { hidden_triangles: 0 }; },
+  select_region: ({ points, limit }) => {
+    if (!Array.isArray(points) || points.length < 3) throw new Error('points is a list of at least three [x, y] pairs in normalized viewport coordinates');
+    const corners = (points as unknown[]).map((p): [number, number] => {
+      const [x, y] = p as [number, number];
+      return [Number(x) * canvas.width, Number(y) * canvas.height];
+    });
+    return { triangles: fillSelection(corners, Boolean(limit)), quick_mask: limit ? 'on' : undefined };
+  },
   pick_layer: async ({ x, y }) => {
     const hit = await pickLayerAt(Number(x) * canvas.width, Number(y) * canvas.height);
     return hit ? { selected: hit } : { selected: null, note: 'No visible layer paints this point' };
