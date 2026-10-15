@@ -982,5 +982,10 @@
 "Leave empty for FormSurface's names, or build them from tags: $mesh, $textureSet, $map, $udim (1001), $u and $v (tile column and row from 1), $size. Tiled sets get .1001 appended when no tile tag is used",
 "Maps keep FormSurface's own names",
 "A file name template is at most 120 characters",
-"A file name template needs $map, or every map would get the same name"
+"A file name template needs $map, or every map would get the same name",
+"X and Y",
+"X and Z",
+"Y and Z",
+"X, Y and Z",
+"Mirror across one axis or several at once (up to eight copies of each stamp); radial symmetry turns around the single axis, Z for combined choices"
 ]
