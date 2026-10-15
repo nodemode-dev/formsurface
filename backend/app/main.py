@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from app import ocio
 from app.agent import router as agent_router
 
-VERSION = "0.48.0"
+VERSION = "0.49.0"
 ROOT = Path(__file__).resolve().parents[2]
 DATA = Path(os.environ.get("FORMSURFACE_DATA", ROOT / "workspace"))
 SAFE = re.compile(r"^[A-Za-z0-9 _.-]{1,80}$")
