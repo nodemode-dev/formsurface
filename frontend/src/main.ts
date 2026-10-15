@@ -21,7 +21,7 @@ import { startLanguage, startPageTranslator } from './i18n';
 import { startShell } from './shell/app-shell';
 
 await startLanguage();
-startShell();
+const shell = startShell();
 startPageTranslator();
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -852,6 +852,62 @@ function local(event: PointerEvent | WheelEvent): [number, number] {
   return [(event.clientX - rect.left) * (canvas.width / rect.width), (event.clientY - rect.top) * (canvas.height / rect.height)];
 }
 
+async function pickLayerAt(x: number, y: number): Promise<{ id: number; name: string } | null> {
+  if (!engine) throw new Error('The GPU engine is not running');
+  const coverage = await engine.layer_coverage_at(x, y) as Float32Array;
+  const layers = JSON.parse(engine.layers_json()) as LayerInfo[];
+  const hidden = (layer: LayerInfo): boolean => {
+    for (let at: LayerInfo | undefined = layer, depth = 0; at && depth < 17; depth++) {
+      if (!at.visible) return true;
+      const parent: number = at.parent ?? 0;
+      at = parent ? layers.find((l) => l.id === parent) : undefined;
+    }
+    return false;
+  };
+  for (let i = layers.length - 1; i >= 0; i--) {
+    const layer = layers[i];
+    if (layer.kind === 'folder' || layer.kind === 'filter' || hidden(layer) || (coverage[i] ?? 0) < 0.02) continue;
+    engine.select_layer(layer.id);
+    refreshLayers();
+    return { id: layer.id, name: layer.name };
+  }
+  return null;
+}
+
+let hoverAt: [number, number] | null = null;
+canvas.addEventListener('pointermove', (event) => { hoverAt = local(event); });
+canvas.addEventListener('pointerleave', () => { hoverAt = null; });
+canvas.addEventListener('fs-pick-layer', () => {
+  if (hoverAt) void selectLayerUnder(hoverAt[0], hoverAt[1]);
+  else status('Point at the model, then press the shortcut to select the layer under the cursor', true);
+});
+
+function hidePartAt(x: number, y: number, mode: number, isolate: boolean): number {
+  if (!engine) throw new Error('The GPU engine is not running');
+  return engine.hide_part(x, y, mode, isolate);
+}
+
+canvas.addEventListener('fs-hide-part', (event) => {
+  const { mode, isolate } = (event as CustomEvent<{ mode: number; isolate: boolean }>).detail;
+  if (!hoverAt) { status('Point at the model, then press the shortcut to hide the part under the cursor', true); return; }
+  try {
+    const count = hidePartAt(hoverAt[0], hoverAt[1], mode, isolate);
+    status(`${count} triangles hidden; brushes reach what was behind them; Alt+H shows everything`);
+  } catch (error) {
+    status(error instanceof Error ? error.message : String(error), true);
+  }
+});
+canvas.addEventListener('fs-show-parts', () => { engine?.show_all_parts(); status('Every part is visible'); });
+
+async function selectLayerUnder(x: number, y: number): Promise<void> {
+  try {
+    const hit = await pickLayerAt(x, y);
+    status(hit ? `Selected layer ${hit.name}` : 'No visible layer paints this point');
+  } catch (error) {
+    status(error instanceof Error ? error.message : String(error), true);
+  }
+}
+
 function pressure(event: PointerEvent): number {
   return event.pointerType === 'mouse' ? 1 : Math.max(0.05, event.pressure || 1);
 }
@@ -909,6 +965,7 @@ canvas.addEventListener('pointerdown', (event) => {
   canvas.focus();
   canvas.setPointerCapture(event.pointerId);
   [lastX, lastY] = [event.clientX, event.clientY];
+  if (event.button === 0 && event.altKey && event.shiftKey) { const [x, y] = local(event); void selectLayerUnder(x, y); return; }
   if (event.button === 1 || (event.altKey && event.button === 2)) { nav = 'pan'; return; }
   if (event.button === 2 || (event.altKey && event.button === 0)) { nav = 'orbit'; return; }
   if (event.button !== 0) return;
@@ -2419,6 +2476,27 @@ async function blobBase64(blob: Blob): Promise<string> {
 
 const agentLink = new AgentLink({
   status: () => snapshotState(),
+  list_commands: () => ({
+    commands: shell.commands.all().map((c) => ({ id: c.id, label: shell.commands.label(c), keys: c.keys ?? [], enabled: shell.commands.enabled(c), checked: c.checked ? c.checked() : undefined })),
+  }),
+  run_command: async ({ id }) => {
+    const cmd = shell.commands.get(String(id));
+    if (!cmd) throw new Error(`Unknown command ${String(id)}; formsurface_list_commands gives the ids`);
+    if (/^(file\.open|file\.preferences|bake\.loadHigh|edit\.|help\.|agent\.|view\.(terminal|newTerminal))/.test(cmd.id)) throw new Error(`${cmd.id} opens a window for the person and is not run by agents`);
+    const { ran } = await shell.commands.call(cmd.id);
+    if (!ran) throw new Error(`${cmd.id} is not available right now`);
+    return { ran: cmd.id, checked: cmd.checked ? cmd.checked() : undefined };
+  },
+  hide_part: ({ x, y, mode, isolate }) => {
+    const code = { triangle: 0, polygon: 1, mesh: 2, uv_island: 3 }[String(mode ?? 'mesh')];
+    if (code === undefined) throw new Error('mode is triangle, polygon, mesh or uv_island');
+    return { hidden_triangles: hidePartAt(Number(x) * canvas.width, Number(y) * canvas.height, code, Boolean(isolate)) };
+  },
+  show_all_parts: () => { engine?.show_all_parts(); return { hidden_triangles: 0 }; },
+  pick_layer: async ({ x, y }) => {
+    const hit = await pickLayerAt(Number(x) * canvas.width, Number(y) * canvas.height);
+    return hit ? { selected: hit } : { selected: null, note: 'No visible layer paints this point' };
+  },
   load_mesh: async ({ file, reproject }) => {
     const name = String(file);
     if (reproject !== undefined && reproject !== null) setControl('m-reproject', Boolean(reproject), 'change');

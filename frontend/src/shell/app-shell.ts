@@ -42,6 +42,10 @@ function nudgeBrush(factor: number): void {
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+function hidePart(mode: number, isolate: boolean): void {
+  byId('canvas')?.dispatchEvent(new CustomEvent('fs-hide-part', { detail: { mode, isolate } }));
+}
+
 async function pickColor(): Promise<void> {
   const Picker = (window as unknown as { EyeDropper?: new () => { open: () => Promise<{ sRGBHex: string }> } }).EyeDropper;
   const input = byId<HTMLInputElement>('c-color');
@@ -108,9 +112,9 @@ export class Shell {
       { label: 'File', items: ['file.open', sample, '-', 'file.save', 'file.screenshot', '-', 'file.exportMaps', 'file.exportMesh', '-', 'file.preferences'] },
       { label: 'Edit', items: ['edit.undo', 'edit.redo', '-', 'edit.palette', 'edit.shortcuts'] },
       { label: 'Tools', items: ['tool.paint', 'tool.erase', 'tool.clone', 'tool.polyfill', 'tool.path', '-', 'tool.mirror', 'tool.quickMask', '-', 'tool.brushBigger', 'tool.brushSmaller', 'tool.pickColor'] },
-      { label: 'Layer', items: ['layer.addPaint', 'layer.addFill', 'layer.addFillBlack', 'layer.addFilter', 'layer.addFolder', '-', 'layer.maskBlack', 'layer.maskWhite', 'layer.maskNone', '-', 'layer.mergeDown', 'layer.flattenFolder', 'layer.flatten', '-', 'layer.export', 'layer.exportMask', '-', 'layer.delete'] },
+      { label: 'Layer', items: ['layer.addPaint', 'layer.addFill', 'layer.addFillBlack', 'layer.addFilter', 'layer.addFolder', '-', 'layer.maskBlack', 'layer.maskWhite', 'layer.maskNone', '-', 'layer.pickUnderCursor', '-', 'layer.mergeDown', 'layer.flattenFolder', 'layer.flatten', '-', 'layer.export', 'layer.exportMask', '-', 'layer.delete'] },
       { label: 'Bake', items: ['bake.mesh', 'bake.loadHigh', 'bake.high'] },
-      { label: 'View', items: ['view.frame', 'view.2d', '-', ...PANEL_TABS.map((p) => `view.tab.${p.id}`), 'view.panel', '-', 'view.render'] },
+      { label: 'View', items: ['view.frame', 'view.2d', '-', 'view.hidePart', 'view.hideIsland', 'view.isolatePart', 'view.showParts', '-', ...PANEL_TABS.map((p) => `view.tab.${p.id}`), 'view.panel', '-', 'view.render'] },
       { label: 'Agent', items: ['view.terminal', 'view.newTerminal', 'agent.claude', 'agent.chat', '-', 'agent.link', 'agent.connect'] },
       { label: 'Help', items: ['edit.shortcuts', 'agent.connect', '-', 'help.about'] },
     ];
@@ -155,12 +159,17 @@ export class Shell {
       btn('layer.export', 'Export Layer', 'l-export'),
       btn('layer.exportMask', 'Export Mask', 'l-mask-export'),
       btn('layer.delete', 'Delete Layer', 'layer-delete', ['Mod+Backspace']),
+      { id: 'layer.pickUnderCursor', label: 'Select Layer Under Cursor', keys: ['Shift+S'], run: () => { byId('canvas')?.dispatchEvent(new Event('fs-pick-layer')); } },
       btn('bake.mesh', 'Bake Mesh Maps', 'k-bake', ['Shift+Mod+B']),
       btn('bake.loadHigh', 'Load High-Poly Mesh...', 'k-high-load'),
       btn('bake.high', 'Bake Maps from High-Poly', 'k-bake-high'),
       btn('view.frame', 'Frame Mesh', 'frame', ['F']),
       btn('view.2d', '2D View', 'view-2d', ['U'], { checked: () => pressed('view-2d') }),
       btn('view.render', 'Render to File', 'd-render'),
+      { id: 'view.hidePart', label: 'Hide Part Under Cursor', keys: ['H'], run: () => hidePart(2, false) },
+      { id: 'view.hideIsland', label: 'Hide UV Island Under Cursor', keys: ['Shift+H'], run: () => hidePart(3, false) },
+      { id: 'view.isolatePart', label: 'Isolate Part Under Cursor', keys: ['Alt+Shift+H'], run: () => hidePart(2, true) },
+      { id: 'view.showParts', label: 'Show All Parts', keys: ['Alt+H'], run: () => { byId('canvas')?.dispatchEvent(new Event('fs-show-parts')); } },
       ...PANEL_TABS.map((p, i) => ({ id: `view.tab.${p.id}`, label: `${p.label} Panel`, keys: [`Alt+${i + 1}`], checked: () => this.tab === p.id, run: () => this.showTab(p.id) })),
       { id: 'view.panel', label: 'Show Properties Panel', keys: ['Mod+\\'], checked: () => !this.app.classList.contains('is-panel-hidden'), run: () => this.togglePanel() },
       { id: 'view.terminal', label: 'Terminal', keys: ['Mod+J'], checked: () => this.app.classList.contains('is-dock-open'), run: () => void this.setDock(!this.app.classList.contains('is-dock-open')) },

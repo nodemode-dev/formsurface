@@ -652,6 +652,44 @@ def formsurface_paint_stroke(
 
 
 @server.tool()
+def formsurface_list_commands() -> dict:
+    """Every editor menu command with its id, label, shortcut keys, whether it can run now and, for toggles, whether it is on. The same registry drives the menu bar, the palette and the keyboard."""
+    return call("list_commands")
+
+
+@server.tool()
+def formsurface_run_command(id: Annotated[str, Field(min_length=3, max_length=80)]) -> dict:
+    """Run one editor menu command by id from formsurface_list_commands, exactly as the person would from the menu, for example layer.addFillBlack, layer.mergeDown, view.2d or tool.mirror. Commands that open a window for the person (file dialogs, preferences, the terminal) are refused."""
+    return call("run_command", {"id": id}, timeout=120)
+
+
+@server.tool()
+def formsurface_pick_layer(
+    x: Annotated[float, Field(ge=0, le=1)],
+    y: Annotated[float, Field(ge=0, le=1)],
+) -> dict:
+    """Select the top visible paint or fill layer that paints the surface at a normalized viewport point (0,0 top left), as Alt+Shift+click does in the editor. Returns the selected layer or null when no layer covers that point."""
+    return call("pick_layer", {"x": x, "y": y})
+
+
+@server.tool()
+def formsurface_hide_part(
+    x: Annotated[float, Field(ge=0, le=1)],
+    y: Annotated[float, Field(ge=0, le=1)],
+    mode: Literal["triangle", "polygon", "mesh", "uv_island"] = "mesh",
+    isolate: bool = False,
+) -> dict:
+    """Hide the part of the model under a normalized viewport point (or, with isolate, hide everything else) so strokes and fills reach the surfaces behind it, such as the inside of a mouth or a cupboard. Hidden parts stay in exports. Returns how many triangles are hidden."""
+    return call("hide_part", {"x": x, "y": y, "mode": mode, "isolate": isolate})
+
+
+@server.tool()
+def formsurface_show_all_parts() -> dict:
+    """Show every part hidden with formsurface_hide_part."""
+    return call("show_all_parts")
+
+
+@server.tool()
 def formsurface_undo(steps: Annotated[int, Field(ge=1, le=24)] = 1) -> dict:
     """Undo strokes and fills."""
     return call("undo", {"steps": steps})
