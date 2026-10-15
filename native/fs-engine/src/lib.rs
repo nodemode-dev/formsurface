@@ -31,6 +31,7 @@ struct TraceRun {
 }
 
 const VIEW_TRANSFORMS: [&str; 5] = ["aces", "standard", "agx", "filmic", "ocio"];
+const WEBGPU_ONLY: &str = "This needs WebGPU: the path tracer and the ray-traced bake read storage buffers, which WebGL 2 (the Linux desktop app, or a browser without WebGPU) does not have. Use the mesh bake here, or open FormSurface in a browser with WebGPU";
 const POST_KEYS: [&str; 16] = ["bloom", "bloom_threshold", "glare", "lens_flare", "vignette", "vignette_softness", "grain", "sharpen", "aberration", "dof_aperture", "dof_focus", "contrast", "saturation", "temperature", "tint", "gain"];
 const POST_DEFAULTS: [f32; 16] = [0.0, 0.8, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
 const POST_RANGES: [(f32, f32); 16] = [(0.0, 2.0), (0.0, 0.99), (0.0, 2.0), (0.0, 2.0), (0.0, 1.0), (0.0, 1.0), (0.0, 1.0), (0.0, 2.0), (0.0, 1.0), (0.0, 24.0), (-1.0, 1.0), (-1.0, 1.0), (0.0, 2.0), (-1.0, 1.0), (-1.0, 1.0), (0.0, 2.0)];
@@ -1098,6 +1099,9 @@ impl Engine {
         if on && self.mesh.is_none() {
             return Err(JsValue::from_str("Load a mesh before path tracing"));
         }
+        if on && self.gpu.backend == "Gl" {
+            return Err(JsValue::from_str(WEBGPU_ONLY));
+        }
         self.path_bounces = if on { bounces.clamp(1, 12) } else { 0 };
         self.path_limit = max_samples.clamp(1, 65536);
         self.gpu.path_view = on;
@@ -2155,6 +2159,9 @@ impl Engine {
     pub fn bake_traced_begin(&mut self, directions: u32, rays: u32) -> Result<(), JsValue> {
         if self.stroking {
             return Err(JsValue::from_str("Finish the stroke before baking"));
+        }
+        if self.gpu.backend == "Gl" {
+            return Err(JsValue::from_str(WEBGPU_ONLY));
         }
         self.bake_maps(directions)?;
         let (mesh, bvh) = self.mesh.as_ref().ok_or_else(|| JsValue::from_str("Load a mesh before baking"))?;

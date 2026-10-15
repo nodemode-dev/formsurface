@@ -1680,6 +1680,17 @@ fn fs(i: VOut) -> @location(0) vec4<f32> {
 }
 "#;
 
+// Placeholders on WebGL 2 for the passes that need storage buffers; never drawn, the engine refuses those features there.
+pub const STUB_ONE: &str = r#"
+@fragment
+fn fs() -> @location(0) vec4<f32> { return vec4<f32>(0.0); }
+"#;
+pub const STUB_THREE: &str = r#"
+struct Three { @location(0) a: vec4<f32>, @location(1) b: vec4<f32>, @location(2) c: vec4<f32>, };
+@fragment
+fn fs() -> Three { return Three(vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0)); }
+"#;
+
 // Viewport depth written as a color, for backends that cannot read a depth texture in a shader (WebGL 2 returns 0).
 pub const OCCLUSION: &str = r#"
 struct Camera {

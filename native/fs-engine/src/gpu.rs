@@ -634,6 +634,7 @@ impl Gpu {
             }
         };
         let backend = format!("{:?}", adapter.get_info().backend);
+        let webgl = backend == "Gl";
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor { label: Some("formsurface"), required_limits: adapter.limits(), ..Default::default() })
             .await
@@ -673,9 +674,9 @@ impl Gpu {
             post_pipe: pipeline(&device, "post", &format!("{}{}", shaders::POST_COMMON, shaders::POST), false, &[format], None, false),
             bloom_pipe: pipeline(&device, "bloom", &format!("{}{}", shaders::POST_COMMON, shaders::BLOOM), false, &[LAYER_FORMAT], None, false),
             reproject_pipe: pipeline(&device, "reproject", shaders::REPROJECT, false, &[LAYER_FORMAT; 4], None, false),
-            trace_pipe: pipeline(&device, "ray traced bake", shaders::TRACE, false, &[LAYER_FORMAT], None, false),
+            trace_pipe: pipeline(&device, "ray traced bake", if webgl { shaders::STUB_ONE } else { shaders::TRACE }, false, &[LAYER_FORMAT], None, false),
             trace_job: None,
-            path_pipe: pipeline(&device, "path trace", &format!("{}{}", shaders::ENV_COMMON, shaders::PATH), false, &[wgpu::TextureFormat::Rgba32Float, LAYER_FORMAT, LAYER_FORMAT], None, false),
+            path_pipe: pipeline(&device, "path trace", &if webgl { shaders::STUB_THREE.to_string() } else { format!("{}{}", shaders::ENV_COMMON, shaders::PATH) }, false, &[wgpu::TextureFormat::Rgba32Float, LAYER_FORMAT, LAYER_FORMAT], None, false),
             path_filter_pipe: pipeline(&device, "path denoise", shaders::PATH_FILTER, false, &[wgpu::TextureFormat::Rgba32Float], None, false),
             path_filter_uniforms: [uniform("path denoise", 16), uniform("path denoise", 16), uniform("path denoise", 16), uniform("path denoise", 16)],
             path_denoise: false,
@@ -1293,8 +1294,19 @@ impl Gpu {
     /// return 0, so nothing would count as visible), so there the mesh is drawn once more into an R32Float target,
     /// with the camera already written and hidden parts left out as in the viewport.
     fn occlusion_view(&mut self) -> wgpu::TextureView {
-        if self.backend != "Gl" {
+        if !self.ensure_occlusion() {
             return self.depth.create_view(&wgpu::TextureViewDescriptor { aspect: wgpu::TextureAspect::DepthOnly, ..Default::default() });
+        }
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        let view = self.encode_occlusion(&mut encoder).expect("occlusion targets exist after ensure_occlusion");
+        self.queue.submit([encoder.finish()]);
+        view
+    }
+
+    /// On WebGL 2, makes sure the occlusion targets exist at the viewport size; false on every other backend.
+    fn ensure_occlusion(&mut self) -> bool {
+        if self.backend != "Gl" {
+            return false;
         }
         let (w, h) = (self.depth.width(), self.depth.height());
         if self.occlusion.as_ref().map(|(c, _)| c.width() != w || c.height() != h).unwrap_or(true) {
@@ -1310,10 +1322,17 @@ impl Gpu {
             });
             self.occlusion = Some((color, depth_texture(&self.device, w, h)));
         }
-        let (color, depth) = self.occlusion.as_ref().expect("occlusion targets were just made");
+        true
+    }
+
+    /// Records the R32Float viewport depth into `encoder` when the targets exist and match the viewport (WebGL 2 only).
+    fn encode_occlusion(&self, encoder: &mut wgpu::CommandEncoder) -> Option<wgpu::TextureView> {
+        let (color, depth) = self.occlusion.as_ref()?;
+        if color.width() != self.depth.width() || color.height() != self.depth.height() {
+            return None;
+        }
         let (cv, dv) = (view_of(color), view_of(depth));
         let group = bind(&self.device, &self.occlusion_pipe, &[self.camera.as_entire_binding()]);
-        let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 color_attachments: &[attach(&cv, wgpu::LoadOp::Clear(wgpu::Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }))],
@@ -1328,8 +1347,7 @@ impl Gpu {
                 pass.draw_indexed(0..self.total, 0, 0..1);
             }
         }
-        self.queue.submit([encoder.finish()]);
-        view_of(color)
+        Some(view_of(color))
     }
 
     fn draw_all(&self, pass: &mut wgpu::RenderPass) {
@@ -2912,6 +2930,9 @@ impl Gpu {
                 return;
             }
         };
+        if self.post_params[9] >= 0.5 {
+            self.ensure_occlusion();
+        }
         let mut encoder = self.device.create_command_encoder(&Default::default());
         self.encode_view(&mut encoder, &frame.texture, view_proj, eye, cursor, exposure, normal_strength);
         self.queue.submit([encoder.finish()]);
@@ -2932,6 +2953,9 @@ impl Gpu {
         });
         let row = (width * 4).next_multiple_of(256);
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("snapshot readback"), size: (row * height) as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+        if self.post_params[9] >= 0.5 {
+            self.ensure_occlusion();
+        }
         let mut encoder = self.device.create_command_encoder(&Default::default());
         self.encode_view(&mut encoder, &target, view_proj, eye, None, exposure, normal_strength);
         encoder.copy_texture_to_buffer(
@@ -3046,7 +3070,9 @@ impl Gpu {
                 pass.draw(0..3, 0..1);
             }
         }
-        let depth_only = self.depth.create_view(&wgpu::TextureViewDescriptor { aspect: wgpu::TextureAspect::DepthOnly, ..Default::default() });
+        // Depth of field (params[9] is its aperture) reads depth; on WebGL 2 that comes from the R32Float copy.
+        let copied = if params[9] >= 0.5 { self.encode_occlusion(encoder) } else { None };
+        let depth_only = copied.unwrap_or_else(|| self.depth.create_view(&wgpu::TextureViewDescriptor { aspect: wgpu::TextureAspect::DepthOnly, ..Default::default() }));
         let group = bind(&self.device, &self.post_pipe, &[
             self.post_uniform.as_entire_binding(),
             wgpu::BindingResource::TextureView(&scene),
