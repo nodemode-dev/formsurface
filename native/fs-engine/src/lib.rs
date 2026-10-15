@@ -39,6 +39,12 @@ const POST_RANGES: [(f32, f32); 16] = [(0.0, 2.0), (0.0, 0.99), (0.0, 2.0), (0.0
 #[wasm_bindgen]
 pub struct Engine {
     gpu: Gpu,
+    /// Paint across texture sets: a stroke also paints the layer of the same name and kind in every other set.
+    cross_sets: bool,
+    /// During a cross-set stroke: (set, layer id) for each other set that has a matching layer.
+    cross_targets: Vec<(usize, u32)>,
+    /// One entry per cross-set stroke: (set, undo serial) for every set it painted, so undo and redo move them together.
+    cross_log: Vec<Vec<(usize, u64)>>,
     sets: Vec<SetEntry>,
     set_index: usize,
     mesh: Option<(Mesh, Bvh)>,
@@ -111,6 +117,9 @@ pub async fn create_engine(canvas: web_sys::HtmlCanvasElement, texture_size: u32
     let gpu = Gpu::new(canvas, width, height, texture_size).await.map_err(|e| JsValue::from_str(&e))?;
     let mut engine = Engine {
         gpu,
+        cross_sets: false,
+        cross_targets: Vec::new(),
+        cross_log: Vec::new(),
         sets: Vec::new(),
         set_index: 0,
         mesh: None,
@@ -245,6 +254,7 @@ impl Engine {
         self.match_keys = None;
         self.polygons = None;
         self.uv1 = None;
+        self.cross_log.clear();
         self.gpu.clear_uv1_maps();
         self.hidden.clear();
         self.hidden_history.clear();
@@ -1594,6 +1604,22 @@ impl Engine {
             let i = e.layer_index(active);
             e.gpu.begin_stroke(i);
         });
+        self.cross_targets.clear();
+        if self.cross_sets && self.flat.is_none() && self.gpu.quick_mode != 1 && self.brush.mode != StrokeMode::Clone {
+            let (name, kind) = (self.layers[index].name.clone(), self.layers[index].kind);
+            let skip = self.siblings();
+            let found: Vec<(usize, u32)> = (0..self.sets.len())
+                .filter(|k| *k != self.set_index && !skip.contains(k))
+                .filter_map(|k| self.sets[k].parked.as_ref().and_then(|p| p.layers.iter().find(|l| l.name == name && l.kind == kind).map(|l| (k, l.id))))
+                .collect();
+            let original = self.set_index;
+            for &(k, id) in &found {
+                self.switch_set(k);
+                let i = self.layer_index(id);
+                self.gpu.begin_stroke(i);
+            }
+            self.switch_set(original);            self.cross_targets = found;
+        }
         self.stroking = true;
         self.lazy = Some((x, y));
         if self.flat.is_some() {
@@ -1668,8 +1694,27 @@ impl Engine {
     pub fn stroke_end(&mut self) {
         if self.stroking {
             self.flush();
+            let mut group: Vec<(usize, u64)> = self.gpu.stroke_serial().map(|s| (self.set_index, s)).into_iter().collect();
             self.gpu.end_stroke();
             self.each_sibling(|e| e.gpu.end_stroke());
+            let targets = std::mem::take(&mut self.cross_targets);
+            if !targets.is_empty() {
+                let original = self.set_index;
+                for (k, _) in targets {
+                    self.switch_set(k);
+                    if let Some(s) = self.gpu.stroke_serial() {
+                        group.push((k, s));
+                    }
+                    self.gpu.end_stroke();
+                }
+                self.switch_set(original);
+                if group.len() > 1 {
+                    self.cross_log.push(group);
+                    if self.cross_log.len() > 128 {
+                        self.cross_log.remove(0);
+                    }
+                }
+            }
         }
         self.stroking = false;
         self.last_stamp = None;
@@ -1716,7 +1761,41 @@ impl Engine {
         serde_json::json!({ "yaw": self.yaw, "pitch": self.pitch, "distance": self.distance, "fov": self.fov }).to_string()
     }
 
+    /// Painting across texture sets: on or off. Off by default, as in Painter, which paints one set at a time.
+    pub fn set_cross_sets(&mut self, on: bool) {
+        self.cross_sets = on;
+    }
+
+    pub fn cross_sets(&self) -> bool {
+        self.cross_sets
+    }
+
+    /// When the step about to be undone (or redone) here was a cross-set stroke, undo (or redo) it in the other sets too.
+    fn cross_step(&mut self, redo: bool) {
+        if self.relaying {
+            return;
+        }
+        let top = if redo { self.gpu.redo_top() } else { self.gpu.undo_top() };
+        let Some(top) = top else { return };
+        let here = self.set_index;
+        let Some(group) = self.cross_log.iter().find(|g| g.contains(&(here, top))).cloned() else { return };
+        for (k, serial) in group {
+            if k == here {
+                continue;
+            }
+            self.switch_set(k);
+            let next = if redo { self.gpu.redo_top() } else { self.gpu.undo_top() };
+            if next == Some(serial) {
+                let ids = self.layer_ids();
+                if redo { self.gpu.redo(&ids); } else { self.gpu.undo(&ids); }
+                self.flush_set();
+            }
+        }
+        self.switch_set(here);
+    }
+
     pub fn undo(&mut self) -> bool {
+        self.cross_step(false);
         if let Some(r) = self.relay(|e| e.undo()) {
             return r;
         }
@@ -1726,6 +1805,7 @@ impl Engine {
     }
 
     pub fn redo(&mut self) -> bool {
+        self.cross_step(true);
         if let Some(r) = self.relay(|e| e.redo()) {
             return r;
         }
@@ -2756,6 +2836,21 @@ impl Engine {
             e.gpu.paint(&stamps, view_proj, eye, &e.brush, &e.channels, index, to_mask);
             e.gpu.composite(&e.layers, &e.filters);
         });
+        // Stamps live in world space and each set's paint pass only rasterizes its own triangles, so the same stamps
+        // land on whatever part of another material they cover, with no seam handling between sets.
+        let targets = self.cross_targets.clone();
+        if !targets.is_empty() {
+            let original = self.set_index;
+            for (k, id) in targets {
+                self.switch_set(k);
+                let index = self.layer_index(id);
+                let layer = &self.layers[index];
+                let to_mask = layer.kind != LayerKind::Paint || (self.mask_target && layer.mask);
+                self.gpu.clone_layer = None;                self.gpu.paint(&stamps, view_proj, eye, &self.brush, &self.channels, index, to_mask);
+                self.flush_set();
+            }
+            self.switch_set(original);
+        }
         self.dirty = true;
     }
 

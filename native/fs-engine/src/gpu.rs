@@ -37,6 +37,8 @@ pub struct Effect {
 struct Snapshot {
     layer: u32,
     set: Set,
+    /// Unique across texture sets, so one stroke that painted several sets can be undone in all of them together.
+    serial: u64,
 }
 
 struct Pair {
@@ -119,6 +121,7 @@ pub struct Gpu {
     _instance: wgpu::Instance,
     /// Per texture set: UV1 at every UV0 texel (Rgba32Float u1, v1, 0, coverage), read by fills projected through UV1.
     uv1_maps: std::collections::HashMap<usize, wgpu::Texture>,
+    serial: u64,
     _adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -800,6 +803,7 @@ impl Gpu {
             config,
             _instance: instance,
             uv1_maps: Default::default(),
+            serial: 0,
             _adapter: adapter,
             device,
             queue,
@@ -2329,7 +2333,23 @@ impl Gpu {
             encoder.copy_texture_to_texture(self.quick.as_image_copy(), set.mask.as_image_copy(), extent);
         }
         self.queue.submit([encoder.finish()]);
-        self.stroke = Some((index, Snapshot { layer: self.layers[index].id, set }));
+        self.serial += 1;
+        self.stroke = Some((index, Snapshot { layer: self.layers[index].id, set, serial: self.serial }));
+    }
+
+    /// Serial of the step the next undo would revert on the current texture set.
+    pub fn undo_top(&self) -> Option<u64> {
+        self.undo_stack.last().map(|s| s.serial)
+    }
+
+    /// Serial of the step the next redo would restore on the current texture set.
+    pub fn redo_top(&self) -> Option<u64> {
+        self.redo_stack.last().map(|s| s.serial)
+    }
+
+    /// Serial of the stroke in progress on the current texture set.
+    pub fn stroke_serial(&self) -> Option<u64> {
+        self.stroke.as_ref().map(|(_, s)| s.serial)
     }
 
     pub fn mask_triangles(&self, indices: &[u32], triangles: &[u32]) {
