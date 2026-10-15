@@ -1,0 +1,10 @@
+{
+  "Strokes now stay inside the selection; T or Quick mask Off lifts it": "Siveltimen vedot pysyvät nyt valinnan sisällä; T tai Pikamaski Pois poistaa rajoituksen",
+  "Filled the selection with the paint material": "Valinta täytetty maalausmateriaalilla",
+  "{0} triangles hidden": "{0} kolmiota piilotettu",
+  "No parts hidden": "Ei piilotettuja osia",
+  "Show all": "Näytä kaikki",
+  "Step back": "Askel taaksepäin",
+  "Go back one hide or show step": "Palaa yksi piilotus- tai näyttöaskel taaksepäin",
+  "Parts hidden with View > Hide Part Under Cursor (H); brushes reach the surface behind them, exports keep them": "Osat piilotettu komennolla Näkymä > Piilota kohdistimen alla oleva osa (H); siveltimet yltävät niiden takana olevalle pinnalle, viennit säilyttävät ne"
+}

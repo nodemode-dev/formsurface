@@ -1,0 +1,10 @@
+{
+  "Strokes now stay inside the selection; T or Quick mask Off lifts it": "Nét vẽ giờ nằm trong vùng chọn; nhấn T hoặc đặt Quick mask Tắt để bỏ giới hạn",
+  "Filled the selection with the paint material": "Đã tô vùng chọn bằng vật liệu sơn",
+  "{0} triangles hidden": "Đã ẩn {0} tam giác",
+  "No parts hidden": "Không có phần nào bị ẩn",
+  "Show all": "Hiện tất cả",
+  "Step back": "Lùi một bước",
+  "Go back one hide or show step": "Lùi một bước ẩn hoặc hiện",
+  "Parts hidden with View > Hide Part Under Cursor (H); brushes reach the surface behind them, exports keep them": "Các phần được ẩn bằng Xem > Ẩn phần dưới con trỏ (H); cọ chạm tới bề mặt phía sau, xuất file vẫn giữ chúng"
+}

@@ -1,0 +1,10 @@
+{
+  "Strokes now stay inside the selection; T or Quick mask Off lifts it": "ストロークは選択範囲内にとどまります。T またはクイックマスクをオフにすると解除されます",
+  "Filled the selection with the paint material": "選択範囲をペイントマテリアルで塗りつぶしました",
+  "{0} triangles hidden": "{0} 個の三角形を隠しました",
+  "No parts hidden": "隠れているパーツはありません",
+  "Show all": "すべて表示",
+  "Step back": "一つ戻る",
+  "Go back one hide or show step": "隠す・表示する操作を一つ戻します",
+  "Parts hidden with View > Hide Part Under Cursor (H); brushes reach the surface behind them, exports keep them": "表示 > カーソル下のパーツを隠す (H) で隠したパーツ。ブラシは背後の表面に届き、書き出しにはそのまま含まれます"
+}

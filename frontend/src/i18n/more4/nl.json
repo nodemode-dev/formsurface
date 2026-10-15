@@ -1,0 +1,10 @@
+{
+  "Strokes now stay inside the selection; T or Quick mask Off lifts it": "Penseelstreken blijven nu binnen de selectie; T of Snel masker Uit heft dit op",
+  "Filled the selection with the paint material": "Selectie gevuld met het verfmateriaal",
+  "{0} triangles hidden": "{0} driehoeken verborgen",
+  "No parts hidden": "Geen onderdelen verborgen",
+  "Show all": "Alles tonen",
+  "Step back": "Stap terug",
+  "Go back one hide or show step": "Eén stap van verbergen of tonen teruggaan",
+  "Parts hidden with View > Hide Part Under Cursor (H); brushes reach the surface behind them, exports keep them": "Onderdelen verborgen met Weergave > Onderdeel onder de cursor verbergen (H); penselen bereiken het oppervlak erachter, exports behouden ze"
+}

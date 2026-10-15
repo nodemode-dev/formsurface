@@ -1,0 +1,10 @@
+{
+  "Strokes now stay inside the selection; T or Quick mask Off lifts it": "Penselstrøg bliver nu inden for markeringen; T eller Hurtigmaske Fra ophæver det",
+  "Filled the selection with the paint material": "Markeringen er udfyldt med malematerialet",
+  "{0} triangles hidden": "{0} trekanter skjult",
+  "No parts hidden": "Ingen dele skjult",
+  "Show all": "Vis alle",
+  "Step back": "Et trin tilbage",
+  "Go back one hide or show step": "Gå et trin tilbage i skjul eller vis",
+  "Parts hidden with View > Hide Part Under Cursor (H); brushes reach the surface behind them, exports keep them": "Dele skjult med Visning > Skjul del under markøren (H); pensler når overfladen bag dem, eksport beholder dem"
+}

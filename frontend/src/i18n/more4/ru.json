@@ -1,0 +1,10 @@
+{
+  "Strokes now stay inside the selection; T or Quick mask Off lifts it": "Теперь мазки остаются внутри выделения; T или Быстрая маска Выкл. снимает ограничение",
+  "Filled the selection with the paint material": "Выделение заполнено материалом краски",
+  "{0} triangles hidden": "Скрыто треугольников: {0}",
+  "No parts hidden": "Нет скрытых частей",
+  "Show all": "Показать все",
+  "Step back": "Шаг назад",
+  "Go back one hide or show step": "Вернуться на один шаг скрытия или показа",
+  "Parts hidden with View > Hide Part Under Cursor (H); brushes reach the surface behind them, exports keep them": "Части скрыты командой Вид > Скрыть часть под курсором (H); кисти достают до поверхности позади них, экспорт их сохраняет"
+}

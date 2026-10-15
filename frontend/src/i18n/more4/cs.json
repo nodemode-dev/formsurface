@@ -1,0 +1,10 @@
+{
+  "Strokes now stay inside the selection; T or Quick mask Off lifts it": "Tahy štětcem nyní zůstávají uvnitř výběru; T nebo Rychlá maska Vyp. to zruší",
+  "Filled the selection with the paint material": "Výběr vyplněn malovacím materiálem",
+  "{0} triangles hidden": "Skryté trojúhelníky: {0}",
+  "No parts hidden": "Žádné skryté části",
+  "Show all": "Zobrazit vše",
+  "Step back": "Krok zpět",
+  "Go back one hide or show step": "Vrátit o jeden krok skrytí nebo zobrazení",
+  "Parts hidden with View > Hide Part Under Cursor (H); brushes reach the surface behind them, exports keep them": "Části skryté příkazem Zobrazení > Skrýt část pod kurzorem (H); štětce dosáhnou na povrch za nimi, exporty je zachovají"
+}

@@ -1,0 +1,10 @@
+{
+  "Strokes now stay inside the selection; T or Quick mask Off lifts it": "Fırça darbeleri artık seçimin içinde kalıyor; T veya Hızlı maske Kapalı bunu kaldırır",
+  "Filled the selection with the paint material": "Seçim boya malzemesiyle dolduruldu",
+  "{0} triangles hidden": "{0} üçgen gizlendi",
+  "No parts hidden": "Gizlenmiş parça yok",
+  "Show all": "Tümünü göster",
+  "Step back": "Geri adım",
+  "Go back one hide or show step": "Gizleme veya gösterme adımını bir geri al",
+  "Parts hidden with View > Hide Part Under Cursor (H); brushes reach the surface behind them, exports keep them": "Görünüm > İmlecin Altındaki Parçayı Gizle (H) ile gizlenen parçalar; fırçalar arkalarındaki yüzeye ulaşır, dışa aktarımlar onları korur"
+}

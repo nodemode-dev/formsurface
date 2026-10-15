@@ -1,0 +1,10 @@
+{
+  "Strokes now stay inside the selection; T or Quick mask Off lifts it": "Les traits restent désormais dans la sélection ; T ou Masque rapide Désactivé lève la restriction",
+  "Filled the selection with the paint material": "Sélection remplie avec le matériau de peinture",
+  "{0} triangles hidden": "{0} triangles masqués",
+  "No parts hidden": "Aucune partie masquée",
+  "Show all": "Tout afficher",
+  "Step back": "Revenir en arrière",
+  "Go back one hide or show step": "Revenir d'une étape de masquage ou d'affichage",
+  "Parts hidden with View > Hide Part Under Cursor (H); brushes reach the surface behind them, exports keep them": "Parties masquées avec Affichage > Masquer la partie sous le curseur (H) ; les pinceaux atteignent la surface derrière elles, les exports les conservent"
+}

@@ -1,0 +1,10 @@
+{
+  "Strokes now stay inside the selection; T or Quick mask Off lifts it": "笔触现在保持在选区内；按 T 或将快速蒙版设为关即可解除",
+  "Filled the selection with the paint material": "已用绘制材质填充选区",
+  "{0} triangles hidden": "已隐藏 {0} 个三角形",
+  "No parts hidden": "没有隐藏的部分",
+  "Show all": "全部显示",
+  "Step back": "后退一步",
+  "Go back one hide or show step": "后退一步隐藏或显示操作",
+  "Parts hidden with View > Hide Part Under Cursor (H); brushes reach the surface behind them, exports keep them": "通过 视图 > 隐藏光标下的部分 (H) 隐藏的部分；画笔可触及其后方的表面，导出时仍会保留"
+}

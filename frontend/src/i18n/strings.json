@@ -939,5 +939,13 @@
 "A selection needs at least three corners",
 "Hiding parts works in the 3D view",
 "Click on the mesh to hide a part",
-"Click on the mesh to pick a layer"
+"Click on the mesh to pick a layer",
+"Strokes now stay inside the selection; T or Quick mask Off lifts it",
+"Filled the selection with the paint material",
+"{0} triangles hidden",
+"No parts hidden",
+"Show all",
+"Step back",
+"Go back one hide or show step",
+"Parts hidden with View > Hide Part Under Cursor (H); brushes reach the surface behind them, exports keep them"
 ]

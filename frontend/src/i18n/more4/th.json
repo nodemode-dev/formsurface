@@ -1,0 +1,10 @@
+{
+  "Strokes now stay inside the selection; T or Quick mask Off lifts it": "ตอนนี้เส้นพู่กันจะอยู่ภายในส่วนที่เลือก กด T หรือปิดมาสก์ด่วนเพื่อยกเลิก",
+  "Filled the selection with the paint material": "เติมส่วนที่เลือกด้วยวัสดุสีแล้ว",
+  "{0} triangles hidden": "ซ่อนสามเหลี่ยม {0} รูป",
+  "No parts hidden": "ไม่มีส่วนที่ซ่อนอยู่",
+  "Show all": "แสดงทั้งหมด",
+  "Step back": "ย้อนกลับหนึ่งขั้น",
+  "Go back one hide or show step": "ย้อนกลับหนึ่งขั้นของการซ่อนหรือแสดง",
+  "Parts hidden with View > Hide Part Under Cursor (H); brushes reach the surface behind them, exports keep them": "ส่วนที่ซ่อนด้วย มุมมอง > ซ่อนส่วนใต้เคอร์เซอร์ (H) แปรงยังเข้าถึงพื้นผิวด้านหลังได้ และการส่งออกจะคงส่วนเหล่านั้นไว้"
+}

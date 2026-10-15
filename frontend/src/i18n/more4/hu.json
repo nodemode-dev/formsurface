@@ -1,0 +1,10 @@
+{
+  "Strokes now stay inside the selection; T or Quick mask Off lifts it": "A ecsetvonások mostantól a kijelölésen belül maradnak; a T vagy a Gyorsmaszk Ki feloldja",
+  "Filled the selection with the paint material": "A kijelölés kitöltve a festőanyaggal",
+  "{0} triangles hidden": "{0} háromszög elrejtve",
+  "No parts hidden": "Nincs elrejtett rész",
+  "Show all": "Összes megjelenítése",
+  "Step back": "Lépés vissza",
+  "Go back one hide or show step": "Egy elrejtési vagy megjelenítési lépés visszavonása",
+  "Parts hidden with View > Hide Part Under Cursor (H); brushes reach the surface behind them, exports keep them": "Elrejtett részek: Nézet > Kurzor alatti rész elrejtése (H); az ecsetek elérik a mögöttük lévő felületet, az exportok megtartják őket"
+}

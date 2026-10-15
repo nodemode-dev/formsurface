@@ -1,0 +1,10 @@
+{
+  "Strokes now stay inside the selection; T or Quick mask Off lifts it": "Тепер мазки залишаються всередині виділення; T або Швидка маска Вимк. знімає обмеження",
+  "Filled the selection with the paint material": "Виділення заповнено матеріалом фарби",
+  "{0} triangles hidden": "Приховано трикутників: {0}",
+  "No parts hidden": "Немає прихованих частин",
+  "Show all": "Показати все",
+  "Step back": "Крок назад",
+  "Go back one hide or show step": "Повернутися на один крок приховування або показу",
+  "Parts hidden with View > Hide Part Under Cursor (H); brushes reach the surface behind them, exports keep them": "Частини приховано командою Вигляд > Приховати частину під курсором (H); пензлі сягають поверхні позаду них, експорт їх зберігає"
+}
