@@ -17,6 +17,12 @@ import { clearOverlay, drawPath, filledCover, pathSamples, ribbonCover, type Vec
 import { newEffect, renderEffects, type MaskEffectSpec } from './ui/mask-effects';
 import { clickPythonButton, emitPython, pythonLoaded, runPython, setPythonOutput } from './ui/python';
 import { fontLabel, loadFont, textImage } from './ui/text';
+import { startLanguage, startPageTranslator } from './i18n';
+import { startShell } from './shell/app-shell';
+
+await startLanguage();
+startShell();
+startPageTranslator();
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>('canvas');
@@ -1005,29 +1011,12 @@ canvas.addEventListener('wheel', (event) => { event.preventDefault(); engine?.zo
 window.addEventListener('keydown', (event) => {
   if (!engine || (event.target as HTMLElement).tagName === 'INPUT' && !['range', 'checkbox'].includes((event.target as HTMLInputElement).type)) return;
   const key = event.key.toLowerCase();
-  if ((event.ctrlKey || event.metaKey) && key === 'z') { event.preventDefault(); if (event.shiftKey) engine.redo(); else engine.undo(); return; }
-  if ((event.ctrlKey || event.metaKey) && key === 'y') { event.preventDefault(); engine.redo(); return; }
   if (tool === 'path' && pathPoints.length && (key === 'enter' || key === 'backspace' || key === 'escape')) {
     event.preventDefault();
     if (key === 'enter') runPathStroke();
     else if (key === 'backspace') pathPoints.pop();
     else pathPoints.length = 0;
     if (!pathPoints.length) clearOverlay(pathOverlay);
-    return;
-  }
-  if (key === 'b') setTool('paint');
-  else if (key === 'l') setTool('path');
-  else if (key === 'u') { try { setView2d(!engine.view_2d()); } catch (error) { status(error instanceof Error ? error.message : String(error), true); } }
-  else if (key === 'p') setTool('polyfill');
-  else if (key === 'c' && !event.ctrlKey && !event.metaKey) setTool('clone');
-  else if (key === 't') setQuickMask(engine.quick_mask_mode() === 1 ? 2 : 1);
-  else if (key === 'e') setTool('erase');
-  else if (key === 'm') $('tool-mirror').click();
-  else if (key === 'f') engine.frame_mesh();
-  else if (key === '[' || key === ']') {
-    const input = $<HTMLInputElement>('b-size');
-    input.value = String(Math.max(2, Math.min(400, Math.round(num('b-size') * (key === ']' ? 1.15 : 0.87)))));
-    setOutput('b-size'); syncBrush();
   }
 });
 
@@ -2180,11 +2169,12 @@ interface ExportChoice {
   depth: number;
   padding: Padding;
   size: number;
+  merge: boolean;
 }
 
 const EXPORT_SIZES = [0, 128, 256, 512, 1024, 2048, 4096, 8192];
 
-function exportChoice(format = sel('x-format'), depth = Number(sel('x-depth')), mode = sel('x-pad'), width = num('x-pad-width'), color = hex('x-pad-color'), size = Number(sel('x-size'))): ExportChoice {
+function exportChoice(format = sel('x-format'), depth = Number(sel('x-depth')), mode = sel('x-pad'), width = num('x-pad-width'), color = hex('x-pad-color'), size = Number(sel('x-size')), merge = checked('x-merge')): ExportChoice {
   const checked = checkFormat(format, depth);
   if (!EXPORT_SIZES.includes(size)) throw new Error('size is 0 (each texture set\'s own) or 128, 256, 512, 1024, 2048, 4096 or 8192');
   const limit = engine?.max_texture_size() ?? 8192;
@@ -2192,7 +2182,7 @@ function exportChoice(format = sel('x-format'), depth = Number(sel('x-depth')), 
   if (!PADDING_MODES.includes(mode as PaddingMode)) throw new Error(`padding is one of ${PADDING_MODES.join(', ')}`);
   if (mode === 'transparent' && !FORMAT_ALPHA[checked]) throw new Error(`${checked.toUpperCase()} has no alpha channel, so transparent padding cannot be written; choose infinite, color or diffusion`);
   const gamma = color.map((v) => Math.pow(v, 1 / 2.2)) as [number, number, number];
-  return { format: checked, depth, padding: { mode: mode as PaddingMode, width: Math.max(0, Math.min(256, Math.round(width))), color: gamma }, size };
+  return { format: checked, depth, padding: { mode: mode as PaddingMode, width: Math.max(0, Math.min(256, Math.round(width))), color: gamma }, size, merge };
 }
 
 function allTemplates(): Template[] {
@@ -2210,10 +2200,23 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
   let size = e.texture_size();
   const sets = textureSets();
   const original = e.active_texture_set();
-  const write = async (name: string, px: Pixels, alpha: boolean, linearize: boolean, src: Int32Array) => {
+  const encode = async (name: string, px: Pixels, alpha: boolean, linearize: boolean, src: Int32Array) => {
     const transparent = applyPadding(px, size, src, padding, max);
     if (linearize && px instanceof Float32Array) gammaToLinear(px);
     maps.set(`${name}.${format}`, await encodeImage(format, px, size, size, alpha || transparent, depth));
+  };
+  const merged = new Map<string, { px: Pixels; cover: Uint8Array; alpha: boolean; linearize: boolean; size: number }>();
+  let cover: Uint8Array = new Uint8Array(0);
+  const write = async (name: string, px: Pixels, alpha: boolean, linearize: boolean, src: Int32Array) => {
+    if (!choice.merge || sets.length < 2) { await encode(name, px, alpha, linearize, src); return; }
+    const into = merged.get(name);
+    if (!into) { merged.set(name, { px: px.slice(), cover: cover.slice(), alpha, linearize, size }); return; }
+    if (into.size !== size) throw new Error('Merging texture sets needs every set at the same size; choose an export size or match the set sizes');
+    for (let i = 0; i < cover.length; i++) {
+      if (!cover[i]) continue;
+      into.cover[i] = 1;
+      for (let k = 0; k < 4; k++) into.px[i * 4 + k] = px[i * 4 + k];
+    }
   };
   try {
     for (const set of sets) {
@@ -2224,10 +2227,11 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
         e.export_size_begin(choice.size);
       }
       size = e.texture_size();
-      const prefix = sets.length > 1 ? `${set.material.replace(/[^A-Za-z0-9_-]/g, '_')}_` : '';
+      const prefix = sets.length > 1 && !choice.merge ? `${set.material.replace(/[^A-Za-z0-9_-]/g, '_')}_` : '';
       const suffix = set.tiled ? `.${set.udim}` : '';
       const [, , uvs, indices] = e.texture_set_mesh(set.index) as [Float32Array, Float32Array, Float32Array, Uint32Array, number];
-      const src = nearestSource(uvMask(uvs, indices, size), size, padding.mode === 'infinite' ? Infinity : padding.width);
+      cover = uvMask(uvs, indices, size);
+      const src = nearestSource(cover, size, padding.mode === 'infinite' ? Infinity : padding.width);
       if (template.maps.length) {
         const channels = new Map<number, Pixels>();
         for (const c of sourcesOf(template.maps)) {
@@ -2265,6 +2269,10 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
         const baked = bakedPixels(set.index, code, size, max);
         if (baked) await write(`${prefix}${label}${suffix}`, baked, false, false, src);
       }
+    }
+    for (const [name, m] of merged) {
+      size = m.size;
+      await encode(name, m.px, m.alpha, m.linearize, nearestSource(m.cover, m.size, padding.mode === 'infinite' ? Infinity : padding.width));
     }
   } finally {
     e.export_size_end();

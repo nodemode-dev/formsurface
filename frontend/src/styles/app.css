@@ -3,7 +3,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 button, input, select { font: inherit; color: inherit; }
 svg { width: var(--icon); height: var(--icon); flex: none; }
 
-.app { display: grid; grid-template-rows: var(--bar-h) 1fr 24px; grid-template-columns: var(--tools-w) 1fr var(--panel-w); height: 100%; }
+.app { display: grid; grid-template-rows: var(--bar-h) minmax(0, 1fr) var(--fs-dock-h, 0px) var(--status-h); grid-template-columns: var(--tools-w) minmax(0, 1fr) var(--panel-w); height: 100%; }
 .topbar { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-3); background: var(--surface); border-bottom: 1px solid var(--border); position: relative; z-index: var(--z-topbar); }
 .brand { display: flex; align-items: center; gap: var(--space-2); font-weight: 650; letter-spacing: .02em; margin-right: var(--space-3); }
 .brand svg { color: var(--accent); }
@@ -23,7 +23,7 @@ svg { width: var(--icon); height: var(--icon); flex: none; }
 .tools { grid-row: 2; display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding: var(--space-2) 0; background: var(--surface); border-right: 1px solid var(--border); position: relative; z-index: var(--z-panel); }
 .tools hr { width: 24px; border: 0; border-top: 1px solid var(--border); margin: var(--space-1) 0; }
 
-.viewport { grid-row: 2; position: relative; min-width: 0; min-height: 0; background: #131418; }
+.viewport { grid-row: 2; position: relative; min-width: 0; min-height: 0; background: var(--canvas-bg); }
 .viewport canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
 .te { margin: var(--space-2) 0; }
 .te-head span { color: var(--text-muted); font-size: 11px; overflow: hidden; white-space: nowrap; }
@@ -76,7 +76,7 @@ svg { width: var(--icon); height: var(--icon); flex: none; }
 #fill-section[aria-disabled="true"] input, #fill-section[aria-disabled="true"] select, #fill-section[aria-disabled="true"] button,
 #filter-section[aria-disabled="true"] input { pointer-events: none; }
 
-.status { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-3); background: var(--surface); border-top: 1px solid var(--border); color: var(--text-muted); font: 11px var(--mono); }
+.status { grid-column: 1 / -1; grid-row: 4; display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-3); background: var(--surface); border-top: 1px solid var(--border); color: var(--text-muted); font: 11px var(--mono); }
 .status .msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status .msg.error { color: var(--danger); }
 

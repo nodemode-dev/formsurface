@@ -4,6 +4,18 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>FormSurface</title>
+  <script>
+    (function () {
+      var root = document.documentElement;
+      root.classList.add('shell-pending');
+      try {
+        var lang = localStorage.getItem('formsurface.language');
+        if (lang && lang !== 'en') { root.classList.add('i18n-pending'); root.lang = lang; }
+        var dock = JSON.parse(localStorage.getItem('formsurface.dock') || 'null');
+        if (dock && dock.open) root.dataset.dock = String(dock.h || 280);
+      } catch (e) { root.classList.remove('i18n-pending'); }
+    })();
+  </script>
   <link rel="stylesheet" href="/src/styles/tokens.css">
   <link rel="stylesheet" href="/src/styles/app.css">
 </head>
@@ -38,7 +50,8 @@
 
 <div class="app">
   <header class="topbar">
-    <div class="brand"><svg><use href="#i-logo"/></svg>FormSurface</div>
+    <div class="brand" translate="no"><svg><use href="#i-logo"/></svg>FormSurface</div>
+    <nav class="cv-menubar" aria-label="Menu"></nav>
     <button class="btn" id="open-mesh" title="Open a mesh (glTF, GLB, OBJ, FBX, USD, USDA, USDC, USDZ, PLY, Collada)"><svg><use href="#i-open"/></svg>Open mesh</button>
     <div class="menu">
       <button class="btn" id="sample-toggle" aria-haspopup="true" aria-expanded="false"><svg><use href="#i-shape"/></svg>Sample mesh</button>
@@ -55,6 +68,12 @@
       <select id="tex-size"><option value="1024">1024</option><option value="2048" selected>2048</option><option value="4096">4096</option></select>
     </div>
     <div class="spacer"></div>
+    <button class="icon-btn" data-cmd="edit.palette" title="Command Palette"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5"/></svg></button>
+    <button class="icon-btn" data-cmd="view.terminal" title="Terminal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M7 9.5l3 2.5-3 2.5M12.5 15h4.5"/></svg></button>
+    <button class="icon-btn" data-cmd="agent.claude" title="Claude Code"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7.5" width="16" height="12" rx="4"/><path d="M12 7.5V4.5"/><circle cx="12" cy="3.6" r="1.1"/><circle cx="9.3" cy="13.3" r="1.35" fill="currentColor" stroke="none"/><circle cx="14.7" cy="13.3" r="1.35" fill="currentColor" stroke="none"/><path d="M2 12.2v2.8M22 12.2v2.8"/></svg></button>
+    <button class="icon-btn" data-cmd="agent.chat" title="Chat with Claude"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4.5h12a3.5 3.5 0 0 1 3.5 3.5v6a3.5 3.5 0 0 1-3.5 3.5h-6.5L7 21v-3.5H6A3.5 3.5 0 0 1 2.5 14V8A3.5 3.5 0 0 1 6 4.5z"/><circle cx="9.2" cy="11" r="1.3" fill="currentColor" stroke="none"/><circle cx="14.8" cy="11" r="1.3" fill="currentColor" stroke="none"/></svg></button>
+    <button class="icon-btn" data-cmd="file.preferences" title="Preferences"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
+    <span class="sep" aria-hidden="true"></span>
     <button class="btn" id="agent-link" aria-pressed="false" title="Let MCP agents (Claude Code, Codex, Cursor) drive this editor through the local service"><svg><use href="#i-link"/></svg><span id="agent-label">Agent link off</span></button>
     <button class="btn" id="screenshot"title="Save a PNG of the viewport"><svg><use href="#i-frame"/></svg>Screenshot</button>
     <button class="btn" id="save-project" title="Save textures to the local FormSurface service"><svg><use href="#i-save"/></svg>Save</button>
@@ -385,6 +404,7 @@ print(project.status()["mesh"])</textarea>
       <div class="row" style="grid-template-columns:84px 1fr"><label for="x-pad">Padding</label><select id="x-pad"><option value="infinite" selected>Dilation infinite</option><option value="transparent">Dilation + transparent</option><option value="color">Dilation + color</option><option value="diffusion">Dilation + diffusion</option></select></div>
       <div class="row"><label for="x-pad-width">Dilation width</label><input id="x-pad-width" type="range" min="0" max="64" step="1" value="8"><output for="x-pad-width">8</output></div>
       <div class="row" style="grid-template-columns:84px 1fr"><label for="x-pad-color">Pad color</label><input id="x-pad-color" type="color" value="#000000"></div>
+      <label class="check" title="Write one map per channel for all texture sets that share a UV tile, each set filling its own UV islands; needs every set at the same size"><input type="checkbox" id="x-merge">Merge texture sets into one map set</label>
       <p class="check" id="x-maps" style="min-height:42px;margin:6px 0 0"></p>
       <details class="te">
         <summary>Edit templates</summary>
@@ -400,8 +420,10 @@ print(project.status()["mesh"])</textarea>
     </section>
   </aside>
 
+  <section class="fl-dock" aria-label="Terminal" hidden></section>
   <footer class="status"><span class="msg" id="status">Ready</span><span id="mesh-info"></span><span id="gpu-info"></span><span id="fps"></span></footer>
 </div>
+<div id="overlay-root"></div>
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
