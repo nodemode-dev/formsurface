@@ -589,7 +589,7 @@ function syncParentOptions(all: LayerInfo[], layer: LayerInfo): void {
 }
 
 const FILL_FIELDS: [string, string][] = [
-  ['f-proj', 'projection'], ['f-axis', 'axis'], ['f-pattern', 'pattern'], ['f-imgcolor', 'image_color'], ['f-scale', 'scale'], ['f-rot', 'rotation'],
+  ['f-proj', 'projection'], ['f-uvset', 'uv_set'], ['f-axis', 'axis'], ['f-pattern', 'pattern'], ['f-imgcolor', 'image_color'], ['f-scale', 'scale'], ['f-rot', 'rotation'],
   ['f-ox', 'offset_x'], ['f-oy', 'offset_y'], ['f-sharp', 'sharpness'], ['f-rough', 'roughness'], ['f-metal', 'metallic'], ['f-height', 'height'],
   ['f-use-color', 'use_color'], ['f-use-rough', 'use_roughness'], ['f-use-metal', 'use_metallic'], ['f-use-height', 'use_height'], ['f-opacity', 'opacity'],
   ['f-extra', 'extra'], ['f-use-extra', 'use_extra'], ['f-extra2', 'extra2'], ['f-use-extra2', 'use_extra2'], ['f-extra3', 'extra3'], ['f-use-extra3', 'use_extra3'],
@@ -653,7 +653,7 @@ function fillPayload(): Record<string, unknown> {
   const out: Record<string, unknown> = { base_color: hex('f-color'), generator_direction: directionOf(num('f-gyaw'), num('f-gpitch')) };
   for (const [id, key] of FILL_FIELDS) {
     const input = $<HTMLInputElement>(id);
-    out[key] = input.type === 'checkbox' ? input.checked : input.tagName === 'SELECT' && key !== 'axis' ? input.value : Number(input.value);
+    out[key] = input.type === 'checkbox' ? input.checked : input.tagName === 'SELECT' && key !== 'axis' && key !== 'uv_set' ? input.value : Number(input.value);
   }
   return out;
 }
@@ -1030,6 +1030,7 @@ function syncUvChannel(): void {
   const has = !!engine?.has_uv1();
   $<HTMLOptionElement>('x-uv1').disabled = !has;
   if (!has) $<HTMLSelectElement>('x-uv').value = '0';
+  $<HTMLOptionElement>('f-uvset1').disabled = !has;
 }
 
 function applyMesh(next: FlatMesh, name: string): void {

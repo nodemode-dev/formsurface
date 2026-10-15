@@ -1,0 +1,4 @@
+{
+  "UV set": "UVチャンネル",
+  "With UV projection, lay the pattern out on the first UV channel or on the mesh's second one (lightmap or trim UVs)": "UV投影では、パターンを第1UVチャンネル、またはメッシュの第2チャンネル（ライトマップやトリム用UV）に配置します"
+}

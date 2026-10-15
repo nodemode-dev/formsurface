@@ -967,5 +967,7 @@
 "UV0 (painted layout)",
 "UV1 (second channel)",
 "Write the maps in the layout you painted (UV0) or move them onto the mesh's second UV channel (UV1), for lightmap or trim layouts; tangent-space normals keep UV0's frame",
-"This mesh has no second UV channel; load a glTF, FBX or Collada mesh with one (TEXCOORD_1), or export on UV0"
+"This mesh has no second UV channel; load a glTF, FBX or Collada mesh with one (TEXCOORD_1), or export on UV0",
+"UV set",
+"With UV projection, lay the pattern out on the first UV channel or on the mesh's second one (lightmap or trim UVs)"
 ]

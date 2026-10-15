@@ -1,0 +1,4 @@
+{
+  "UV set": "UV-канал",
+  "With UV projection, lay the pattern out on the first UV channel or on the mesh's second one (lightmap or trim UVs)": "При UV-проекции раскладывайте узор на первом UV-канале или на втором канале меша (UV для лайтмапов или трим-листов)"
+}

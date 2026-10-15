@@ -1,0 +1,4 @@
+{
+  "UV set": "UV-csatorna",
+  "With UV projection, lay the pattern out on the first UV channel or on the mesh's second one (lightmap or trim UVs)": "UV-vetítésnél a mintát az első UV-csatornán vagy a mesh második csatornáján helyezze el (lightmap- vagy trim-UV-k)"
+}
