@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
-from app import ocio
+from app import environments, ocio
 from app.agent import router as agent_router
 
 VERSION = "0.55.5"
@@ -305,6 +305,7 @@ async def save_smart_mask(name: str, request: Request):
 @app.get("/api/environments/{name}")
 def read_environment(name: str):
     path = DATA / "environments" / name
+    environments.ensure(name, DATA / "environments")
     if not SAFE.match(name) or name.startswith(".") or path.suffix.lower() != ".hdr" or not path.is_file():
         raise HTTPException(404, "Put the environment in the workspace environments folder as a Radiance .hdr file")
     return FileResponse(path)
