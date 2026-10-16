@@ -2554,6 +2554,19 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
           channels.set(c, await channelPixels(e, c, max));
         }
         for (const map of template.maps) await write(named(map.suffix), pack(map, channels, size, max), !!map.a, !!map.rgb && COLOR_SOURCES.includes(map.rgb), src);
+        // Engines read an emissive color map, so a set whose extra channel is emissive also exports one (base color
+        // times the emissive strength, as without a template) unless the template already places the extra channel.
+        if (e.extra_channel(set.index) === 'emissive' && !template.maps.some((m) => [m.r, m.g, m.b, m.a].includes('extra'))) {
+          const base = channels.get(0) ?? await channelPixels(e, 0, max);
+          const extra = await channelPixels(e, 12, max);
+          const glow = emptyPixels(max, base.length);
+          for (let k = 0; k < base.length; k += 4) {
+            const s = extra[k] / max;
+            glow[k] = base[k] * s; glow[k + 1] = base[k + 1] * s; glow[k + 2] = base[k + 2] * s; glow[k + 3] = max;
+          }
+          const upper = /^[A-Z]/.test(template.maps[0]?.suffix ?? '');
+          await write(named(upper ? 'Emissive' : 'emissive'), glow, false, true, src);
+        }
         continue;
       }
       const wanted = [0, 1, 2, 3, 4, ...(e.is_baked() ? [5, 6, 7, 8, 9] : []), ...(e.is_high_baked() ? [10, 11] : [])];
