@@ -5,6 +5,10 @@ use wasm_bindgen::prelude::*;
 const LAYER_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const UNDO_LIMIT: usize = 24;
+/// GPU memory one texture set's undo history may use (bytes); the step count follows from the set's resolution.
+const UNDO_BUDGET: u64 = 1 << 30;
+/// Spare snapshot sets kept for reuse after strokes; more are destroyed.
+const POOL_LIMIT: usize = 2;
 
 struct Set {
     color: wgpu::Texture,
@@ -2426,12 +2430,24 @@ impl Gpu {
         }
         if let Some((_, snap)) = self.stroke.take() {
             self.undo_stack.push(snap);
-            if self.undo_stack.len() > UNDO_LIMIT {
+            // Each step holds a full copy of one layer (five textures), so the depth follows a memory budget per
+            // texture set rather than a fixed count: 24 steps at 1024, 6 at 2048, 4 at 4096 and above.
+            let step = self.size as u64 * self.size as u64 * 8 * 5;
+            let limit = ((UNDO_BUDGET / step.max(1)) as usize).clamp(4, UNDO_LIMIT);
+            while self.undo_stack.len() > limit {
                 let old = self.undo_stack.remove(0);
                 self.pool.push(old.set);
             }
             let redo = std::mem::take(&mut self.redo_stack);
             self.pool.extend(redo.into_iter().map(|s| s.set));
+        }
+        // Spare snapshot textures are kept for reuse, but only a few: the rest are released at once.
+        while self.pool.len() > POOL_LIMIT {
+            if let Some(set) = self.pool.pop() {
+                for t in [&set.color, &set.val, &set.cov, &set.mask, &set.aux] {
+                    t.destroy();
+                }
+            }
         }
     }
 
