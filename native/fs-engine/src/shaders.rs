@@ -622,12 +622,18 @@ fn hash2(p: vec2<f32>) -> f32 {
 
 fn tip_shape(l: vec2<f32>, hardness: f32, seed: f32, texel: vec2<f32>) -> f32 {
     let kind = stamps.tip.x;
+    if (kind > 2.5) {
+        // Image tips fill the stamp's square, the image's longer side across the full width, so a wide image such
+        // as a line of text keeps its proportions instead of being cut to the inscribed circle.
+        let dims = vec2<f32>(textureDimensions(alpha_tex));
+        let fit = vec2<f32>(max(dims.y / dims.x, 1.0), max(dims.x / dims.y, 1.0));
+        let st = vec2<f32>(l.x * fit.x, -l.y * fit.y) * 0.5 + 0.5;
+        if (any(st < vec2<f32>(0.0)) || any(st > vec2<f32>(1.0))) { return 0.0; }
+        return textureSampleLevel(alpha_tex, clamp_samp, st, 0.0).r;
+    }
     var d = length(l);
     if (kind > 0.5 && kind < 1.5) { d = max(abs(l.x), abs(l.y)); }
     if (d >= 1.0) { return 0.0; }
-    if (kind > 2.5) {
-        return textureSampleLevel(alpha_tex, clamp_samp, vec2<f32>(l.x, -l.y) * 0.5 + 0.5, 0.0).r;
-    }
     var c = 1.0;
     if (d > hardness && hardness < 1.0) {
         let t = (1.0 - d) / (1.0 - hardness);

@@ -8,6 +8,7 @@ import { COLOR_SOURCES, TEMPLATES, emptyPixels, encodePng, halfToFloat, halfToUn
 import { FORMAT_ALPHA, FORMAT_DEPTHS, checkFormat, encodeImage, gammaToLinear, sampleMax, type Format } from './ui/image-formats';
 import { PADDING_MODES, applyPadding, nearestSource, uvMask, type Padding, type PaddingMode } from './ui/padding';
 import { transferToUv1 } from './ui/uv-transfer';
+import { sharedUvShare } from './ui/uv-overlap';
 import { checkNameTemplate, fileName } from './ui/export-names';
 import { TemplateEditor, loadTemplates, saveTemplate } from './ui/template-editor';
 import { api } from './ui/api';
@@ -308,11 +309,24 @@ function layers(): LayerInfo[] {
 
 const setList = new TextureSetList($('texture-sets'), (index) => { selectTextureSet(index); });
 
-function textureSets(): (TextureSetInfo & { size: number; extra_channel: string; extra_name?: string; user_channels: { slot: number; name: string }[] })[] {
+// Shared UV area per texture set, measured once per mesh and set (see ui/uv-overlap.ts).
+const uvShared = new Map<string, number>();
+function uvSharedShare(e: Engine, s: TextureSetInfo): number {
+  const key = `${meshName}|${s.index}|${s.triangles}`;
+  let share = uvShared.get(key);
+  if (share === undefined) {
+    const [, , uvs, indices] = e.texture_set_mesh(s.index) as [Float32Array, Float32Array, Float32Array, Uint32Array, number];
+    share = Math.round(sharedUvShare(uvs, indices) * 100) / 100;
+    uvShared.set(key, share);
+  }
+  return share;
+}
+
+function textureSets(): (TextureSetInfo & { size: number; extra_channel: string; extra_name?: string; user_channels: { slot: number; name: string }[]; uv_shared: number })[] {
   const e = engine;
   return e ? (JSON.parse(e.texture_sets_json()) as TextureSetInfo[]).map((s) => {
     const role = e.extra_channel(s.index);
-    return { ...s, size: e.texture_set_size(s.index), extra_channel: role, ...(role === 'user' ? { extra_name: extraNames.get(s.index) || 'user0' } : {}), user_channels: userChannelInfo(s.index) };
+    return { ...s, size: e.texture_set_size(s.index), extra_channel: role, ...(role === 'user' ? { extra_name: extraNames.get(s.index) || 'user0' } : {}), user_channels: userChannelInfo(s.index), uv_shared: uvSharedShare(e, s) };
   }) : [];
 }
 
