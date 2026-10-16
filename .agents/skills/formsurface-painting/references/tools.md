@@ -1,4 +1,4 @@
-# FormSurface MCP tools (server 0.55.5)
+# FormSurface MCP tools (server 0.56.0)
 
 When this table and the server disagree, the server wins and this file is stale.
 
