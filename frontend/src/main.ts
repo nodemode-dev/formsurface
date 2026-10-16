@@ -2654,15 +2654,24 @@ async function presentSoftware(): Promise<void> {
     if (engine && !rendering) {
       try {
         const [w, h] = engine.viewport_size();
-        // A snapshot from an engine that is being replaced (mesh load, restart) never resolves; give up on it and
-        // let the next tick ask the current engine.
-        const bytes = await Promise.race([engine.snapshot() as Promise<Uint8Array>, new Promise<never>((_, reject) => setTimeout(() => reject(new Error('snapshot timed out')), 3000))]);
+        // One snapshot in flight at a time: each one is a full render, which takes seconds on a software GPU, so
+        // starting another before the last returns only grows the GPU queue. A snapshot in flight while a mesh loads
+        // never resolves (its resources are replaced), so it is abandoned when the engine changes or after 10 s.
+        const asked = engine;
+        const since = performance.now();
+        let watch = 0;
+        const bytes = await Promise.race([asked.snapshot() as Promise<Uint8Array>, new Promise<never>((_, reject) => {
+          watch = window.setInterval(() => {
+            if (engine !== asked || performance.now() - since > 10000) reject(new Error(engine !== asked ? 'engine replaced' : 'snapshot timed out'));
+          }, 250);
+        })]).finally(() => window.clearInterval(watch));
         if (bytes.length === w * h * 4) {
           if (softPresent.width !== w || softPresent.height !== h) { softPresent.width = w; softPresent.height = h; }
           softPresent.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength), w, h), 0, 0);
         }
-      } catch {
+      } catch (error) {
         // The engine was busy or restarting; the next tick tries again.
+        console.warn('software present:', error instanceof Error ? error.message : String(error));
       }
     }
     await new Promise((resolve) => setTimeout(resolve, Math.max(50, 250 - (performance.now() - started))));
@@ -3333,7 +3342,9 @@ let frames = 0;
 let lastFps = performance.now();
 function tick(now: number): void {
   resize();
-  engine?.frame();
+  // In software present the snapshot loop is the only render: drawing every animation frame into a canvas the
+  // browser never shows starved the readbacks on a software GPU.
+  if (softPresent.hidden) engine?.frame();
   drawPathOverlay();
   showPathState();
   frames++;
