@@ -29,6 +29,8 @@ svg { width: var(--icon); height: var(--icon); flex: none; }
 .te-head span { color: var(--text-muted); font-size: 11px; overflow: hidden; white-space: nowrap; }
 .te summary { cursor: pointer; color: var(--text-muted); font-size: 12px; padding: var(--space-1) 0; }
 .viewport .path-overlay { pointer-events: none; z-index: var(--z-viewport-overlay); }
+.viewport .soft-present { pointer-events: none; z-index: var(--z-viewport-overlay); }
+.viewport .soft-present[hidden] { display: none; }
 .viewport .overlay { position: absolute; left: var(--space-3); bottom: var(--space-3); z-index: var(--z-viewport-overlay); color: var(--text-muted); font: 11px var(--mono); pointer-events: none; }
 .viewport .notice { position: absolute; inset: 0; display: grid; place-items: center; z-index: var(--z-viewport-overlay); color: var(--text-muted); text-align: center; padding: var(--space-4); }
 .viewport .notice[hidden] { display: none; }

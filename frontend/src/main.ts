@@ -841,16 +841,19 @@ async function strokePath(closed = checked('p-closed'), smooth = checked('p-smoo
   const keep = tool;
   if (erase) { tool = 'erase'; syncBrush(); }
   let landed = 0;
+  let open = false;
   try {
     if (!e.stroke_begin(screen[first][0], screen[first][1], 1)) throw new Error('The active layer cannot take paint: pick a paint layer or a mask');
+    open = true;
     for (const s of screen.slice(first + 1)) {
       if (s.length !== 2) continue;
       e.stroke_to(s[0], s[1], 1);
       landed++;
       if (landed % 12 === 0) await nextFrame();
     }
-    e.stroke_end();
   } finally {
+    // Close the stroke whatever happened, so a failure part way never leaves the document locked in a stroke.
+    if (open) e.stroke_end();
     if (erase) { tool = keep; syncBrush(); }
   }
   return landed;
@@ -2639,6 +2642,34 @@ async function viewportPng(): Promise<Blob> {
 }
 
 let rendering = false;
+
+// Software present: some software GPU setups (Mesa lavapipe under Xvfb, some remote desktops) render WebGPU correctly
+// but the browser never shows the canvas, so the viewport stays white. With ?present=software the editor copies each
+// finished frame onto a plain 2D canvas over the viewport a few times a second, so what the engine draws is what the
+// person, or a screen recorder, sees. Input still reaches the real canvas underneath.
+const softPresent = $<HTMLCanvasElement>('soft-present');
+async function presentSoftware(): Promise<void> {
+  for (;;) {
+    const started = performance.now();
+    if (engine && !rendering) {
+      try {
+        const [w, h] = engine.viewport_size();
+        // A snapshot from an engine that is being replaced (mesh load, restart) never resolves; give up on it and
+        // let the next tick ask the current engine.
+        const bytes = await Promise.race([engine.snapshot() as Promise<Uint8Array>, new Promise<never>((_, reject) => setTimeout(() => reject(new Error('snapshot timed out')), 3000))]);
+        if (bytes.length === w * h * 4) {
+          if (softPresent.width !== w || softPresent.height !== h) { softPresent.width = w; softPresent.height = h; }
+          softPresent.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength), w, h), 0, 0);
+        }
+      } catch {
+        // The engine was busy or restarting; the next tick tries again.
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, Math.max(50, 250 - (performance.now() - started))));
+  }
+}
+if (new URLSearchParams(location.search).get('present') === 'software') { softPresent.hidden = false; void presentSoftware(); }
+
 async function renderPath(width: number, height: number, samples: number, name = meshName.replace(/\.[^.]+$/, '')): Promise<{ folder: string; file: string; samples: number }> {
   const e = requireEngine();
   if (rendering) throw new Error('A render is already running');
@@ -3131,13 +3162,16 @@ const agentLink = new AgentLink({
     const p = Number(pressure ?? 1);
     if (e.is_instance_copy(e.active_layer()) && e.quick_mask_mode() !== 1) throw new Error('This layer is an instance: paint actions only reach its source layer\'s texture set');
     let hits = 0;
-    list.forEach(([u, v], i) => {
-      const x = u * w;
-      const y = v * h;
-      if (e.hover(x, y)) hits++;
-      if (i === 0) e.stroke_begin(x, y, p); else e.stroke_to(x, y, p);
-    });
-    e.stroke_end();
+    try {
+      list.forEach(([u, v], i) => {
+        const x = u * w;
+        const y = v * h;
+        if (e.hover(x, y)) hits++;
+        if (i === 0) e.stroke_begin(x, y, p); else e.stroke_to(x, y, p);
+      });
+    } finally {
+      e.stroke_end();
+    }
     e.clear_hover();
     emitPython('stroke_end', { layer: e.active_layer() });
     return { points: list.length, points_on_surface: hits, layer: e.active_layer() };
