@@ -95,7 +95,24 @@ export const MESH_EXTENSIONS = ['.glb', '.gltf', '.obj', '.fbx', '.usd', '.usda'
 
 async function parseScene(name: string, data: ArrayBuffer): Promise<THREE.Object3D> {
   const lower = name.toLowerCase();
-  if (lower.endsWith('.glb') || lower.endsWith('.gltf')) return (await new GLTFLoader().parseAsync(data, '')).scene;
+  if (lower.endsWith('.glb') || lower.endsWith('.gltf')) {
+    // glTF texture coordinates already run top-down like FormSurface's texture rows, while flatten() converts every
+    // format from the bottom-up convention. Turn glTF's around once per attribute (meshes can share one) so exported
+    // maps line up with the file's own UVs instead of coming out upside down.
+    const scene = (await new GLTFLoader().parseAsync(data, '')).scene;
+    const seen = new Set<object>();
+    scene.traverse((object) => {
+      const geometry = (object as THREE.Mesh).geometry as THREE.BufferGeometry | undefined;
+      if (!geometry) return;
+      for (const key of ['uv', 'uv1', 'uv2']) {
+        const attribute = geometry.getAttribute(key);
+        if (!attribute || seen.has(attribute)) continue;
+        seen.add(attribute);
+        for (let i = 0; i < attribute.count; i++) attribute.setY(i, 1 - attribute.getY(i));
+      }
+    });
+    return scene;
+  }
   if (lower.endsWith('.obj')) return new OBJLoader().parse(new TextDecoder().decode(data));
   if (lower.endsWith('.fbx')) return new FBXLoader().parse(data, '');
   if (/\.usd[acz]?$/.test(lower)) {
