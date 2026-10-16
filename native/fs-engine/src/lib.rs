@@ -1583,7 +1583,7 @@ impl Engine {
             None => {
                 let hit = self.pick(x, y).ok_or_else(|| JsValue::from_str("Click on the mesh to pick a layer"))?;
                 if hit.triangle < first || hit.triangle >= last {
-                    return Err(JsValue::from_str("That part belongs to another texture set; select it first"));
+                    return Err(self.other_set_error(hit.triangle));
                 }
                 hit.uv
             }
@@ -2168,6 +2168,15 @@ impl Engine {
         self.export_any(channel, true)
     }
 
+    /// The refusal for a click on a part of another texture set, naming that set so the person or agent can switch.
+    fn other_set_error(&self, triangle: u32) -> JsValue {
+        let owner = self.sets.iter().find(|s| triangle >= s.info.start / 3 && triangle < (s.info.start + s.info.count) / 3).map(|s| s.info.name());
+        JsValue::from_str(&match owner {
+            Some(name) => format!("That part belongs to the texture set {name}; select it first"),
+            None => "That part belongs to another texture set; select it first".to_string(),
+        })
+    }
+
     pub fn polygon_fill(&mut self, x: f32, y: f32, mode: u32) -> Result<u32, JsValue> {
         if self.stroking {
             return Err(JsValue::from_str("Finish the stroke first"));
@@ -2179,7 +2188,7 @@ impl Engine {
         } else {
             let hit = self.pick(x, y).ok_or_else(|| JsValue::from_str("Click on the mesh to fill"))?;
             if hit.triangle < first || hit.triangle >= last {
-                return Err(JsValue::from_str("That part belongs to another texture set; select it first"));
+                return Err(self.other_set_error(hit.triangle));
             }
             hit.triangle
         };
