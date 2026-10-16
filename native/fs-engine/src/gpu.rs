@@ -561,6 +561,28 @@ fn half_to_f32(h: u16) -> f32 {
     }
 }
 
+/// Maps a readback buffer and resolves with all of its bytes.
+fn read_bytes(buffer: wgpu::Buffer) -> js_sys::Promise {
+    js_sys::Promise::new(&mut |resolve, reject| {
+        let readback = buffer.clone();
+        buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| {
+            if let Err(e) = result {
+                let _ = reject.call1(&JsValue::NULL, &JsValue::from_str(&format!("Layer readback failed: {e}")));
+                return;
+            }
+            let bytes = match readback.slice(..).get_mapped_range() {
+                Ok(view) => js_sys::Uint8Array::from(&view[..]),
+                Err(e) => {
+                    let _ = reject.call1(&JsValue::NULL, &JsValue::from_str(&format!("Layer readback failed: {e}")));
+                    return;
+                }
+            };
+            readback.unmap();
+            let _ = resolve.call1(&JsValue::NULL, &bytes);
+        });
+    })
+}
+
 fn read_rgba(buffer: wgpu::Buffer, width: u32, height: u32, row: u32, bgra: bool, keep_alpha: bool) -> js_sys::Promise {
     js_sys::Promise::new(&mut |resolve, reject| {
         let readback = buffer.clone();
@@ -2702,6 +2724,44 @@ impl Gpu {
 
     pub fn layer_effects(&self, index: usize) -> Vec<fs_core::MaskEffect> {
         self.layers.get(index).map(|l| l.effects.iter().map(|e| e.spec).collect()).unwrap_or_default()
+    }
+
+    /// Project save: a layer's five textures (color, values, coverage, mask, aux; Rgba16Float each) copied out one
+    /// after another with tightly packed rows of size * 8 bytes, which is a multiple of 256 for every set size.
+    pub fn read_layer_raw(&self, index: usize) -> Option<js_sys::Promise> {
+        let layer = self.layers.get(index)?;
+        let size = self.size;
+        let row = size * 8;
+        let plane = row as u64 * size as u64;
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("layer save"), size: plane * 5, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        for (k, t) in [&layer.set.color, &layer.set.val, &layer.set.cov, &layer.set.mask, &layer.set.aux].into_iter().enumerate() {
+            encoder.copy_texture_to_buffer(
+                t.as_image_copy(),
+                wgpu::TexelCopyBufferInfo { buffer: &buffer, layout: wgpu::TexelCopyBufferLayout { offset: plane * k as u64, bytes_per_row: Some(row), rows_per_image: Some(size) } },
+                wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
+            );
+        }
+        self.queue.submit([encoder.finish()]);
+        Some(read_bytes(buffer))
+    }
+
+    /// Project load: writes bytes laid out as `read_layer_raw` returns them back into a layer's five textures.
+    pub fn write_layer_raw(&mut self, index: usize, bytes: &[u8]) -> Result<(), String> {
+        let size = self.size;
+        let row = size * 8;
+        let plane = row as usize * size as usize;
+        if bytes.len() != plane * 5 {
+            return Err(format!("The saved layer is {} bytes; a {size} px layer needs {}", bytes.len(), plane * 5));
+        }
+        let Some(layer) = self.layers.get_mut(index) else { return Err("No such layer".into()) };
+        let extent = wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 };
+        for (k, t) in [&layer.set.color, &layer.set.val, &layer.set.cov, &layer.set.mask, &layer.set.aux].into_iter().enumerate() {
+            self.queue.write_texture(t.as_image_copy(), &bytes[k * plane..(k + 1) * plane], wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(row), rows_per_image: Some(size) }, extent);
+        }
+        layer.blank = false;
+        layer.pending_fill = None;
+        Ok(())
     }
 
     fn run_effects(&self, index: usize) -> Option<usize> {

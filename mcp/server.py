@@ -68,6 +68,18 @@ def formsurface_load_mesh(file: str, reproject: bool | None = None) -> dict:
 
 
 @server.tool()
+def formsurface_save_project(name: str | None = None) -> dict:
+    """Save the whole document as a project in the workspace projects folder (default name: the mesh's): every texture set's size, channel roles and full layer stack (paint, fill, filter and folder layers with their settings, masks, mask generators and effects, the base material) with every layer's pixels. Save often during long work: the document otherwise lives only in the open editor. Reopen with formsurface_open_project."""
+    return call("save_project", drop_none(name=name), timeout=900)
+
+
+@server.tool()
+def formsurface_open_project(name: str) -> dict:
+    """Reopen a project saved with formsurface_save_project: loads its mesh from the workspace meshes folder and restores every texture set's layers, settings and pixels, replacing the open document. Bakes are not stored; run formsurface_bake_maps again before using generators that read them."""
+    return call("open_project", {"name": name}, timeout=900)
+
+
+@server.tool()
 def formsurface_list_texture_sets() -> dict:
     """List texture sets: one per material, split per UDIM tile when a material's UVs leave 0 to 1. Each has its own layer stack, base material, bakes and exported maps."""
     return call("texture_sets")

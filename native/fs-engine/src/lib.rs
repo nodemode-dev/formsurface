@@ -871,6 +871,83 @@ impl Engine {
         index.map(|i| serde_json::to_string(&self.gpu.layer_effects(i)).unwrap_or_default()).unwrap_or_else(|| "[]".into())
     }
 
+    /// Project save: the active texture set's stack (layers in order, fill, filter and mask generator settings, mask
+    /// effects, the base material) as JSON. Pixels are read per layer with `read_layer_raw`.
+    pub fn set_document_json(&self) -> String {
+        let effects: serde_json::Map<String, serde_json::Value> = self.layers.iter().enumerate().map(|(i, l)| (l.id.to_string(), serde_json::to_value(self.gpu.layer_effects(i)).unwrap_or_default())).collect();
+        let b = self.gpu.base;
+        serde_json::json!({
+            "layers": self.layers,
+            "active": self.active,
+            "next_id": self.next_id,
+            "fills": self.fills,
+            "filters": self.filters,
+            "mask_gens": self.mask_gens,
+            "effects": effects,
+            "base": [b[0], b[1], b[2], b[3], b[4]],
+        })
+        .to_string()
+    }
+
+    /// Project load: replaces the active texture set's stack with one from `set_document_json`. Layers keep their
+    /// ids, so folders and references stay intact; their pixels are then written with `write_layer_raw`.
+    pub fn restore_set_document(&mut self, json: &str) -> Result<(), JsValue> {
+        if self.stroking {
+            return Err(JsValue::from_str("Finish the stroke first"));
+        }
+        let bad = |e: serde_json::Error| JsValue::from_str(&format!("Not a FormSurface texture set document: {e}"));
+        let mut value: serde_json::Value = serde_json::from_str(json).map_err(bad)?;
+        let mut take = |key: &str| value.get_mut(key).map(serde_json::Value::take).unwrap_or(serde_json::Value::Null);
+        let layers: Vec<LayerInfo> = serde_json::from_value(take("layers")).map_err(bad)?;
+        let fills: HashMap<u32, FillSettings> = serde_json::from_value(take("fills")).map_err(bad)?;
+        let filters: HashMap<u32, FilterSettings> = serde_json::from_value(take("filters")).map_err(bad)?;
+        let mask_gens: HashMap<u32, FillSettings> = serde_json::from_value(take("mask_gens")).map_err(bad)?;
+        let effects: HashMap<u32, Vec<fs_core::MaskEffect>> = serde_json::from_value(take("effects")).map_err(bad)?;
+        let base: [f32; 5] = serde_json::from_value(take("base")).map_err(bad)?;
+        let active: u32 = serde_json::from_value(take("active")).map_err(bad)?;
+        let next_id: u32 = serde_json::from_value(take("next_id")).map_err(bad)?;
+        let doc = (fills, filters, mask_gens, effects, base, active, next_id);
+        for i in (0..self.layers.len()).rev() {
+            let id = self.layers[i].id;
+            self.gpu.remove_layer(i, id);
+        }
+        self.layers = layers;
+        let (fills, filters, mask_gens, effects, base, active, next_id) = doc;
+        for (at, layer) in self.layers.iter().enumerate() {
+            self.gpu.insert_layer(at, layer.id);
+        }
+        self.fills = fills;
+        self.filters = filters;
+        self.mask_gens = mask_gens;
+        for i in 0..self.layers.len() {
+            if let Some(specs) = effects.get(&self.layers[i].id) {
+                if !specs.is_empty() {
+                    self.push_effects(i, specs);
+                }
+            }
+        }
+        let top = self.layers.iter().map(|l| l.id + 1).max().unwrap_or(1);
+        self.next_id = self.next_id.max(next_id).max(top);
+        self.active = if self.layers.iter().any(|l| l.id == active) { active } else { self.layers.first().map(|l| l.id).unwrap_or(0) };
+        self.gpu.base = base;
+        self.dirty = true;
+        Ok(())
+    }
+
+    /// Project save: a layer's raw pixels (see `Gpu::read_layer_raw`).
+    pub fn read_layer_raw(&self, id: u32) -> Result<js_sys::Promise, JsValue> {
+        let index = self.layers.iter().position(|l| l.id == id).ok_or_else(|| JsValue::from_str("No such layer"))?;
+        self.gpu.read_layer_raw(index).ok_or_else(|| JsValue::from_str("No such layer"))
+    }
+
+    /// Project load: writes a layer's raw pixels back.
+    pub fn write_layer_raw(&mut self, id: u32, bytes: &[u8]) -> Result<(), JsValue> {
+        let index = self.layers.iter().position(|l| l.id == id).ok_or_else(|| JsValue::from_str("No such layer"))?;
+        self.gpu.write_layer_raw(index, bytes).map_err(|e| JsValue::from_str(&e))?;
+        self.dirty = true;
+        Ok(())
+    }
+
     fn push_effects(&mut self, index: usize, specs: &[fs_core::MaskEffect]) {
         let (center, radius) = self.mesh.as_ref().map(|m| (m.0.center, m.0.radius)).unwrap_or(([0.0; 3], 1.0));
         let effects: Vec<gpu::Effect> = specs

@@ -2735,12 +2735,98 @@ $('screenshot').addEventListener('click', async () => {
   }
 });
 
+// Project files (.fsproj): the mesh name, then per texture set its size, channel roles and whole stack (layers with
+// their ids, fill, filter and generator settings, mask effects, base material) and every layer's raw pixels, so a
+// document reopens exactly, layers and all. Layout: "FSPJ", a little-endian u32 header length, the header JSON, then
+// the layers' pixel blocks, each gzip-compressed on its own (mostly empty layers shrink to almost nothing, and no
+// more than one uncompressed layer is ever held at once).
+const PROJECT_MAGIC = [70, 83, 80, 74];
+
+async function gzip(bytes: Uint8Array, mode: 'gzip-in' | 'gzip-out'): Promise<Uint8Array> {
+  const stream = new Blob([bytes as Uint8Array<ArrayBuffer>]).stream().pipeThrough(mode === 'gzip-in' ? new CompressionStream('gzip') : new DecompressionStream('gzip'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function projectBlob(): Promise<{ blob: Blob; sets: number; layers: number }> {
+  const e = requireEngine();
+  if (!meshName) throw new Error('Load a mesh before saving a project');
+  const start = e.active_texture_set();
+  const blocks: Uint8Array[] = [];
+  const sets: unknown[] = [];
+  let offset = 0;
+  let count = 0;
+  try {
+    for (const s of textureSets()) {
+      if (s.index !== e.active_texture_set()) selectTextureSet(s.index);
+      const document = JSON.parse(e.set_document_json()) as { layers: { id: number }[] };
+      const pixels: { id: number; offset: number; length: number }[] = [];
+      for (const layer of document.layers) {
+        const packed = await gzip(await (e.read_layer_raw(layer.id) as Promise<Uint8Array>), 'gzip-in');
+        pixels.push({ id: layer.id, offset, length: packed.length });
+        blocks.push(packed);
+        offset += packed.length;
+        count++;
+      }
+      sets.push({ index: s.index, name: s.name, size: s.size, extra_channel: s.extra_channel, extra_name: s.extra_name, user_channels: s.user_channels, document, pixels });
+    }
+  } finally {
+    if (e.active_texture_set() !== start) selectTextureSet(start);
+  }
+  const header = new TextEncoder().encode(JSON.stringify({ format: 'formsurface-project', version: VERSION, mesh: meshName, active_set: start, sets }));
+  const head = new Uint8Array(8);
+  head.set(PROJECT_MAGIC);
+  new DataView(head.buffer).setUint32(4, header.length, true);
+  return { blob: new Blob([head, header, ...(blocks as Uint8Array<ArrayBuffer>[])]), sets: sets.length, layers: count };
+}
+
+async function saveProjectFile(name: string): Promise<{ folder: string; file: string; bytes: number; sets: number; layers: number }> {
+  if (!/^[A-Za-z0-9 ._-]{1,80}$/.test(name)) throw new Error('A project name uses letters, digits, space, dot, dash and underscore');
+  const { blob, sets, layers: count } = await projectBlob();
+  const response = await fetch(`/api/projects/${encodeURIComponent(name)}/file`, { method: 'POST', body: blob });
+  if (!response.ok) throw new Error(`FormSurface service: ${response.status} ${await response.text()}`);
+  const saved = await response.json() as { folder: string; file: string };
+  return { ...saved, bytes: blob.size, sets, layers: count };
+}
+
+async function openProjectFile(name: string): Promise<{ mesh: string; sets: number; layers: number }> {
+  const response = await fetch(`/api/projects/${encodeURIComponent(name)}/file`);
+  if (!response.ok) throw new Error(`No saved project ${name} (save one with File > Save project or formsurface_save_project)`);
+  const data = new Uint8Array(await response.arrayBuffer());
+  if (PROJECT_MAGIC.some((b, i) => data[i] !== b)) throw new Error(`${name} is not a FormSurface project file`);
+  const length = new DataView(data.buffer, data.byteOffset).getUint32(4, true);
+  const header = JSON.parse(new TextDecoder().decode(data.subarray(8, 8 + length))) as {
+    mesh: string; active_set: number;
+    sets: { index: number; size: number; extra_channel: string; extra_name?: string; user_channels: { slot: number; name: string }[]; document: unknown; pixels: { id: number; offset: number; length: number }[] }[];
+  };
+  const body = data.subarray(8 + length);
+  const meshResponse = await fetch(`/api/meshes/${encodeURIComponent(header.mesh)}`);
+  if (!meshResponse.ok) throw new Error(`The project's mesh ${header.mesh} is not in the workspace meshes folder`);
+  applyMesh(await loadMeshFile(new File([await meshResponse.arrayBuffer()], header.mesh)), header.mesh);
+  const e = requireEngine();
+  let count = 0;
+  for (const set of header.sets) {
+    selectTextureSet(set.index);
+    if (e.texture_set_size(set.index) !== set.size) resizeTextureSet(set.index, set.size);
+    setExtraChannel(set.index, set.extra_channel, set.extra_name);
+    const slots = new Map(set.user_channels.map((c) => [c.slot, c.name]));
+    for (const slot of [2, 3]) setUserChannel(set.index, slot, slots.has(slot), slots.get(slot));
+    e.restore_set_document(JSON.stringify(set.document));
+    for (const block of set.pixels) {
+      e.write_layer_raw(block.id, await gzip(body.subarray(block.offset, block.offset + block.length), 'gzip-out'));
+      count++;
+    }
+  }
+  selectTextureSet(header.active_set);
+  refreshLayers();
+  refreshSets();
+  return { mesh: header.mesh, sets: header.sets.length, layers: count };
+}
+
 $('save-project').addEventListener('click', async () => {
   try {
     if (!(await api.alive())) { status('Start the FormSurface service (./formsurface) to save projects.', true); return; }
-    const maps = await renderMaps();
-    const folder = await api.saveProject(meshName.replace(/\.[^.]+$/, ''), { mesh: meshName, layers: layers(), texture_size: engine?.texture_size() }, maps);
-    status(`Saved to ${folder}`);
+    const saved = await saveProjectFile(meshName.replace(/\.[^.]+$/, '') || 'untitled');
+    status(`Saved ${saved.layers} layers in ${saved.sets} texture sets to ${saved.folder}`);
   } catch (error) {
     status(error instanceof Error ? error.message : String(error), true);
   }
@@ -2827,6 +2913,8 @@ const agentLink = new AgentLink({
     const hit = await pickLayerAt(Number(x) * canvas.width, Number(y) * canvas.height);
     return hit ? { selected: hit } : { selected: null, note: 'No visible layer paints this point' };
   },
+  save_project: async ({ name }) => saveProjectFile(String(name ?? (meshName.replace(/\.[^.]+$/, '') || 'untitled'))),
+  open_project: async ({ name }) => ({ ...(await openProjectFile(String(name))), ...snapshotState() }),
   load_mesh: async ({ file, reproject }) => {
     const name = String(file);
     if (reproject !== undefined && reproject !== null) setControl('m-reproject', Boolean(reproject), 'change');

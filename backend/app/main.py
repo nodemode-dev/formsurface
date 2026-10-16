@@ -349,7 +349,29 @@ def list_projects():
     root = DATA / "projects"
     if not root.exists():
         return {"projects": []}
-    return {"projects": sorted(p.name for p in root.iterdir() if (p / "project.json").exists())}
+    return {"projects": sorted(p.name for p in root.iterdir() if (p / "project.json").exists() or (p / "project.fsproj").exists())}
+
+
+@app.post("/api/projects/{name}/file")
+async def save_project_file(name: str, request: Request):
+    """The editor's full project file (stack and layer pixels, see projectBlob in the editor), stored as sent."""
+    path = folder("projects", name)
+    data = await request.body()
+    if data[:4] != b"FSPJ":
+        raise HTTPException(400, "Not a FormSurface project file")
+    target = path / "project.fsproj"
+    partial = path / "project.fsproj.part"
+    partial.write_bytes(data)
+    partial.replace(target)
+    return {"folder": str(path), "file": str(target), "bytes": len(data)}
+
+
+@app.get("/api/projects/{name}/file")
+def read_project_file(name: str):
+    path = DATA / "projects" / name / "project.fsproj"
+    if not SAFE.match(name) or not path.exists():
+        raise HTTPException(404, "No such project")
+    return FileResponse(path, media_type="application/octet-stream")
 
 
 @app.get("/api/projects/{name}")
