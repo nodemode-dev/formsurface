@@ -73,4 +73,4 @@ When this table and the server disagree, the server wins and this file is stale.
 
 The same tools run from a JSON script with `./formsurface batch script.json` (a list of `[tool, arguments]` pairs; `--pause`, `--keep-going`, `--out`). Suggest it when the person wants the same job repeated on many meshes.
 
-Errors arrive as text after "Error executing tool name:" and name the fix: no editor linked (turn on Agent link), service not running (run ./formsurface), or a timeout.
+Errors arrive as text after "Error executing tool name:" and name the fix: no editor linked (turn on Agent link), service not running (run ./formsurface), or a timeout. Exports at 2048 and path renders can take minutes on a slow or software GPU (measured on Mesa lavapipe: a glTF export of two sets at 2048 in 70 s, a 960 by 540 render at 32 samples in 111 s), longer than many MCP clients wait by default; `./formsurface claude` sets MCP_TOOL_TIMEOUT to 30 minutes, and other launches of Claude Code should set it too. Commands run one at a time in the editor, so a call that timed out on the client side still finishes before the next one starts.

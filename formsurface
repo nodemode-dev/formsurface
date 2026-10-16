@@ -44,7 +44,8 @@ case "$cmd" in
   build) exec setup/build_frontend ;;
   serve) exec setup/serve ;;
   claude) shift; command -v claude >/dev/null || { echo "Claude Code is not installed: https://claude.com/claude-code" >&2; exit 1; }
-    exec claude --mcp-config "{\"mcpServers\":{\"formsurface\":{\"type\":\"stdio\",\"command\":\"$PWD/formsurface\",\"args\":[\"mcp\"]}}}" --allowedTools mcp__formsurface "$@" ;;
+    # Exports, bakes and path renders can run for minutes on a slow or software GPU; give tool calls 30 minutes.
+    MCP_TOOL_TIMEOUT="${MCP_TOOL_TIMEOUT:-1800000}" exec claude --mcp-config "{\"mcpServers\":{\"formsurface\":{\"type\":\"stdio\",\"command\":\"$PWD/formsurface\",\"args\":[\"mcp\"]}}}" --allowedTools mcp__formsurface "$@" ;;
   install-desktop) exec setup/install_desktop ;;
   freeze) exec setup/freeze_backend ;;
   desktop) shift; case "${1:-}" in dev) shift; exec setup/desktop_dev "$@" ;; build) shift; exec ./build_app "$@" ;; *) usage; exit 2 ;; esac ;;
