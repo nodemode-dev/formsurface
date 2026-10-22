@@ -2,7 +2,7 @@ import '../styles/shell.css';
 import '../styles/dock.css';
 import { api } from './api';
 import { Commands, comboOf, formatKeys, type Command } from './commands';
-import { el, isMac, q, setClass, setHidden, setText } from './dom';
+import { el, isMac, q, revealApp, setClass, setHidden, setText } from './dom';
 import { events } from './events';
 import { icon } from './icons';
 import { MenuBar, type MenuDef, type MenuItem } from './menu';
@@ -500,7 +500,10 @@ export class Shell {
 
 export function startShell(): Shell {
   const shell = new Shell();
-  document.documentElement.classList.remove('shell-pending');
+  void Promise.race([
+    (document.fonts?.ready ?? Promise.resolve()).catch(() => undefined),
+    new Promise((resolve) => setTimeout(resolve, 2500)),
+  ]).then(revealApp);
   return shell;
 }
 
