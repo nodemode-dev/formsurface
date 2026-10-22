@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "engine-page",
+  "description": "The main window shows the page the engine serves on 127.0.0.1, a remote origin to Tauri, so it may call the app's own set_window_title and app_ready commands and nothing else.",
+  "windows": ["main"],
+  "remote": { "urls": ["http://127.0.0.1:*"] },
+  "permissions": ["core:default", "allow-set-window-title", "allow-app-ready"]
+}

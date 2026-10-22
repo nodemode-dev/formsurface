@@ -895,6 +895,9 @@ dependencies = [
 name = "formsurface"
 version = "0.56.3"
 dependencies = [
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "regex",
  "serde",
  "serde_json",
