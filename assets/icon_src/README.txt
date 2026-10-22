@@ -1,4 +1,4 @@
-formsurface app icon: the owner's planar bust (bust_source.png, the same render formsculptor uses),
+formsurface app icon: the owner's planar bust (bust_source.png, the same render formsculpt uses),
 half left in its original white clay and half spray-painted graffiti-style in the Form family gradient:
 a sprayed crown, a tag sweep across the face with drips, a burst on the plinth, and overspray grain.
 
