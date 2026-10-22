@@ -9,6 +9,7 @@ import { MenuBar, type MenuDef, type MenuItem } from './menu';
 import { TerminalDock } from './terminal-dock';
 import { CommandPalette } from './command-palette';
 import { Dialog } from './dialog';
+import { THEMES, currentTheme, setTheme } from './themes';
 import { language, languages, setLanguage, t, type Lang } from '../i18n';
 import { mountColorWheel } from '../ui/color-wheel';
 
@@ -440,6 +441,7 @@ export class Shell {
     const form = el<HTMLElement>(`<div class="fs-form">
 <h3>Interface</h3>
 <label class="fs-field"><span>Language</span><select class="fs-lang" translate="no"></select></label>
+<label class="fs-field"><span>Theme</span><select class="fs-theme"></select></label>
 <h3>AI agents</h3>
 <label class="fs-field"><span>Claude Code program</span><input class="fs-claude-bin" type="text" spellcheck="false" placeholder="Found automatically"></label>
 <label class="fs-field"><span>Starts in folder</span><input class="fs-claude-folder" type="text" spellcheck="false" placeholder="FormSurface Agent folder"></label>
@@ -451,6 +453,10 @@ export class Shell {
     const lang = q<HTMLSelectElement>(form, '.fs-lang');
     for (const [code, name] of languages()) { const o = document.createElement('option'); o.value = code; o.textContent = name; lang.appendChild(o); }
     lang.value = language();
+    const themePick = q<HTMLSelectElement>(form, '.fs-theme');
+    for (const [id, label] of THEMES) { const o = document.createElement('option'); o.value = id; o.textContent = label; themePick.appendChild(o); }
+    themePick.value = currentTheme();
+    themePick.addEventListener('change', () => setTheme(themePick.value));
     q<HTMLInputElement>(form, '.fs-claude-bin').value = prefs.claudeBin ?? '';
     q<HTMLInputElement>(form, '.fs-claude-folder').value = prefs.claudeFolder ?? '';
     q<HTMLInputElement>(form, '.fs-claude-first').value = prefs.claudeFirstMessage ?? '';
