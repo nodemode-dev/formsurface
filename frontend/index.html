@@ -8,6 +8,7 @@
     (function () {
       var root = document.documentElement;
       root.classList.add('shell-pending');
+      if (/Mac/.test(navigator.platform) && '__TAURI_INTERNALS__' in window) root.classList.add('has-overlay-titlebar');
       try {
         var lang = localStorage.getItem('formsurface.language');
         if (lang && lang !== 'en') { root.classList.add('i18n-pending'); root.lang = lang; }
@@ -87,6 +88,12 @@
     <input type="file" id="mesh-file" accept=".glb,.gltf,.obj,.fbx,.usd,.usda,.usdc,.usdz,.ply,.dae" hidden>
     <input type="file" id="image-file" accept="image/*" hidden>
   </header>
+  <script>
+    if (document.documentElement.classList.contains('has-overlay-titlebar')) {
+      var bar = document.querySelector('.topbar');
+      [bar].concat(Array.prototype.slice.call(bar.querySelectorAll('.brand, .spacer, .sep, .version'))).forEach(function (n) { n.setAttribute('data-tauri-drag-region', ''); });
+    }
+  </script>
 
   <nav class="tools" aria-label="Tools">
     <button class="icon-btn" id="tool-paint" aria-pressed="true" title="Paint (B)"><svg><use href="#i-brush"/></svg></button>
