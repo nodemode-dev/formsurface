@@ -3,7 +3,7 @@ resolver = "2"
 members = ["fs-core", "fs-engine"]
 
 [workspace.package]
-version = "0.59.1"
+version = "0.59.2"
 edition = "2021"
 license = "Apache-2.0"
 
