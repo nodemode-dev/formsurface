@@ -7,3 +7,44 @@ Third-party components: wgpu, naga, wasm-bindgen, js-sys, web-sys, bytemuck, ser
 Projection painting follows the published approach of rasterizing the mesh in UV space and testing texels in world space (Schaerfig and Hormann, VMV 2010); no third-party painting code is copied.
 
 Trademarks: Adobe, Substance 3D Painter and Photoshop are either registered trademarks or trademarks of Adobe in the United States and/or other countries. Unreal Engine is a trademark of Epic Games, Inc.; Unity is a trademark of Unity Technologies; Blender is a registered trademark of the Blender Foundation; Godot is a trademark of the Godot Foundation; Arnold is a trademark of Autodesk, Inc.; Redshift is a trademark of Maxon Computer GmbH; Sketchfab is a trademark of Epic Games, Inc. Other names are the property of their owners. They are used only to describe compatibility, export templates and file formats; FormSurface is not affiliated with or endorsed by them. FormSurface's features carry its own names (Intelligent Materials, Intelligent Masks), and no other product's materials, masks, presets, icons or sample files are bundled.
+
+Components in detail (licences read from the package metadata or licence file of the pinned version on 2026-10-23; the repository holds no installed environment, so PyPI and npm metadata were used):
+
+| Component | Licence | Notes |
+| --- | --- | --- |
+| PyOpenColorIO (the `opencolorio` 2.6.0 wheel; libOpenColorIO and its Python binding) | BSD-3-Clause | the wheel's `LICENSE` file is the three-clause BSD text ("Copyright Contributors to the OpenColorIO Project"); the PyPI licence field gives only the copyright line. Frozen into the service with `--collect-all PyOpenColorIO` |
+| mcp 2.3.0 (Model Context Protocol Python SDK) | MIT | the MCP server in `mcp/server.py`; frozen with `--collect-submodules mcp.server`, `mcp.shared` and `mcp_types` |
+| PyInstaller 6.16.0 | GPL-2.0-or-later with the PyInstaller exception that permits distributing the frozen program under another licence | packs the service into the desktop sidecar; its bootloader is the executable stub of the frozen engine, so it is in the distributed file |
+| Pyodide 314.0.7 (`pyodide.mjs`, `pyodide.asm.mjs`, `pyodide.asm.wasm`, `pyodide-lock.json`, copied by `frontend/vite.config.ts` into the build) | MPL-2.0 (npm package metadata), unmodified | the embedded Python console, loaded in the browser from the app's own files; source at https://github.com/pyodide/pyodide |
+| CPython 3.14.2 standard library (`python_stdlib.zip` in the Pyodide package, and the interpreter compiled into `pyodide.asm.wasm`; version from `pyodide-lock.json`) | PSF-2.0 | runs the console. Other libraries compiled into `pyodide.asm.wasm` (the Emscripten runtime and C libraries): licence to confirm, not read from Pyodide's package |
+
+## Python packages frozen into the engine, beyond the paragraph above
+
+The service is frozen with PyInstaller `--onefile` (`setup/freeze_backend`). These are the packages in `backend/requirements.txt` and the dependencies pip resolves for fastapi, uvicorn, httpx and mcp, which the freeze collects. "Frozen in" is inferred from the freeze flags and imports, not from a built bundle. Direct pins are read from the pinned version's PyPI metadata; transitive packages float, so their entries are read from the latest release on 2026-10-23 and should be re-read from the installed environment at build time.
+
+| Package | Licence |
+| --- | --- |
+| CPython runtime and standard library | PSF-2.0 |
+| typing-extensions | PSF-2.0 |
+| certifi (a dependency of httpx) | MPL-2.0 (cacert.pem unedited) |
+| websockets 17.2, uvicorn 0.54.0, httpx 0.28.1, httpcore, idna, click, starlette, sse-starlette, httpx2, pycparser | BSD-3-Clause |
+| python-multipart 0.0.32 | Apache-2.0 |
+| fastapi 0.143.0, mcp-types 2.3.0, pydantic, pydantic-core, annotated-types, annotated-doc, typing-inspection, anyio, h11, jsonschema, jsonschema-specifications, referencing, rpds-py, attrs, PyJWT | MIT |
+| opentelemetry-api | Apache-2.0 |
+| cryptography (a dependency of PyJWT[crypto]) | Apache-2.0 OR BSD-3-Clause |
+| cffi | MIT-0 |
+| ptyprocess 0.7.0 (macOS, Linux) | ISC |
+| pywinpty 3.0.5 (Windows) | MIT |
+
+## Desktop shell: crates under other licences
+
+Tauri links these crates unedited (no `[patch]` and no vendored copy):
+
+| Crate | Licence | Why it is there |
+| --- | --- | --- |
+| cssparser, selectors, dtoa-short, option-ext | MPL-2.0 | Tauri's HTML handling (tauri-utils); used unmodified, source at crates.io |
+| ring | Apache-2.0 AND ISC | TLS for the updater (rustls) |
+| webpki-root-certs | CDLA-Permissive-2.0 | root certificates for the updater's TLS |
+| r-efi | MIT OR Apache-2.0 OR LGPL-2.1-or-later | used under MIT |
+
+The Linux AppImage also carries the build machine's WebKitGTK, GTK and GLib (LGPL-2.1-or-later) as separate shared libraries.
