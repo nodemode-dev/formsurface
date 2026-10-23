@@ -14,7 +14,7 @@
  "Fill and filter layers: put a live copy in another texture set; changes to either update both": "Calques de remplissage et de filtre : place une copie liée dans un autre jeu de textures; les modifications de l'une mettent à jour les deux",
  "Flatten folder turns the folder and its layers into one paint layer that keeps the folder opacity and mask. This cannot be undone. Flatten?": "Aplatir le dossier transforme le dossier et ses calques en un seul calque de peinture qui conserve l'opacité et le masque du dossier. Cette action est irréversible. Aplatir?",
  "Flatten replaces every layer of this texture set with one paint layer. Fill, filter and generator settings are lost and this cannot be undone. Flatten?": "Aplatir remplace tous les calques de ce jeu de textures par un seul calque de peinture. Les réglages de remplissage, de filtre et de générateur sont perdus et cette action est irréversible. Aplatir?",
- "Give the layer a generator (fill layer) or a generator mask (Mask from) first; that setup is what a smart mask saves": "Donnez d'abord au calque un générateur (calque de remplissage) ou un masque de générateur (Masque depuis); cette configuration est ce qu'enregistre un masque intelligent",
+ "Give the layer a generator (fill layer) or a generator mask (Mask from) first; that setup is what an intelligent mask saves": "Donnez d'abord au calque un générateur (calque de remplissage) ou un masque de générateur (Masque depuis); cette configuration est ce qu'enregistre un masque intelligent",
  "Inside this repo, the .mcp.json file already registers it for Claude Code. The Terminal, Claude Code and Chat buttons in the title bar start Claude Code right here, already connected.": "Dans ce dépôt, le fichier .mcp.json l'enregistre déjà pour Claude Code. Les boutons Terminal, Claude Code et Clavardage de la barre de titre lancent Claude Code ici même, déjà connecté.",
  "Instanced into {0}: settings, mask generator, name, opacity, blend and layers added inside a folder reach every copy; strokes stay on the source": "Instancié dans {0} : les réglages, le générateur de masque, le nom, l'opacité, la fusion et les calques ajoutés dans un dossier atteignent toutes les copies; les traits restent sur la source",
  "Largest blur radius in pixels; 0 is off": "Plus grand rayon de flou en pixels; 0 désactive",
@@ -36,8 +36,8 @@
  "Rays per texel for ambient occlusion and bent normal from the high-poly mesh; 0 skips them": "Rayons par texel pour l'occlusion ambiante et la normale inclinée depuis le maillage high-poly; 0 les ignore",
  "Resolution of the active texture set or UV tile; its layers are resampled, undo is cleared and bakes need re-running": "Résolution du jeu de textures ou de la tuile UV actifs; leurs calques sont rééchantillonnés, l'historique d'annulation est effacé et les bakes doivent être relancés",
  "Save to the workspace library; it then appears in the Template list": "Enregistre dans la bibliothèque de l'espace de travail; il apparaît ensuite dans la liste des modèles",
- "Saved smart mask {0}; it applies to any layer from the list": "Masque intelligent {0} enregistré; il s'applique à n'importe quel calque depuis la liste",
- "Saving the smart mask failed (is ./formsurface running?): {0}": "Échec de l'enregistrement du masque intelligent (./formsurface est-il lancé?) : {0}",
+ "Saved intelligent mask {0}; it applies to any layer from the list": "Masque intelligent {0} enregistré; il s'applique à n'importe quel calque depuis la liste",
+ "Saving the intelligent mask failed (is ./formsurface running?): {0}": "Échec de l'enregistrement du masque intelligent (./formsurface est-il lancé?) : {0}",
  "Saving the template failed (is ./formsurface running?): {0}": "Échec de l'enregistrement du modèle (./formsurface est-il lancé?) : {0}",
  "Stack an effect on the active layer's mask; effects apply top to bottom over the mask and its paint": "Empile un effet sur le masque du calque actif; les effets s'appliquent de haut en bas sur le masque et sa peinture",
  "The GPU engine is still starting; load the environment again in a moment": "Le moteur GPU démarre encore; rechargez l'environnement dans un instant",
@@ -51,7 +51,7 @@
  "color_space is one of {0} when loading; set an OCIO color space afterwards with the resource color space": "color_space vaut l'un de {0} au chargement; définissez ensuite un espace colorimétrique OCIO avec l'espace colorimétrique de la ressource",
  "{0} fps": "{0} i/s",
  "{0} has no alpha channel, so transparent padding cannot be written; choose infinite, color or diffusion": "{0} n'a pas de canal alpha, donc la marge transparente ne peut pas être écrite; choisissez infinie, couleur ou diffusion",
- "{0} is a built-in smart mask; choose another name": "{0} est un masque intelligent intégré; choisissez un autre nom",
+ "{0} is a built-in intelligent mask; choose another name": "{0} est un masque intelligent intégré; choisissez un autre nom",
  "{0} is a built-in template; choose another name": "{0} est un modèle intégré; choisissez un autre nom",
  "{0} is now {1} px: its layers were resampled, undo cleared; bake again for generators": "{0} fait maintenant {1} px : ses calques ont été rééchantillonnés et l'historique d'annulation effacé; relancez le bake pour les générateurs"
 }

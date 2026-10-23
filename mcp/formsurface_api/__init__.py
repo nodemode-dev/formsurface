@@ -1,6 +1,6 @@
 """FormSurface Python API: drives the editor that is open with Agent link on, through the same validated tools as the MCP server.
 
-Modules follow Substance 3D Painter's API layout: project, textureset, layerstack, baking, export, resource and display.
+Modules follow the usual texture-painter scripting layout: project, textureset, layerstack, baking, export, resource and display.
 Every call raises FormSurfaceError when the editor refuses it. tool() reaches any formsurface_* tool by name.
 """
 

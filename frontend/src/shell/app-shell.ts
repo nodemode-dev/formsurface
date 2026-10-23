@@ -81,7 +81,7 @@ const SAMPLES: Array<[string, string]> = [
 
 const PANEL_TABS: Array<{ id: string; label: string; sections: string[] }> = [
   { id: 'paint', label: 'Paint', sections: ['Brush', 'Symmetry', 'Stencil', 'Path', 'Text', 'Material'] },
-  { id: 'layers', label: 'Layers', sections: ['Texture sets', 'Layers', 'Smart materials', 'Fill layer', 'Filter layer'] },
+  { id: 'layers', label: 'Layers', sections: ['Texture sets', 'Layers', 'Intelligent materials', 'Fill layer', 'Filter layer'] },
   { id: 'bake', label: 'Bake', sections: ['Baking', 'Base material'] },
   { id: 'display', label: 'Display', sections: ['Display', 'Post effects', 'Resources'] },
   { id: 'export', label: 'Export', sections: ['Export', 'Python'] },

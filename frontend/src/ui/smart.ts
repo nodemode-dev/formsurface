@@ -88,9 +88,9 @@ export async function savedMasks(): Promise<Record<string, Record<string, unknow
 }
 
 export async function saveMask(name: string, settings: Record<string, unknown>, thumbnail?: string): Promise<string> {
-  if (!/^[A-Za-z0-9 _.-]{1,80}$/.test(name) || name.startsWith('.')) throw new Error('Smart mask names use letters, digits, spaces, dot, dash and underscore');
+  if (!/^[A-Za-z0-9 _.-]{1,80}$/.test(name) || name.startsWith('.')) throw new Error('Intelligent mask names use letters, digits, spaces, dot, dash and underscore');
   const response = await fetch(`/api/smart-masks/${encodeURIComponent(name)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ settings: generatorPart(settings), thumbnail }) });
-  if (!response.ok) throw new Error(`Saving the smart mask failed (is ./formsurface running?): ${await response.text()}`);
+  if (!response.ok) throw new Error(`Saving the intelligent mask failed (is ./formsurface running?): ${await response.text()}`);
   return (await response.json()).file as string;
 }
 
@@ -106,6 +106,6 @@ export async function savedMaterials(): Promise<SmartMaterial[]> {
 
 export async function saveMaterial(material: SmartMaterial): Promise<string> {
   const response = await fetch(`/api/library/${encodeURIComponent(material.name)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(material) });
-  if (!response.ok) throw new Error(`Saving the smart material failed: ${await response.text()}`);
+  if (!response.ok) throw new Error(`Saving the intelligent material failed: ${await response.text()}`);
   return (await response.json()).file as string;
 }

@@ -17,7 +17,7 @@ SYSTEM_PATHS = ("/opt/homebrew/bin/claude", "/usr/local/bin/claude", "/usr/bin/c
 INSTALL = "Claude Code is not installed: install it from https://claude.com/claude-code, run claude once in a terminal to sign in, then open it here again"
 NOTE = ("You are Claude Code running in the terminal dock inside FormSurface, the 3D texture painter open on this computer. "
         "Work on the model with the formsurface MCP server's tools: start with formsurface_status, look with formsurface_screenshot before and after a change, "
-        "and use layers, fills, smart materials, baking and export_maps the way a texture artist would. "
+        "and use layers, fills, intelligent materials, baking and export_maps the way a texture artist would. "
         "They act on the editor open in the window, the person sees every change happen, and each change is one undo step. "
         "Use the formsurface-painting skill when it is available.")
 SERVER = "formsurface"

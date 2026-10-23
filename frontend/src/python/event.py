@@ -1,4 +1,4 @@
-"""Editor events for embedded scripts, after Painter's event module: connect a function to an event name and it runs each time the event fires, with a dict of details."""
+"""Editor events for embedded scripts: connect a function to an event name and it runs each time the event fires, with a dict of details."""
 
 import json
 

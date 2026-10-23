@@ -1,4 +1,4 @@
-"""The layer stack of the active texture set: paint, fill, filter and folder layers, masks, generators and smart materials.
+"""The layer stack of the active texture set: paint, fill, filter and folder layers, masks, generators and intelligent materials.
 
 Keyword arguments are those of the matching formsurface_* tool and are validated the same way."""
 

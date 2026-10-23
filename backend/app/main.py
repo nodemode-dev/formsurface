@@ -182,7 +182,7 @@ async def save_library(name: str, request: Request):
     body = await request.json()
     layers = body.get("layers") if isinstance(body, dict) else None
     if not isinstance(layers, list) or not layers or len(layers) > 64:
-        raise HTTPException(400, "A smart material needs 1 to 64 layers")
+        raise HTTPException(400, "An intelligent material needs 1 to 64 layers")
     root = DATA / "library"
     root.mkdir(parents=True, exist_ok=True)
     path = root / f"{name}.json"
@@ -276,7 +276,7 @@ async def save_smart_mask(name: str, request: Request):
     body = await request.json()
     settings = body.get("settings") if isinstance(body, dict) else None
     if not isinstance(settings, dict) or settings.get("generator") not in GENERATORS:
-        raise HTTPException(400, f"A smart mask needs a generator: {', '.join(sorted(GENERATORS))}")
+        raise HTTPException(400, f"An intelligent mask needs a generator: {', '.join(sorted(GENERATORS))}")
     clean = {}
     for key, value in settings.items():
         if key not in MASK_KEYS:

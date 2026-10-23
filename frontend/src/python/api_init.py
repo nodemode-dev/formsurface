@@ -1,6 +1,6 @@
 """FormSurface Python API, embedded in the editor: the same modules and validated tools as ./formsurface script, run inside the page.
 
-Modules follow Substance 3D Painter's API layout: project, textureset, layerstack, baking, export, resource and display, plus event and ui, which only exist embedded.
+Modules follow the usual texture-painter scripting layout: project, textureset, layerstack, baking, export, resource and display, plus event and ui, which only exist embedded.
 Every call raises FormSurfaceError when the editor refuses it. tool() reaches any formsurface_* tool by name.
 """
 

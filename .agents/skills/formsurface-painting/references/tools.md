@@ -24,7 +24,7 @@ When this table and the server disagree, the server wins and this file is stale.
 | `formsurface_save_project` | name (default the mesh's) | folder, file, bytes, sets, layers; the whole document (every set's size, channel roles, layer stack with settings, masks, generators, effects, base material and layer pixels) as workspace/projects/name/project.fsproj |
 | `formsurface_open_project` | name | the project's mesh loaded and every set restored exactly (bakes are not stored: bake again), plus status |
 | `formsurface_instance_layer` | layer_id (any layer or folder on the active set, not itself an instance copy), texture_set (name or index) | new layer id in the target set; settings edits to any copy update all copies, layers added to a source folder follow; strokes stay on the source and painting a copy is refused |
-| `formsurface_list_smart_materials` | none | materials with layer names and whether they have a thumbnail, smart mask names, saved smart mask names |
+| `formsurface_list_smart_materials` | none | materials with layer names and whether they have a thumbnail, intelligent mask names, saved intelligent mask names |
 | `formsurface_apply_smart_material` | name | new layer ids, baked flag |
 | `formsurface_save_smart_material` | name | saved file |
 | `formsurface_apply_smart_mask` | layer_id, name (Edge wear, Cavity dirt, Dust from top, Thin parts, Protect edges, Grunge dirt, Metal edge wear, Sun bleached or a saved name) | applied_as (fill generator or layer mask) and settings |

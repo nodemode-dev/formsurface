@@ -32,7 +32,7 @@
     "targets": "all",
     "category": "GraphicsAndDesign",
     "shortDescription": "3D texture painting",
-    "longDescription": "FormSurface paints PBR textures on 3D models with layers, masks, fills, smart materials, baking and export templates, with Claude Code built in.",
+    "longDescription": "FormSurface paints PBR textures on 3D models with layers, masks, fills, intelligent materials, baking and export templates, with Claude Code built in.",
     "copyright": "Copyright 2026 nodemode-ai.",
     "externalBin": ["binaries/formsurface-engine"],
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],

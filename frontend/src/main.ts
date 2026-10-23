@@ -1987,7 +1987,7 @@ async function refreshLibrary(): Promise<void> {
 const assets = new AssetBrowser($('ab-grid'), (item) => {
   if (item.kind === 'material') $<HTMLSelectElement>('sm-list').value = item.name;
   else $<HTMLSelectElement>('sm-mask').value = item.name;
-  status(`${item.kind === 'material' ? 'Smart material' : 'Smart mask'} ${item.name} selected: Apply uses it, Share saves it to a file`);
+  status(`${item.kind === 'material' ? 'Intelligent material' : 'Intelligent mask'} ${item.name} selected: Apply uses it, Share saves it to a file`);
 });
 
 function refreshAssets(): void {
@@ -2017,24 +2017,24 @@ function shareAsset(item: AssetItem): SharedAsset {
   const base = { format: 'formsurface-smart-asset', version: 1, kind: item.kind, name: item.name, thumbnail: item.thumbnail };
   if (item.kind === 'material') {
     const material = library.find((m) => m.name === item.name);
-    if (!material) throw new Error(`No smart material ${item.name}`);
+    if (!material) throw new Error(`No intelligent material ${item.name}`);
     return { ...base, layers: material.layers };
   }
   const settings = smartMasks[item.name];
-  if (!settings) throw new Error(`No smart mask ${item.name}`);
+  if (!settings) throw new Error(`No intelligent mask ${item.name}`);
   return { ...base, settings };
 }
 
 async function importAsset(text: string): Promise<string> {
   const data = JSON.parse(text) as SharedAsset;
-  if (data?.format !== 'formsurface-smart-asset' || (data.kind !== 'material' && data.kind !== 'mask') || typeof data.name !== 'string') throw new Error('Not a FormSurface smart asset file');
+  if (data?.format !== 'formsurface-smart-asset' || (data.kind !== 'material' && data.kind !== 'mask') || typeof data.name !== 'string') throw new Error('Not a FormSurface intelligent asset file');
   if (data.kind === 'material') {
-    if (!Array.isArray(data.layers) || !data.layers.length) throw new Error(`${data.name}: a smart material needs layers`);
+    if (!Array.isArray(data.layers) || !data.layers.length) throw new Error(`${data.name}: an intelligent material needs layers`);
     await saveMaterial({ name: data.name, layers: data.layers, thumbnail: data.thumbnail });
     await refreshLibrary();
   } else {
-    if (!data.settings || typeof data.settings !== 'object') throw new Error(`${data.name}: a smart mask needs settings`);
-    if (SMART_MASKS[data.name]) throw new Error(`${data.name} is a built-in smart mask name`);
+    if (!data.settings || typeof data.settings !== 'object') throw new Error(`${data.name}: an intelligent mask needs settings`);
+    if (SMART_MASKS[data.name]) throw new Error(`${data.name} is a built-in intelligent mask name`);
     await saveMask(data.name, data.settings, data.thumbnail);
     await refreshMasks(data.name);
   }
@@ -2045,15 +2045,15 @@ $('ab-search').addEventListener('input', () => assets.filter($<HTMLInputElement>
 $('ab-kind').addEventListener('change', () => assets.filter($<HTMLInputElement>('ab-search').value, sel('ab-kind') as AssetKind | 'all'));
 $('ab-apply').addEventListener('click', () => {
   const item = assets.selection;
-  if (!item) { status('Pick a smart material or mask in the grid first', true); return; }
+  if (!item) { status('Pick an intelligent material or mask in the grid first', true); return; }
   try {
     if (item.kind === 'material') { const ids = applySmartMaterial(item.name); status(`Applied ${item.name}: ${ids.length} layers in a folder of that name${engine?.is_baked() ? '' : '. Bake mesh maps for its generators to take effect'}`); }
-    else if (engine) { const r = applySmartMask(engine.active_layer(), item.name); status(`Applied smart mask ${item.name} as ${r.applied_as}`); }
+    else if (engine) { const r = applySmartMask(engine.active_layer(), item.name); status(`Applied intelligent mask ${item.name} as ${r.applied_as}`); }
   } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
 });
 $('ab-export').addEventListener('click', () => {
   const item = assets.selection;
-  if (!item) { status('Pick a smart material or mask in the grid first', true); return; }
+  if (!item) { status('Pick an intelligent material or mask in the grid first', true); return; }
   try {
     const shared = shareAsset({ ...item, thumbnail: item.thumbnail });
     downloadBlob(new Blob([JSON.stringify(shared, null, 2)], { type: 'application/json' }), `${slug(item.name)}.fsasset.json`);
@@ -2134,7 +2134,7 @@ void refreshLibrary();
 function applySmartMaterial(name: string): number[] {
   const e = requireEngine();
   const material = library.find((m) => m.name === name);
-  if (!material) throw new Error(`No smart material named ${name}`);
+  if (!material) throw new Error(`No intelligent material named ${name}`);
   e.add_folder(material.name);
   const ids: number[] = [];
   for (const layer of material.layers) {
@@ -2160,7 +2160,7 @@ function captureSmartMaterial(name: string): SmartMaterial {
     opacity: l.opacity,
     blend: l.blend,
   }));
-  if (!captured.length) throw new Error('Add fill or filter layers before saving a smart material');
+  if (!captured.length) throw new Error('Add fill or filter layers before saving an intelligent material');
   return { name, layers: captured };
 }
 
@@ -2177,7 +2177,7 @@ async function refreshMasks(select?: string): Promise<void> {
 function applySmartMask(id: number, name: string): Record<string, unknown> {
   const e = requireEngine();
   const preset = smartMasks[name];
-  if (!preset) throw new Error(`No smart mask named ${name}. Smart masks: ${Object.keys(smartMasks).join(', ')}`);
+  if (!preset) throw new Error(`No intelligent mask named ${name}. Intelligent masks: ${Object.keys(smartMasks).join(', ')}`);
   const raw = e.fill_settings(id);
   if (!raw) {
     maskFromSettings(id, preset);
@@ -2193,13 +2193,13 @@ function captureSmartMask(id: number): Record<string, unknown> {
   const fill = e.fill_settings(id);
   const sources = [fill, e.mask_generator_settings(id)].filter((s) => s).map((s) => generatorPart(JSON.parse(s) as Record<string, unknown>));
   const found = sources.find((s) => s.generator && s.generator !== 'none');
-  if (!found) throw new Error('Give the layer a generator (fill layer) or a generator mask (Mask from) first; that setup is what a smart mask saves');
+  if (!found) throw new Error('Give the layer a generator (fill layer) or a generator mask (Mask from) first; that setup is what an intelligent mask saves');
   return found;
 }
 
 async function saveSmartMask(id: number, name: string): Promise<Record<string, unknown>> {
   const settings = captureSmartMask(id);
-  if (SMART_MASKS[name]) throw new Error(`${name} is a built-in smart mask; choose another name`);
+  if (SMART_MASKS[name]) throw new Error(`${name} is a built-in intelligent mask; choose another name`);
   const file = await saveMask(name, settings, await viewportThumb());
   await refreshMasks(name);
   return { file, settings };
@@ -2211,22 +2211,22 @@ $('sm-apply').addEventListener('click', () => {
 $('sm-save').addEventListener('click', async () => {
   try {
     const name = $<HTMLInputElement>('sm-name').value.trim();
-    if (!name) throw new Error('Name the smart material first');
+    if (!name) throw new Error('Name the intelligent material first');
     await saveMaterial({ ...captureSmartMaterial(name), thumbnail: await viewportThumb() });
     await refreshLibrary();
-    status(`Saved smart material ${name}`);
+    status(`Saved intelligent material ${name}`);
   } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
 });
 $('sm-mask-apply').addEventListener('click', () => {
-  try { if (engine) { const r = applySmartMask(engine.active_layer(), sel('sm-mask')); status(`Applied smart mask ${sel('sm-mask')} as ${r.applied_as}`); } } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+  try { if (engine) { const r = applySmartMask(engine.active_layer(), sel('sm-mask')); status(`Applied intelligent mask ${sel('sm-mask')} as ${r.applied_as}`); } } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
 });
 $('sm-mask-save').addEventListener('click', async () => {
   try {
     if (!engine) return;
     const name = $<HTMLInputElement>('sm-mask-name').value.trim();
-    if (!name) throw new Error('Name the smart mask first');
+    if (!name) throw new Error('Name the intelligent mask first');
     await saveSmartMask(engine.active_layer(), name);
-    status(`Saved smart mask ${name}; it applies to any layer from the list`);
+    status(`Saved intelligent mask ${name}; it applies to any layer from the list`);
   } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
 });
 void refreshMasks();

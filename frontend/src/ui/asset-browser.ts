@@ -55,7 +55,7 @@ export class AssetBrowser {
       const label = tile.querySelector('span')!;
       const text = item.builtIn ? item.name : `${item.name} (saved)`;
       if (label.textContent !== text) label.textContent = text;
-      tile.title = `${item.kind === 'material' ? 'Smart material' : 'Smart mask'}: ${item.name}`;
+      tile.title = `${item.kind === 'material' ? 'Intelligent material' : 'Intelligent mask'}: ${item.name}`;
       tile.dataset.kind = item.kind;
     }
     this.filter(this.query, this.kind);
