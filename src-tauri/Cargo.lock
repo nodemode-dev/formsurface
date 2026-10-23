@@ -893,7 +893,7 @@ dependencies = [
 
 [[package]]
 name = "formsurface"
-version = "0.59.2"
+version = "0.59.3"
 dependencies = [
  "objc2",
  "objc2-app-kit",
