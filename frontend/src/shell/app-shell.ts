@@ -496,7 +496,7 @@ export class Shell {
 
   private about(): void {
     const d = new Dialog('About FormSurface');
-    const body = el<HTMLElement>('<div class="fs-form"><p class="fs-about-version"></p><p>3D texture painting on a Rust and WebGPU engine. Apache License 2.0.</p></div>');
+    const body = el<HTMLElement>('<div class="fs-form"><p class="fs-about-version"></p><p translate="no">by nodemode.ai</p><p>3D texture painting on a Rust and WebGPU engine. Apache License 2.0.</p></div>');
     setText(q(body, '.fs-about-version'), `FormSurface ${byId('version')?.textContent ?? ''}`);
     d.body.appendChild(body);
     d.action('Done', () => d.close(), true);
