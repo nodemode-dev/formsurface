@@ -142,6 +142,6 @@ build_app          the one root script that builds the desktop app
 
 ## License
 
-Apache-2.0. See `LICENSE` and `NOTICE`.
+Apache-2.0. Copyright 2026 NodeAgentc, Inc. See `LICENSE` and `NOTICE`.
 
 Adobe, Substance 3D Painter and Photoshop are either registered trademarks or trademarks of Adobe in the United States and/or other countries. They are named only for compatibility (Photoshop as an external editor and PSD export) and in `docs/PARITY.md`; FormSurface is not affiliated with or endorsed by Adobe, and its features carry their own names (Intelligent Materials, Intelligent Masks).
