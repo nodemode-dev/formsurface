@@ -10,7 +10,9 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, Response, Uploa
 from fastapi.responses import FileResponse, JSONResponse
 
 from app import environments, ocio
+from app.agent import config as agent_config
 from app.agent import router as agent_router
+from app.local_guard import LocalGuard
 
 VERSION = "0.59.4"
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,6 +29,9 @@ async def local_only(request: Request, call_next):
     if request.client and request.client.host not in LOCAL_HOSTS:
         return JSONResponse({"detail": "FormSurface only answers this computer"}, status_code=403)
     return await call_next(request)
+
+
+app.add_middleware(LocalGuard, origins=agent_config.window_origins())
 
 
 def folder(kind: str, name: str) -> Path:

@@ -17,6 +17,10 @@ def service_url() -> str:
     return f"http://127.0.0.1:{port()}"
 
 
+def window_origins() -> list[str]:
+    return [f"http://{host}:{ui}" for ui in (5176, 5177) for host in ("localhost", "127.0.0.1")] + ["tauri://localhost", "http://tauri.localhost"]
+
+
 def data_dir() -> Path:
     raw = os.environ.get("FORMSURFACE_DATA")
     if raw:
