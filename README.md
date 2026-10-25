@@ -2,9 +2,9 @@
 
 Paint directly on 3D models, layer by layer, with projection painting, fill layers, generators and baking. Part of the Form family.
 
-![version](https://img.shields.io/badge/version-v0.59.5-f97316) ![engine](https://img.shields.io/badge/engine-Rust%20%2B%20wgpu-555) ![license](https://img.shields.io/badge/license-Apache--2.0-555)
+![version](https://img.shields.io/badge/version-v0.59.6-f97316) ![engine](https://img.shields.io/badge/engine-Rust%20%2B%20wgpu-555) ![license](https://img.shields.io/badge/license-Apache--2.0-555)
 
-## What works in v0.59.5
+## What works in v0.59.6
 
 - **3D projection painting.** The brush hits the mesh in world space and writes into the UV textures, so strokes keep a constant on-screen size, cross UV seams and do not stretch on distorted islands. Occluded and back-facing surfaces are protected.
 - **GPU engine in Rust.** wgpu running on WebGPU in the browser. Painting, compositing and the viewport never leave the GPU; nothing round-trips through the server while you paint.
