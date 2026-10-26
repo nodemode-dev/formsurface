@@ -17,6 +17,7 @@ Components in detail (licences read from the package metadata or licence file of
 | PyInstaller 6.16.0 | GPL-2.0-or-later with the PyInstaller exception that permits distributing the frozen program under another licence | packs the service into the desktop sidecar; its bootloader is the executable stub of the frozen engine, so it is in the distributed file |
 | Pyodide 314.0.7 (`pyodide.mjs`, `pyodide.asm.mjs`, `pyodide.asm.wasm`, `pyodide-lock.json`, copied by `frontend/vite.config.ts` into the build) | MPL-2.0 (npm package metadata), unmodified | the embedded Python console, loaded in the browser from the app's own files; source at https://github.com/pyodide/pyodide |
 | pytest 9.1.1 (with iniconfig, packaging, pluggy, pygments) | MIT (pytest, iniconfig, pluggy), Apache-2.0 OR BSD-2-Clause (packaging), BSD-2-Clause (pygments) | runs `backend/tests` in CI (`backend/requirements-test.txt`); development only, never installed in the app |
+| Playwright for Python 1.63.0 | Apache-2.0 | drives Chromium for the window smoke in `frontend/tests/window` in CI; development only, never installed in the app |
 | CPython 3.14.2 standard library (`python_stdlib.zip` in the Pyodide package, and the interpreter compiled into `pyodide.asm.wasm`; version from `pyodide-lock.json`) | PSF-2.0 | runs the console. Other libraries compiled into `pyodide.asm.wasm` (the Emscripten runtime and C libraries): licence to confirm, not read from Pyodide's package |
 
 ## Python packages frozen into the engine, beyond the paragraph above
