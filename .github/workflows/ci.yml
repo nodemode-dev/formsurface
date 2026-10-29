@@ -9,14 +9,25 @@ on:
 permissions:
   contents: read
 
+# A pull request's newer push cancels its older run. Runs on main and compile_v* are never cancelled: formcompiler
+# releases a commit only when this workflow passed on that exact commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            native
       - run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
       - run: setup/build_engine debug
       - uses: actions/setup-node@v4
@@ -35,6 +46,7 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: backend
@@ -55,6 +67,7 @@ jobs:
 
   rust:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: native
@@ -63,10 +76,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            native
       - run: cargo check --locked --target wasm32-unknown-unknown -p fs-core -p fs-engine
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -77,6 +95,10 @@ jobs:
             backend/requirements.txt
             backend/requirements-test.txt
       - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            native
       - name: Engine and test dependencies
         run: pip install -r backend/requirements.txt -r backend/requirements-test.txt
       - name: Family layers and engine tests
@@ -88,11 +110,16 @@ jobs:
 
   window:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            native
       - run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
       - run: setup/build_engine debug
       - uses: actions/setup-python@v5
@@ -117,6 +144,7 @@ jobs:
 
   scripts:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Shell syntax
