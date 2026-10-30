@@ -1,6 +1,12 @@
 @echo off
 cd /d "%~dp0"
-python -m venv venv
+where python >nul 2>nul || (echo [formsurface] error: Python 3.12 or newer is required 1>&2 & exit /b 1)
+if not exist venv\Scripts\activate.bat python -m venv venv
+if errorlevel 1 exit /b 1
 call venv\Scripts\activate.bat
+if errorlevel 1 exit /b 1
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+if errorlevel 1 exit /b 1
+python -m pip install -r requirements.txt
+if errorlevel 1 exit /b 1
+exit /b 0

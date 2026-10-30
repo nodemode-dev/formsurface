@@ -9,6 +9,7 @@ if "%1"=="claude" goto claude
 if "%1"=="doctor" goto doctor
 if "%1"=="install-desktop" goto installdesktop
 if "%1"=="freeze" goto freeze
+if "%1"=="desktop" goto desktop
 if "%1"=="help" goto help
 if not exist frontend\src\engine\pkg\fs_engine.js call :engine
 start "FormSurface backend" cmd /k "cd backend && boot_backend.bat"
@@ -19,12 +20,12 @@ call formsurface_oc_install.bat
 goto :eof
 :engine
 pushd native
-cargo build --release --target wasm32-unknown-unknown -p fs-engine || exit /b 1
+cargo build --release --target wasm32-unknown-unknown -p fs-engine || (popd & exit /b 1)
 popd
-wasm-bindgen --target web --out-dir frontend\src\engine\pkg native\target\wasm32-unknown-unknown\release\fs_engine.wasm
+wasm-bindgen --target web --out-dir frontend\src\engine\pkg native\target\wasm32-unknown-unknown\release\fs_engine.wasm || exit /b 1
 goto :eof
 :build
-if not exist frontend\src\engine\pkg\fs_engine.js call :engine
+if not exist frontend\src\engine\pkg\fs_engine.js (call :engine & if errorlevel 1 exit /b 1)
 pushd frontend
 call npm run build || (popd & exit /b 1)
 popd
@@ -57,22 +58,30 @@ if exist frontend\src\engine\pkg\fs_engine.js (echo   engine: built) else (echo 
 where claude >nul 2>nul && (echo   claude code: found) || echo   claude code: not found
 goto :eof
 :installdesktop
+if not exist backend\venv\Scripts\activate.bat (echo [formsurface] error: service venv missing, run formsurface.bat install 1>&2 & exit /b 1)
 call backend\venv\Scripts\activate.bat
-pip install -r backend\requirements_desktop.txt
+python -m pip install -r backend\requirements_desktop.txt || exit /b 1
 pushd frontend
-call npm install
+call npm install || (popd & exit /b 1)
 popd
 goto :eof
 :freeze
-if not exist frontend\dist\index.html call :build
+if not exist frontend\dist\index.html (call :build & if errorlevel 1 exit /b 1)
+if not exist backend\venv\Scripts\activate.bat (echo [formsurface] error: service venv missing, run formsurface.bat install 1>&2 & exit /b 1)
 pushd backend
 call venv\Scripts\activate.bat
+set TRIPLE=
 for /f "tokens=2" %%t in ('rustc -vV ^| findstr host') do set TRIPLE=%%t
+if not defined TRIPLE (echo [formsurface] error: rustc not found, install Rust from https://rustup.rs 1>&2 & popd & exit /b 1)
 pyinstaller --noconfirm --clean --onefile --name formsurface-engine --distpath dist-engine --workpath build\pyinstaller --specpath build\pyinstaller --paths "%~dp0backend" --add-data "%~dp0frontend\dist;frontend_dist" --add-data "%~dp0mcp;mcp" --hidden-import app.agent.router --hidden-import app.agent.cmd_terminal --hidden-import app.agent.claude_code --hidden-import app.agent.cmd_chat --hidden-import app.agent.cmd_prefs --hidden-import winpty --collect-submodules uvicorn --collect-submodules app --collect-submodules mcp.server --collect-submodules mcp.shared --collect-submodules mcp_types --collect-submodules httpx --collect-all PyOpenColorIO "%~dp0backend\formsurface_engine.py" || (popd & exit /b 1)
 dist-engine\formsurface-engine.exe --selfcheck || (popd & exit /b 1)
 if not exist "%~dp0src-tauri\binaries" mkdir "%~dp0src-tauri\binaries"
-copy /y dist-engine\formsurface-engine.exe "%~dp0src-tauri\binaries\formsurface-engine-%TRIPLE%.exe"
+copy /y dist-engine\formsurface-engine.exe "%~dp0src-tauri\binaries\formsurface-engine-%TRIPLE%.exe" || (popd & exit /b 1)
 popd
+goto :eof
+:desktop
+if not "%2"=="build" (call :help & exit /b 2)
+call setup\desktop_build.bat %3 %4 %5 %6 %7 %8 %9
 goto :eof
 :help
 echo formsurface.bat [command]
@@ -86,4 +95,6 @@ echo   claude [ARGS]   Claude Code connected to the formsurface MCP server
 echo   doctor          check the toolchain and builds
 echo   install-desktop PyInstaller and the Tauri command line
 echo   freeze          freeze the service into src-tauri\binaries
+echo   desktop build [ARGS]  build the engine, the editor, the sidecar and the desktop app;
+echo                   ARGS such as --config FILE go to tauri build
 goto :eof

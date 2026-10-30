@@ -1,3 +1,5 @@
 @echo off
 cd /d "%~dp0"
-npm install
+call npm install
+if errorlevel 1 exit /b 1
+exit /b 0
