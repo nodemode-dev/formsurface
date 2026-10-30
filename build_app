@@ -10,20 +10,31 @@ usage() {
   --install            Linux: install the built .deb with apt (asks for your password)
   --open               open the app when the build is done
   --clean              rebuild the Rust side and the frozen engine from nothing
+  --config FILE        merge a Tauri config file or JSON string into tauri build (repeatable;
+                       --config=FILE also works)
+Linux bundles come from FORMSURFACE_BUNDLES (default deb,appimage).
 Every step's output goes to build_app.log beside this file.
 EOT
 }
 
 install_app=auto open_app=0 clean=0
-for arg in "$@"; do
-  case "$arg" in
+configs=()
+while [ $# -gt 0 ]; do
+  case "$1" in
     --no-install) install_app=no ;;
     --install) install_app=yes ;;
     --open) open_app=1 ;;
     --clean) clean=1 ;;
+    --config)
+      [ $# -ge 2 ] && [ -n "$2" ] || { printf '[formsurface] error: --config needs a file or JSON string\n' >&2; exit 2; }
+      configs+=("$2"); shift ;;
+    --config=*)
+      [ -n "${1#--config=}" ] || { printf '[formsurface] error: --config needs a file or JSON string\n' >&2; exit 2; }
+      configs+=("${1#--config=}") ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; exit 2 ;;
   esac
+  shift
 done
 
 log="$FORMSURFACE_ROOT/build_app.log"
@@ -35,7 +46,7 @@ os="$(fs_os)"
 step() { printf '\n[formsurface] == %s\n' "$*"; }
 
 step "checking the tools"
-[ "$os" = macos ] || [ "$os" = linux ] || fs_die "build_app runs on macOS and Linux; on Windows run formsurface.bat install, then build in WSL"
+[ "$os" = macos ] || [ "$os" = linux ] || fs_die "build_app runs on macOS and Linux; on Windows run formsurface.bat install, formsurface.bat install-desktop, then formsurface.bat desktop build"
 if [ "$os" = macos ]; then
   xcode-select -p >/dev/null 2>&1 || fs_die "the Xcode command line tools are missing: run xcode-select --install, then ./build_app again"
 fi
@@ -84,8 +95,14 @@ case "$os" in
     tauri_args+=(--bundles app)
     [ -n "${APPLE_SIGNING_IDENTITY:-}" ] || tauri_args+=(--config '{"bundle":{"macOS":{"signingIdentity":"-"}}}')
     ;;
-  linux) tauri_args+=(--bundles "${FORMSURFACE_BUNDLES:-deb}") ;;
+  linux)
+    tauri_args+=(--bundles "${FORMSURFACE_BUNDLES:-deb,appimage}")
+    export APPIMAGE_EXTRACT_AND_RUN="${APPIMAGE_EXTRACT_AND_RUN:-1}"
+    ;;
 esac
+for config in ${configs[@]+"${configs[@]}"}; do
+  tauri_args+=(--config "$config")
+done
 
 step "building the desktop app (the first build compiles several hundred Rust crates)"
 tlog="$(mktemp)"
@@ -116,6 +133,7 @@ if [ "$os" = macos ]; then
   rm -rf "$stage"
   fs_say "app: $app"
   fs_say "disk image: $dmg"
+  if [ -f "$bundle/macos/FormSurface.app.tar.gz" ]; then fs_say "updater archive: $bundle/macos/FormSurface.app.tar.gz"; fi
   target_app=""
   if [ "$install_app" != no ]; then
     dest=/Applications
@@ -134,6 +152,8 @@ if [ "$os" = macos ]; then
 else
   deb="$(ls -t "$bundle"/deb/*.deb 2>/dev/null | head -1 || true)"
   [ -n "$deb" ] && fs_say "package: $deb"
+  appimage="$(ls -t "$bundle"/appimage/*.AppImage 2>/dev/null | head -1 || true)"
+  if [ -n "$appimage" ]; then fs_say "AppImage: $appimage"; fi
   if [ "$install_app" = yes ] && [ -n "$deb" ]; then
     sudo apt install -y "$deb"
   elif [ -n "$deb" ]; then
