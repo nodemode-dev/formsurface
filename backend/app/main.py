@@ -14,7 +14,7 @@ from app.agent import config as agent_config
 from app.agent import router as agent_router
 from app.local_guard import LocalGuard
 
-VERSION = "0.59.9"
+VERSION = "0.59.10"
 ROOT = Path(__file__).resolve().parents[2]
 DATA = Path(os.environ.get("FORMSURFACE_DATA", ROOT / "workspace"))
 SAFE = re.compile(r"^[A-Za-z0-9 _.-]{1,80}$")
