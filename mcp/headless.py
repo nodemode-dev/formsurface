@@ -95,24 +95,33 @@ class Headless:
         self.say("editor linked")
         return self
 
+    @staticmethod
+    def end_tree(process: subprocess.Popen, force: bool) -> None:
+        """Ends the process and every child it started: its process group on POSIX (SIGTERM, then SIGKILL when forced), its whole tree through taskkill /T /F on Windows, where console children such as node and uvicorn do not answer a polite close."""
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGKILL if force else signal.SIGTERM)
+            return
+        try:
+            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           timeout=15, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        if process.poll() is None:
+            process.kill()
+
     def stop(self) -> None:
         for process in reversed(self.started):
             if process.poll() is not None:
                 continue
             try:
-                if os.name == "posix":
-                    os.killpg(process.pid, signal.SIGTERM)
-                else:
-                    process.terminate()
+                self.end_tree(process, force=False)
                 process.wait(timeout=10)
             except (ProcessLookupError, subprocess.TimeoutExpired):
-                if os.name == "posix":
-                    try:
-                        os.killpg(process.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
-                else:
-                    process.kill()
+                try:
+                    self.end_tree(process, force=True)
+                    process.wait(timeout=10)
+                except (ProcessLookupError, subprocess.TimeoutExpired):
+                    pass
         self.started.clear()
         if self.profile:
             shutil.rmtree(self.profile, ignore_errors=True)
