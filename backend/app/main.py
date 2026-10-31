@@ -1,5 +1,6 @@
 import asyncio
 import json
+import mimetypes
 import os
 import re
 import uuid
@@ -13,6 +14,10 @@ from app import environments, ocio
 from app.agent import config as agent_config
 from app.agent import router as agent_router
 from app.local_guard import LocalGuard
+
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/javascript", ".mjs")
+mimetypes.add_type("text/css", ".css")
 
 VERSION = "0.60.0"
 ROOT = Path(__file__).resolve().parents[2]
