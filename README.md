@@ -1,152 +1,176 @@
-# FormSurface
+<p align="center">
+  <img src="assets/app-icon/formsurface-256.png" width="128" height="128" alt="FormSurface icon: a sculpted head bust in the Form family icon style">
+</p>
 
-Paint directly on 3D models, layer by layer, with projection painting, fill layers, generators and baking. Part of the Form family.
+<h1 align="center">FormSurface</h1>
 
-![version](https://img.shields.io/badge/version-v0.60.1-f97316) ![engine](https://img.shields.io/badge/engine-Rust%20%2B%20wgpu-555) ![license](https://img.shields.io/badge/license-Apache--2.0-555)
+<p align="center">
+  <b>3D texture painting; paint straight onto the model, layer by layer.</b><br>
+  Projection painting, fill layers, generators and baking,<br>
+  with PBR export for game engines and renderers. Local-first, no account, and agents can paint too.
+</p>
 
-## What works in v0.60.1
+<p align="center">
+  <img alt="version 0.60.4" src="https://img.shields.io/badge/version-v0.60.4-eef0f4?style=flat-square">
+  <img alt="Rust and wgpu" src="https://img.shields.io/badge/engine-Rust%20%2B%20wgpu-b7410e?style=flat-square&logo=rust&logoColor=white">
+  <img alt="TypeScript" src="https://img.shields.io/badge/editor-TypeScript-3178c6?style=flat-square&logo=typescript&logoColor=white">
+  <img alt="macOS, Windows, Linux" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-native-2f7bf5?style=flat-square">
+  <img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-3a3a3a?style=flat-square">
+  <img alt="Status: pre-release" src="https://img.shields.io/badge/status-pre--release-d69e2e?style=flat-square">
+</p>
 
-- **3D projection painting.** The brush hits the mesh in world space and writes into the UV textures, so strokes keep a constant on-screen size, cross UV seams and do not stretch on distorted islands. Occluded and back-facing surfaces are protected.
-- **GPU engine in Rust.** wgpu running on WebGPU in the browser. Painting, compositing and the viewport never leave the GPU; nothing round-trips through the server while you paint.
-- **Channels:** base color, roughness, metallic, height (shown as bump in the viewport, exported as a normal map), plus one extra channel per texture set: a named user channel, opacity (cut-out in the viewport), ambient occlusion (darkens shading), emissive (glows with the base color, exported as an emissive map), transmission (glass, refracted by the path tracer) or scattering (subsurface, random-walked by the path tracer), and up to two further named grayscale user channels per texture set that paint, fill, merge, flatten, undo, resample and page with the rest and export as their own maps (or pack into template maps as user2 and user3). Each channel can be switched on or off per stroke and per fill.
-- **Polygon fill:** click to fill a triangle, a polygon (the original quad or n-gon for meshes from OBJ or ASCII PLY, otherwise the flat face around the triangle), a whole mesh part or a UV chunk with the paint material, in one undoable step.
-- **Clone (C):** Ctrl+click a source, then paint to copy what is visible there, or only one chosen layer, at a fixed offset.
-- **Path (L):** click points on the surface (drag a point to move it), then Enter paints a smooth or straight, open or closed curve through them: Paint stamps the current brush along it, Ribbon lays one even strip as wide as the brush (shaped by hardness, or the image tip repeated along the curve), Filled fills the inside; any mode can erase instead. The points stay on the model when the camera moves.
-- **2D view (U):** show the active texture set's UV layout as base color, roughness, metallic or height, and paint, polygon-fill or draw paths straight into the texture, reaching faces the camera cannot see.
-- **Text:** render text in a built-in or loaded font (TTF, OTF, WOFF) as a brush tip, a stencil or a fill layer image.
-- **Flatten, merge and export:** collapse a texture set or a folder into one paint layer, merge a layer down into the one below, and save any layer (color, roughness, metallic, height with coverage in alpha) or layer mask as PNG.
-- **Quick mask (T):** paint a temporary mask, shown in red where protected, that limits every stroke and fill until you turn it off; clear, allow all and invert.
-- **Brush:** size in screen or object space, hardness, flow, stroke opacity, spacing, pen pressure on size or flow, backface culling, eraser; symmetry that mirrors across one axis or several at once (up to eight copies) or repeats radially.
-- **Paint across texture sets:** with the switch on (Texture sets panel, or `across_sets` on the brush tool), a stroke that crosses onto another material keeps painting there, into its layer of the same name and kind, and one undo takes it back in every set.
-- **Color:** a docked hue ring and saturation and value square under the base color (drag, or arrow keys with Shift for larger steps), a twelve-color recent strip with a lock, and Pick Paint Color from Screen (I).
-- **Alignment and tips:** camera, tangent wrap, tangent planar and UV alignments; round, square and spray tips or any image as a brush alpha; angle, follow path, size, angle, position and flow jitter, lazy mouse.
-- **Stencil and symmetry:** a screen-space stencil from any image (scale, rotation, offset); mirror or radial symmetry on X, Y or Z.
-- **High-poly baking and intelligent materials:** tangent-space normal, ID, height, opacity, ambient occlusion and bent normal maps baked from a high-poly mesh through a distance cage or a custom cage mesh (AO and bent normal from rays cast over the high-poly detail), in a background worker so painting continues, optionally matching low and high parts by mesh name (_low/_high, _lo/_hi) so close parts never bake onto each other; intelligent materials (worn painted metal, rusty iron, dusty plastic, brushed gold, plus your own saved stacks) in an asset browser with thumbnails, search and a material or mask filter, where any asset can be shared as a .fsasset.json file and imported into another workspace and intelligent masks (eight presets, plus any layer's generator setup saved to the library and applied to fill layers or as a mask on any layer).
-- **Baking, generators and filters:** GPU baking of ambient occlusion, curvature, thickness, position and world normal from the mesh, with AO and thickness either from depth maps or ray traced per texel through the mesh's BVH on the GPU; fill layers and masks driven by generators: cavity, edges, thickness, from top, light from a direction, position along a direction, 3D noise, dirt, metal edge wear and a mask builder mixing AO, curvature and noise, each with noise breakup; filter layers for blur, sharpen, pixelate, levels, invert, posterize, brightness, contrast, hue, saturation, gamma and roughness or metallic offsets.
-- **Resources and color space:** imported fill images, brush alphas, stencils, image masks and HDR environments are listed in the Resources panel, each read as sRGB, Linear or Raw data and re-applied when that changes.
-- **Fill layers and masks:** fill layers projected by UV (on the first or, for lightmap and trim layouts, the second UV channel), tri-planar, planar, spherical, cylindrical or warp mapping (a planar projection bent by dragging a 4 by 4 grid on the model), or Fill (match per UV tile), which puts one image of a UDIM sequence on each tile, with solid, checker, stripes, noise or image patterns; a white or black mask on any layer, painted with the full brush, or taken from an image, an ID map color or a generator that follows every bake, with a stack of mask effects on top (fill, generator, levels, invert, blur and compare mask, each with a blend mode and opacity), nested in groups that run their contents on their own mask and blend the result in, so a levels or invert inside a group touches only that group.
-- **Layers and folders:** add, delete, reorder, hide, opacity, 31 layer blend modes (the three normal map modes combine height, since normals come from height here), undo and redo (24 strokes); folders that hide, fade and mask everything inside them (passthrough blending), nested up to 16 deep.
-- **Viewport:** PBR shading with a choice of view transform (ACES, Standard, AgX, Filmic, or any display, view and look of an OpenColorIO 2 config: the built-in ACES CG and studio configs or an .ocio file in the workspace ocio folder, run by real OpenColorIO in the service and applied as a 3D LUT; fill images and environments can be read in any color space of that config; the working space is linear Rec.709 or ACEScg, and switching converts painted layers while base color maps still export as sRGB), exposure, a built-in studio sky or an HDR environment (Radiance .hdr) with rotation, background and background blur, brush cursor drawn on the surface, orbit, pan, zoom, frame. A progressive path tracer for the viewport and screenshots: every texture set's paint lit by the HDR or the studio sky and lights, with traced shadows, up to 12 bounces of light between parts, opacity cut-outs and emissive glow, HDR lighting importance-sampled so a sun converges quickly, an optional edge-aware denoiser guided by albedo, normals and depth, a thin-lens depth of field, glass and subsurface scattering for sets whose extra channel is transmission or scattering, the post effects on top, and shadows that pass through opacity cut-outs, refining until a chosen sample count and restarting on any change; Render to file traces the current view at any size up to 3840 by 3840 and saves a PNG. Post effects on the viewport and screenshots: bloom, glare, lens flare, depth of field, chromatic aberration, sharpen, vignette, film grain and color correction. Seam padding (dilation) on the composited maps.
-- **Texture sets and UDIM:** one texture set per material, split per UDIM tile when UVs leave 0 to 1, each with its own layers, base material, undo, bakes, maps and resolution (Set size, 256 to 4096: resizing resamples the set's layers); the viewport shows them all. The UV tiles switch gives a material's tiles one shared layer stack, and a stroke paints across tile borders. Any layer can be instanced into another texture set, folders with their contents (layers later added to the source folder follow into its instances; strokes stay on the source); editing any copy updates them all. Idle texture sets can be paged out of GPU memory (their layer stacks and undo history move to the editor's memory while their finished look stays on screen) and come back when selected, exported or baked. A layer whose mask is black on a tile (a fill with a black mask not yet painted there) costs nothing on that tile: its fill and compositing are skipped until something writes its mask.
-- **Mesh reload:** texture sets keep their layers across a reload, matched by material and UDIM tile; with Reproject layers on mesh reload, every carried set's paint and masks follow the surface instead of the old UVs, so a re-unwrapped or edited mesh keeps its painting.
-- **Meshes:** glTF, GLB, OBJ, FBX, USD (USDA, USDC, USDZ), PLY and Collada with their material names, plus built-in samples (sphere, torus, capsule, torus knot, and a two-material figure on UDIM 1001 and 1002).
-- **Export:** templates for separate PBR maps, glTF (packed occlusion, roughness, metallic), Unreal Engine (ORM, DirectX normal), Unity HDRP (mask map), Unity URP, Unity Standard specular, Godot 4, Blender, Arnold, Redshift, USD Preview Surface, Sketchfab and PBR specular glossiness (diffuse and specular converted from base color and metallic), plus your own templates built in the Export panel (any source per R, G, B and A) and saved to the workspace library; PNG (8, 16-bit), TIFF (8, 16, 32-bit float), OpenEXR (16-bit half, 32-bit float), Radiance HDR, JPEG and Photoshop PSD (8, 16, 32-bit), with base color written linear in float files; padding outside the UV islands by infinite dilation or a dilation width followed by transparent, a color or a diffusion fill; one set of files per texture set (material_suffix, with .udim for tiled materials), each at its own size or at a chosen export size from 512 to 8192 (as the GPU allows), for which the stack is recomputed one layer at a time (so memory depends on the size, not the layer count) with fills, generators and mask effects rendered natively and paint resampled, leaving the working textures untouched; named by FormSurface or by a template with $mesh, $textureSet, $map, $udim, $u, $v and $size tags (for example `T_$textureSet_$map_$udim` for a game engine); on the painted UV layout or moved onto the mesh's second UV channel (glTF TEXCOORD_1, FBX and Collada second UV set) for lightmap and trim layouts, padded around the UV1 islands; the mesh as OBJ with its UDIM UVs, keeping the quads and n-gons of meshes from OBJ or ASCII PLY or triangulated, optionally tessellated up to three levels and displaced by the height channel; and a viewport screenshot.
+<p align="center">
+  <a href="https://formsurface.formai.studio/"><b>Download FormSurface on formai.studio</b></a> ·
+  <a href="#run-it-from-source">Run it from source</a>
+</p>
 
-## Claude Code inside the app
+<br>
 
-- **Terminal dock (Ctrl+J, Cmd+J on macOS).** A real terminal in the bottom dock (xterm.js on a PTY in the service), with tabs, restart and a resizable height that survives reloads; programs keep running while it is hidden.
-- **Claude Code (Ctrl+Shift+J).** Starts your own Claude Code sign-in in a dock tab, already connected to the `formsurface` MCP server and told how to work on the model. Agent Link turns on by itself. The line under the dock sends a message to it.
-- **Chat (Ctrl+Alt+J).** The same Claude Code without a terminal: Markdown replies, the tools it ran, memory and cost, Stop, New Chat, and hand-off between the Chat tab and a Claude Code tab in either direction.
-- **Preferences (Ctrl+,).** The Claude Code program, the folder it starts in, a first message, and the interface language.
+<p align="center">
+  <img src="docs/images/formsurface-hero.webp" alt="A soft grey plaster head bust with an orange, coral and crimson paint over the back of the hair, a magenta to violet band with thin drips across the lower face and a violet patch on the plinth corner, lit in a soft dark studio against a charcoal-navy backdrop, with the Layers tab open on the right" width="100%">
+  <br>
+  <sub>The FormSurface icon recreated in the app: the icon's own paint projected from the camera onto a grey plaster bust as one fill layer, lit by a soft dark studio environment. The Layers tab lists the stack.</sub>
+</p>
 
-## Commands, menus and shortcuts
+<p align="center">
+  <a href="#features">Features</a> ·
+  <a href="#everything-in-the-box">In the box</a> ·
+  <a href="#built-for-agents">Agents</a> ·
+  <a href="#under-the-hood">Under the hood</a> ·
+  <a href="#download">Download</a> ·
+  <a href="#run-it-from-source">Run from source</a>
+</p>
 
-Every action is a command in one registry (`frontend/src/shell/commands.ts`), the same structure as formvis and formlit: the menu bar (File, Edit, Tools, Layer, Bake, View, Agent, Help), the title bar buttons, the command palette (Ctrl+K) and the keyboard all run the same commands. Edit > Keyboard Shortcuts rebinds any of them, and the bindings are kept per browser. New shortcuts include Add Paint Layer (Ctrl+Shift+N), Add Fill Layer (Ctrl+Shift+F), Add Fill Layer with Black Mask (Ctrl+Alt+Shift+F), Add Black Mask (Ctrl+Alt+M), Merge Down (Ctrl+E), Add Folder (Ctrl+G), Delete Layer (Ctrl+Backspace), Bake Mesh Maps (Ctrl+Shift+B), Pick Paint Color from Screen (I), Select Layer Under Cursor (Shift+S, or Alt+Shift+click in the viewport), Hide Part Under Cursor (H), Hide UV Island Under Cursor (Shift+H), Isolate Part Under Cursor (Alt+Shift+H), Show All Parts (Alt+H), Lasso Fill (Q) and Rectangle Fill (Shift+Q) that fill the visible surface inside a dragged shape with the paint material (per texel, in the 3D and 2D views), and Limit Strokes to Lasso (Alt+Q) or Rectangle (Alt+Shift+Q) that turn the shape into the quick mask so later strokes stay inside it. Under the base color, a strip of the last 12 colors applies one with a click, and its lock keeps a palette fixed. The Texture sets section counts hidden triangles, with Show all and Step back. Bake > Cage offset reads user channel 2 or 3 as a painted cage offset map: black keeps Cage front and rear, white pushes them out four times, only where a bake misses. Layer > Edit Layer in External App (Ctrl+Alt+E) opens the active layer as a PNG in Photoshop or any app set in Preferences and adds a fill layer above it that updates every time you save there. On Windows, `formsurface.bat help` lists the same commands as the shell script (build, serve, mcp, claude, doctor, install-desktop, freeze, desktop build) and Alt+1 to Alt+5 for the Paint, Layers, Bake, Display and Export panels. Panel sections fold, and the fold state is remembered.
+<br>
 
-## Languages
+<table>
+  <tr>
+    <td width="25%" valign="top">
+      <h3>Paint in 3D</h3>
+      The brush hits the mesh in world space and writes into the UV textures, so strokes cross seams without stretching.
+    </td>
+    <td width="25%" valign="top">
+      <h3>Layers that stay editable</h3>
+      Paint, fill and filter layers with masks, folders, generators and blend modes, all undoable.
+    </td>
+    <td width="25%" valign="top">
+      <h3>Export for any engine</h3>
+      PBR map templates for Unreal, Unity, Godot, Blender, glTF and more, in PNG, TIFF, EXR, PSD and others.
+    </td>
+    <td width="25%" valign="top">
+      <h3>Agent-ready</h3>
+      The same editor is driven by an MCP server, a JSON batch runner and a Python API.
+    </td>
+  </tr>
+</table>
 
-The interface is in English by default and in 25 more languages: Spanish (Spain and Mexico), Brazilian Portuguese, French (France and Canada), German, Italian, Dutch, Danish, Finnish, Norwegian Bokmal, Swedish, Russian, Polish, Czech, Hungarian, Ukrainian, Turkish, Simplified and Traditional Chinese, Japanese, Korean, Indonesian, Thai and Vietnamese. Choose one in Preferences. English text is the key (`frontend/src/i18n/strings.json`), each language is a table in `frontend/src/i18n/locales` plus `more`, and the page translator swaps text before the first paint, so nothing flashes in English.
+<br>
 
-## Agents (MCP)
+## Features
 
-FormSurface ships an MCP server with 66 `formsurface_*` tools that drive the editor you have open: any menu command by id (list_commands, run_command), picking the layer under a point, hiding and isolating mesh parts, filling or limiting strokes to a screen polygon (select_region), image import with per-resource color space, post effects, custom bake cages, merge and flatten, layer export, environment lighting, intelligent masks, mesh loading, texture sets, the 2D view, paths, text resources, layer instances, layers, folders, export templates, fill layers, masks, baking (including from a high-poly mesh), generators, filters, intelligent materials, brush, paint and base material, camera, strokes, fill, undo, screenshot and map export. Claude Code picks it up from `.mcp.json`; other clients run `./formsurface mcp` (stdio). Press **Agent link** in the editor's top bar to let agents in; it is off by default. The `formsurface-painting` skill (`.claude/skills`, mirrored in `.agents/skills`) teaches agents the order of work.
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/images/formsurface-knot.jpg" alt="A chrome torus knot painted with red, orange and yellow layers over a sea backdrop, with the Filter Layer sliders open" width="100%">
+      <br><sub>A torus knot with painted layers and a filter layer, against a sea HDRI.</sub>
+      <h3>Filter layers and generators</h3>
+      Filter layers apply blur, levels, hue, posterize and more over the stack. Generators drive fills and masks from the mesh itself.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/images/formsurface-display.webp" alt="The Display tab with exposure, view transform, environment, path tracing and post effects beside a painted bust in a dark studio" width="100%">
+      <br><sub>The Display tab: view transform, HDR environment, path tracer and post effects.</sub>
+      <h3>Lit like the final render</h3>
+      Judge the paint under an HDR environment, with ACES, AgX or OpenColorIO view transforms and an optional path tracer.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/images/formsurface-export.webp" alt="The Export tab with template, format, bit depth and padding settings beside a painted bust in a dark studio" width="100%">
+      <br><sub>The Export tab, with the Python panel above it.</sub>
+      <h3>Export templates</h3>
+      Pick an engine template or build your own from any source per channel, then write one set of maps per texture set.
+    </td>
+    <td width="50%" valign="top">
+      <h3>Texture sets, UDIM and baking</h3>
+      One texture set per material, split per UDIM tile, each with its own layers and undo. Bake ambient occlusion, curvature and thickness from the mesh, or normals and IDs from a high-poly model.
+    </td>
+  </tr>
+</table>
 
-`./formsurface batch script.json` runs the same tools from a JSON script (a list of `[tool, arguments]` pairs) against the linked editor, for repeatable jobs such as load mesh, bake, apply an intelligent material and export. `--pause` spaces the steps, `--keep-going` continues past a failed step, `--out` saves screenshots; the exit code is 1 when a step failed. It drives the open editor, or with `--headless` (and optionally `--size 1024`) it starts the service, the editor and a windowless Chrome, Chromium or Edge itself, runs, and stops them again, so it works from a terminal or CI with nothing open. Set `FORMSURFACE_BROWSER` to pick the browser and `FORMSURFACE_BROWSER_ARGS` to pass flags; on Linux the browser runs on a virtual display through `xvfb-run` when it is installed, because Chrome's own headless mode could not read textures back on a software GPU.
+## Everything in the box
 
-`./formsurface script job.py` (or `./formsurface script --headless job.py`) runs a Python script with the `formsurface_api` package importable. Its modules: `project` (meshes, camera, undo), `textureset`, `layerstack` (paint, fill, filter and folder layers, masks, generators, intelligent materials, strokes), `baking`, `export`, `resource` (image import and color space) and `display` (environment, post effects, screenshots); `tool()` reaches any formsurface_* tool. Arguments are validated like the MCP tools and refusals raise `FormSurfaceError`. The same API also runs embedded in the editor: the Python panel runs scripts in the page through Pyodide (loaded on first use from the pyodide npm package, no network needed) with the same modules and argument checks, plus `event` (connect functions to mesh_loaded, stroke_end, layer_stack_changed, texture_set_changed, export_finished and bake_finished) and `ui` (plugin buttons and log lines). Run scripts runs every `.py` file in `workspace/scripts`, so plugins can add their buttons and event handlers in one click.
+- **Brush and tools:** Paint · Eraser · Polygon fill · Clone · Path · Mirror and radial symmetry · Stencil · Quick mask · Lasso fill · 2D UV view
+- **Layers and materials:** Paint, fill and filter layers · Folders · Masks and mask effects · Generators · Intelligent materials and masks · Layer instances
+- **Formats:** opens glTF, GLB, OBJ, FBX, USD, PLY, Collada (meshes need UVs) · saves PNG, TIFF, EXR, HDR, JPEG, PSD
 
-```python
-from formsurface_api import project, layerstack, baking, export
-project.load_mesh("crate.usdz")
-baking.bake_mesh_maps()
-layerstack.apply_smart_material("Rusty iron")
-export.export_textures(template="godot")
+The interface is available in English and 25 more languages, and every command is in one registry shared by the menus, the palette and the keyboard.
+
+## Built for agents
+
+An MCP server with 68 `formsurface_*` tools drives the editor you have open; a JSON batch runner and a Python API reach the same tools.
+
+```sh
+./formsurface batch job.json                 # run a list of tool calls against the linked editor
+./formsurface batch --headless job.json      # start the service, editor and a windowless browser, run, stop
+./formsurface script job.py                  # Python with the formsurface_api package importable
+./formsurface mcp                            # MCP server on stdio for Claude Code and other clients
 ```
 
-## Parity
+`.mcp.json` is already wired in this repo, and the `formsurface-painting` skill lives in `.claude/skills` and `.agents/skills`. Press **Agent link** in the editor to let agents in; it is off by default. See [`CLAUDE.md`](CLAUDE.md).
 
-Feature coverage, measured on 50 documented capabilities, is in [docs/PARITY.md](docs/PARITY.md): v0.56.3 scores 47.5 of 50 (95 percent).
+## Under the hood
 
-## Quick start
+- **GPU engine in Rust:** wgpu on WebGPU in the browser, with a WebGL 2 fallback; painting and compositing stay on the GPU.
+- **Editor in TypeScript:** Vite, with three.js used only for its file loaders.
+- **Service in Python:** FastAPI saves projects and maps, runs OpenColorIO, and hosts terminals and Claude Code.
+- **Tested:** pytest suites for the service, MCP bridge, versions and release profiles, plus window tests for the editor.
 
-Requirements: Rust (rustup), Node 22.12+, Python 3.11+, and a browser with WebGPU (Chrome, Edge, Safari 26, Firefox on Windows or macOS).
+## Download
 
-```bash
-./formsurface install     # wasm target, wasm-bindgen 0.2.129, backend venv, npm packages, engine build
-./formsurface             # backend on 127.0.0.1:8766, editor on http://localhost:5176
+| Platform | Download | Release |
+|---|---|---|
+| macOS | [Download FormSurface for macOS](https://formai.studio/get/formsurface/macos) | [FormSurface releases on FormCompiler](https://github.com/nodemode-dev/formcompiler/releases?q=formsurface-v&expanded=true) |
+| Windows | [Download FormSurface for Windows](https://formai.studio/get/formsurface/windows) | [FormSurface releases on FormCompiler](https://github.com/nodemode-dev/formcompiler/releases?q=formsurface-v&expanded=true) |
+| Linux | [Download FormSurface for Linux](https://formai.studio/get/formsurface/linux) | [FormSurface releases on FormCompiler](https://github.com/nodemode-dev/formcompiler/releases?q=formsurface-v&expanded=true) |
+
+All FormSurface builds are compiled and released from [FormCompiler](https://github.com/nodemode-dev/formcompiler); this repo holds the source.
+
+## Run it from source
+
+Prefer it in your browser, or want to contribute? Run the web UI straight from this repo. **Requires:** Rust (rustup), Node 22.12+, Python 3.11+, and a browser with WebGPU (Chrome, Edge, Safari 26, Firefox on Windows or macOS) or WebGL 2.
+
+```sh
+git clone git@github.com:nodemode-dev/formsurface.git
+cd formsurface
+./formsurface install     # wasm target, wasm-bindgen, backend venv, npm packages, engine build
+./formsurface             # backend and editor; editor at http://localhost:5176
 ```
 
-Windows (Command Prompt): `formsurface_oc_install.bat`, then `formsurface.bat`. The install stops with a non-zero exit at the first step that fails. For the desktop app run `formsurface.bat install-desktop`, then `formsurface.bat desktop build`; `formsurface.bat help` lists every command.
+`./formsurface desktop dev` opens the desktop window instead, after `./formsurface install-desktop`.
 
-| Command | Does |
-| --- | --- |
-| `./formsurface engine` | Rebuild the Rust engine into `frontend/src/engine/pkg` |
-| `./formsurface backend` | Backend only |
-| `./formsurface frontend` | Editor only |
-| `./formsurface batch script.json` | Run a JSON script of MCP tool calls against the linked editor |
-| `./formsurface build` | Build the engine and the editor into `frontend/dist` |
-| `./formsurface serve` | Serve the built editor from the service on 8766, one origin, no Vite |
-| `./formsurface claude` | Claude Code in your own terminal, connected to the formsurface MCP server |
-| `./formsurface doctor` | Check the toolchain, the builds and the running service |
-| `./formsurface install-desktop` | PyInstaller and the Tauri toolchain for the desktop app |
-| `./formsurface desktop dev` | Run the desktop app from source |
-| `./build_app` | Build the desktop app start to finish (macOS .app and .dmg, Linux .deb and AppImage); `--open`, `--install`, `--clean`, `--config FILE` |
-| `formsurface.bat desktop build` | Windows: build the engine, the editor, the sidecar and the installers; extra arguments such as `--config FILE` go to `tauri build` |
+On Windows run `formsurface_oc_install.bat`, then `formsurface.bat`. The editor is at http://localhost:5176 and the service at http://127.0.0.1:8766; `FORMSURFACE_DATA` moves the workspace folder (meshes, images, environments, exports).
 
-## Desktop app
+> [!IMPORTANT]
+> **Status:** pre-release. Coverage against its reference painter is tracked in [`docs/PARITY.md`](docs/PARITY.md); a few capabilities are partial.
+**Contributing:** branch from `main`, keep changes to source here, and leave packaging and releases to formcompiler. See [`CLAUDE.md`](CLAUDE.md).
 
-`./build_app` is the single build script at the root: it checks Python, Node and Rust (installing Rust with rustup when missing), installs the engine toolchain, the service and the editor, builds the WebGPU engine and the editor, freezes the service with PyInstaller into a sidecar (`setup/freeze_backend`, which runs a self-check first), and packs everything with Tauri 2. The app shows a splash, starts the sidecar on 127.0.0.1:8766, and opens the editor served by it, so the terminal dock, Claude Code and Chat work exactly as in the browser. On macOS the app is copied to Applications; on Linux, `--install` installs the .deb. Every step is logged to `build_app.log`. Linux needs `libwebkit2gtk-4.1-dev` and its companions (the script names them when they are missing). The sidecar is handed the app's process id and exits when the app is gone, so even a killed app never leaves it holding the port. WebKitGTK has no WebGPU yet, so on Linux the desktop app's engine runs on wgpu's WebGL 2 path (the status bar shows `Gl`), and so does any browser whose WebGPU has no adapter. On that path painting, layer pick, lasso and rectangle selections, hiding parts, fill layers, mask effects and groups, map export (including onto UV1) and the mesh bake work and match WebGPU; depth of field works there too (from the same depth copy). The path tracer and the ray-traced bake need storage buffers WebGL 2 does not have, so on that path they are switched off with the reason on hover and refuse agent calls with it; use a WebGPU browser for those two.
+Repository map: `native/` (Rust engine), `frontend/` (editor), `backend/` (service), `mcp/` (MCP, batch and Python API), `src-tauri/` (desktop shell). Docs: [`docs/PARITY.md`](docs/PARITY.md) · Agents: [`CLAUDE.md`](CLAUDE.md)
 
-`./build_app --config FILE` (or `--config=FILE`, repeatable) merges a Tauri config into `tauri build`. Linux builds `deb,appimage` unless `FORMSURFACE_BUNDLES` names other bundles. On macOS Tauri builds the app bundle in `src-tauri/target/release/bundle/macos`, and the disk image is packed from a copy of it, so with `createUpdaterArtifacts` on, the updater archive `FormSurface.app.tar.gz` and its `.sig` sit beside the app. The sidecar is signed with `src-tauri/entitlements.plist` (library validation off, unsigned executable memory allowed), which a PyInstaller engine needs under the hardened runtime.
+<br>
 
-On Windows, run `formsurface_oc_install.bat`, `formsurface.bat install-desktop`, then `formsurface.bat desktop build` from a Command Prompt with Python 3.12, Node 22.12 and Rust (the MSVC toolchain). It rebuilds the engine and the editor, freezes the service into `src-tauri\binaries\formsurface-engine-<triple>.exe`, then runs `tauri build` with any extra arguments, and stops at the first step that fails. The MSI and NSIS installers land in `src-tauri\target\release\bundle`.
+---
 
-**Releases.** FormSurface builds nothing in this repository; its GitHub workflow only runs checks. After the version bump lands on main, push a branch `compile_vX.Y.Z` cut from that commit. CI runs on it, and formcompiler (`nodemode-ai/formcompiler`) picks it up on its next 8-hourly watch run, or at once when its watch is run by hand. It runs `./build_app` on macOS and Linux and `formsurface.bat desktop build` on Windows, each with its own `--config` (the updater settings, and the ad hoc seal on macOS when no Apple identity is set), signs the macOS app and disk image and the Windows installers, and opens a draft release `formsurface-vX.Y.Z` on formcompiler's release page with the macOS .dmg, the Linux .deb and AppImage, the Windows installers and the updater files. Review the draft, then publish it there. The desktop app checks `formsurface-updates` on formcompiler for updates.
+## Maintainers
 
-## Controls
+| Maintainer | Role |
+|---|---|
+| [@nodemode-ai](https://github.com/nodemode-ai) | Owner |
+| [@gbarnai](https://github.com/gbarnai) | Co-owner |
 
-| Input | Action |
-| --- | --- |
-| Left drag | Paint |
-| Right drag or Alt + left drag | Orbit |
-| Middle drag or Alt + right drag | Pan |
-| Wheel | Zoom |
-| `[` `]` | Brush size |
-| `B` / `E` / `P` / `C` / `L` / `M` | Paint / eraser / polygon fill / clone / path / mirror |
-| `U` | Toggle the 2D UV view |
-| Enter / Backspace / Esc (path) | Stroke the path / remove the last point / clear |
-| Ctrl + click (clone) | Set the clone source |
-| `T` | Quick mask: edit, then use |
-| `F` | Frame mesh |
-| Ctrl+Z, Ctrl+Shift+Z | Undo, redo |
-| Ctrl+K | Command palette |
-| Ctrl+J | Terminal dock |
-| Ctrl+/ | Keyboard shortcuts (rebind any command) |
-
-## Layout
-
-```
-native/fs-core     mesh, BVH picking, brush and layer model (pure Rust)
-native/fs-engine   wgpu engine: projection paint, compositing, dilation, PBR viewport, export
-frontend/          TypeScript + Vite editor; three.js is used only for its file loaders
-frontend/src/shell command registry, menu bar, palette, dialogs, terminal dock and chat pane
-frontend/src/i18n  the page translator and the 25 language tables
-backend/           FastAPI service: saves projects and exported maps under workspace/
-backend/app/agent  PTY terminals, Claude Code launch, chat over claude -p, SSE events, the command bus
-src-tauri/         Tauri 2 desktop shell that starts the frozen service as a sidecar
-setup/             install, engine, editor, freeze and desktop build scripts
-build_app          the one root script that builds the desktop app
-```
-
-## Ports
-
-| Service | Address |
-| --- | --- |
-| Editor | http://localhost:5176 |
-| Service | http://127.0.0.1:8766 |
+Code owners are set in [`.github/CODEOWNERS`](.github/CODEOWNERS).
 
 ## License
 
-Apache-2.0. Copyright 2026 NodeAgentc, Inc. See `LICENSE` and `NOTICE`.
+FormSurface is licensed under the Apache License 2.0 ([`LICENSE`](LICENSE), SPDX `Apache-2.0`). Copyright 2026 NodeAgentc, Inc. Third-party notices: [`NOTICE`](NOTICE).
 
-Adobe, Substance 3D Painter and Photoshop are either registered trademarks or trademarks of Adobe in the United States and/or other countries. They are named only for compatibility (Photoshop as an external editor and PSD export) and in `docs/PARITY.md`; FormSurface is not affiliated with or endorsed by Adobe, and its features carry their own names (Intelligent Materials, Intelligent Masks).
+<sub>Screenshot content: the bust is the model the FormSurface icon is made from; the studio lighting and backdrop are a generated environment made for these shots, and the sea backdrop of the torus knot shot is a CC0 HDRI from Poly Haven. Adobe, Substance 3D Painter and Photoshop are trademarks of Adobe, named only for compatibility; FormSurface is not affiliated with or endorsed by Adobe.</sub>
