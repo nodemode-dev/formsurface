@@ -11,7 +11,7 @@ import { transferToUv1 } from './ui/uv-transfer';
 import { sharedUvShare } from './ui/uv-overlap';
 import { checkNameTemplate, fileName } from './ui/export-names';
 import { TemplateEditor, loadTemplates, saveTemplate } from './ui/template-editor';
-import { api } from './ui/api';
+import { api, safeStem } from './ui/api';
 import { AgentLink } from './ui/agent-link';
 import { AssetBrowser, builtInThumb, slug, type AssetItem, type AssetKind } from './ui/asset-browser';
 import { BUILT_IN_MATERIALS, MASK_THUMBS, SMART_MASKS, generatorPart, saveMask, saveMaterial, savedMasks, savedMaterials, type SmartMaterial } from './ui/smart';
@@ -1071,12 +1071,12 @@ function syncUvChannel(): void {
 
 function applyMesh(next: FlatMesh, name: string): void {
   if (!engine) return;
+  const info = engine.set_mesh(next.positions, next.normals, next.uvs, next.indices, next.materials, JSON.stringify(next.materialNames));
   meshGeneration++;
   highMaps.clear();
   $('k-cage-state').textContent = 'Distance cage';
   mesh = next;
   meshName = name;
-  const info = engine.set_mesh(next.positions, next.normals, next.uvs, next.indices, next.materials, JSON.stringify(next.materialNames));
   let polygons = '';
   if (next.polygons) {
     try { polygons = `, ${engine.set_polygons(next.polygons)}`; } catch { polygons = ''; }
@@ -1099,6 +1099,7 @@ async function boot(): Promise<void> {
     resize();
     engine?.free();
     engine = undefined;
+    await init();
     engine = await create_engine(canvas, Number($<HTMLSelectElement>('tex-size').value));
     $('gpu-info').textContent = `${engine.backend()} · ${engine.texture_size()} px`;
     // WebGL 2 has no storage buffers: the path tracer and the ray-traced bake stay off there, with the reason on hover.
@@ -1127,6 +1128,13 @@ async function boot(): Promise<void> {
 }
 
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+canvas.addEventListener('webglcontextlost', (event) => {
+  event.preventDefault();
+  notice.textContent = 'The GPU engine is not running';
+  notice.hidden = false;
+  status('GPU engine unavailable', true);
+});
+canvas.addEventListener('webglcontextrestored', () => { void boot(); });
 canvas.addEventListener('pointerdown', (event) => {
   if (!engine) return;
   canvas.focus();
@@ -1233,7 +1241,8 @@ canvas.addEventListener('pointerleave', () => { if (!painting) engine?.clear_hov
 canvas.addEventListener('wheel', (event) => { event.preventDefault(); engine?.zoom(event.deltaY); }, { passive: false });
 
 window.addEventListener('keydown', (event) => {
-  if (!engine || (event.target as HTMLElement).tagName === 'INPUT' && !['range', 'checkbox'].includes((event.target as HTMLInputElement).type)) return;
+  const target = event.target as HTMLElement;
+  if (!engine || target.closest?.('textarea, .cv-scrim') || target.tagName === 'INPUT' && !['range', 'checkbox'].includes((target as HTMLInputElement).type)) return;
   const key = event.key.toLowerCase();
   if (tool === 'path' && pathPoints.length && (key === 'enter' || key === 'backspace' || key === 'escape')) {
     event.preventDefault();
@@ -2316,10 +2325,10 @@ async function bakeHigh(): Promise<string> {
   let hits = 0;
   let texels = 0;
   let matchNote = '';
-  if (checked('k-match') && mesh) matchNote = `; ${e.set_match_names(mesh.parts, JSON.stringify(mesh.partNames), JSON.stringify(highMesh.partNames))}`;
-  else e.clear_match_names();
   const started = performance.now();
   try {
+    if (checked('k-match') && mesh) matchNote = `; ${e.set_match_names(mesh.parts, JSON.stringify(mesh.partNames), JSON.stringify(highMesh.partNames))}`;
+    else e.clear_match_names();
     const offsets = await cageOffsets(e, sets);
     for (const set of sets) {
       const [positions, normals, uvs, indices, size] = e.texture_set_mesh(set.index) as [Float32Array, Float32Array, Float32Array, Uint32Array, number];
@@ -2799,9 +2808,12 @@ async function openProjectFile(name: string): Promise<{ mesh: string; sets: numb
     sets: { index: number; size: number; extra_channel: string; extra_name?: string; user_channels: { slot: number; name: string }[]; document: unknown; pixels: { id: number; offset: number; length: number }[] }[];
   };
   const body = data.subarray(8 + length);
-  const meshResponse = await fetch(`/api/meshes/${encodeURIComponent(header.mesh)}`);
-  if (!meshResponse.ok) throw new Error(`The project's mesh ${header.mesh} is not in the workspace meshes folder`);
-  applyMesh(await loadMeshFile(new File([await meshResponse.arrayBuffer()], header.mesh)), header.mesh);
+  if (!/\.[^.]+$/.test(header.mesh)) applyMesh(sampleMesh(header.mesh), header.mesh);
+  else {
+    const meshResponse = await fetch(`/api/meshes/${encodeURIComponent(header.mesh)}`);
+    if (!meshResponse.ok) throw new Error(`The project's mesh ${header.mesh} is not in the workspace meshes folder`);
+    applyMesh(await loadMeshFile(new File([await meshResponse.arrayBuffer()], header.mesh)), header.mesh);
+  }
   const e = requireEngine();
   let count = 0;
   for (const set of header.sets) {
@@ -2825,7 +2837,7 @@ async function openProjectFile(name: string): Promise<{ mesh: string; sets: numb
 $('save-project').addEventListener('click', async () => {
   try {
     if (!(await api.alive())) { status('Start the FormSurface service (./formsurface) to save projects.', true); return; }
-    const saved = await saveProjectFile(meshName.replace(/\.[^.]+$/, '') || 'untitled');
+    const saved = await saveProjectFile(safeStem(meshName.replace(/\.[^.]+$/, '')));
     status(`Saved ${saved.layers} layers in ${saved.sets} texture sets to ${saved.folder}`);
   } catch (error) {
     status(error instanceof Error ? error.message : String(error), true);
@@ -2913,7 +2925,7 @@ const agentLink = new AgentLink({
     const hit = await pickLayerAt(Number(x) * canvas.width, Number(y) * canvas.height);
     return hit ? { selected: hit } : { selected: null, note: 'No visible layer paints this point' };
   },
-  save_project: async ({ name }) => saveProjectFile(String(name ?? (meshName.replace(/\.[^.]+$/, '') || 'untitled'))),
+  save_project: async ({ name }) => saveProjectFile(String(name ?? safeStem(meshName.replace(/\.[^.]+$/, '')))),
   open_project: async ({ name }) => ({ ...(await openProjectFile(String(name))), ...snapshotState() }),
   load_mesh: async ({ file, reproject }) => {
     const name = String(file);
@@ -3458,7 +3470,6 @@ function tick(now: number): void {
   requestAnimationFrame(tick);
 }
 
-await init();
 const startSize = new URLSearchParams(location.search).get('size');
 if (startSize && [...$<HTMLSelectElement>('tex-size').options].some((o) => o.value === startSize)) $<HTMLSelectElement>('tex-size').value = startSize;
 await boot();
