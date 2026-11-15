@@ -29,7 +29,7 @@ body { font-size: var(--fs-12); line-height: 1.35; -webkit-font-smoothing: antia
 .is-menu-mnemonics .cv-menu-btn::first-letter { text-decoration: underline; }
 .has-native-menus .cv-menubar { display: none; }
 @media (max-width: 1319px) { html:not(.has-native-menus) .topbar .version { display: none; } }
-@media (max-width: 1199px) { html:not(.has-native-menus) .topbar #agent-label { display: none; } html:not(.has-native-menus) .topbar #export { gap: 0; font-size: 0; } }
+@media (max-width: 1399px) { html:not(.has-native-menus) .topbar #agent-label { display: none; } html:not(.has-native-menus) .topbar #export { gap: 0; font-size: 0; } }
 
 #overlay-root { position: fixed; inset: 0; z-index: var(--z-overlay-root); pointer-events: none; }
 #overlay-root > * { pointer-events: auto; }
