@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
-from app import environments, ocio
+from app import environments, ocio, projects
 from app.agent import config as agent_config
 from app.agent import router as agent_router
 from app.local_guard import LocalGuard
@@ -27,6 +27,7 @@ LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
 
 app = FastAPI(title="FormSurface service", version=VERSION, lifespan=agent_router.lifespan)
 app.include_router(agent_router.router)
+app.include_router(projects.router)
 
 
 @app.middleware("http")
@@ -356,7 +357,9 @@ def read_mesh(name: str):
 
 
 @app.get("/api/projects")
-def list_projects():
+def list_projects(detail: int = 0):
+    if detail:
+        return {"projects": projects.detailed()}
     root = DATA / "projects"
     if not root.exists():
         return {"projects": []}
