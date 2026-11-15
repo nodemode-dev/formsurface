@@ -19,7 +19,28 @@ const MIN_LOGICAL: (f64, f64) = (1080.0, 680.0);
 const SCREEN_FRACTION: f64 = 0.9;
 
 fn kill_backend(handle: &tauri::AppHandle) {
-    if let Some(child) = handle.state::<Backend>().0.lock().unwrap().take() {
+    let child = handle.state::<Backend>().0.lock().unwrap().take();
+    if let Some(child) = child {
+        #[cfg(unix)]
+        {
+            let pid = child.pid().to_string();
+            let signal = |sig: &str| {
+                std::process::Command::new("kill")
+                    .args([sig, pid.as_str()])
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .is_ok_and(|s| s.success())
+            };
+            if signal("-TERM") {
+                for _ in 0..30 {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    if !signal("-0") {
+                        return;
+                    }
+                }
+            }
+        }
         let _ = child.kill();
     }
 }
