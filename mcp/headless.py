@@ -68,6 +68,13 @@ class Headless:
             print(f"headless: {text}", file=sys.stderr, flush=True)
 
     def __enter__(self) -> "Headless":
+        try:
+            return self.start()
+        except BaseException:
+            self.stop()
+            raise
+
+    def start(self) -> "Headless":
         if not up(f"{SERVICE}/api/health"):
             self.say("starting the service")
             self.spawn([sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8766"], ROOT / "backend")
