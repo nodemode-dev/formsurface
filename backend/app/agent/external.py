@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from app.agent import config
 
 router = APIRouter()
-NAME = re.compile(r"^[A-Za-z0-9_.-]{1,80}$")
+NAME = re.compile(r"^[A-Za-z0-9_.-]{1,80}\Z")
 PNG = b"\x89PNG\r\n\x1a\n"
 
 

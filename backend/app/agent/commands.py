@@ -1,3 +1,4 @@
+import inspect
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -18,6 +19,7 @@ class Spec:
 
 
 REGISTRY: dict[str, Spec] = {}
+TYPES = {"string": str, "integer": int, "boolean": bool, "object": dict}
 
 
 def command(cid: str, label: str, params: dict[str, dict] | None = None, description: str = "", mutates: bool = False) -> Callable:
@@ -34,4 +36,12 @@ def dispatch(cid: str, params: dict) -> Any:
     if spec is None:
         raise CommandError(f"Unknown command {cid}; GET /api/commands lists them", 404)
     known = {k: v for k, v in params.items() if k in spec.params}
+    for key, value in known.items():
+        want = TYPES.get(spec.params[key].get("type"))
+        if value is not None and want is not None and not isinstance(value, want):
+            raise CommandError(f"{cid}: {key} must be of type {spec.params[key]['type']}")
+    try:
+        inspect.signature(spec.fn).bind(**known)
+    except TypeError as exc:
+        raise CommandError(f"{cid}: {exc}") from None
     return spec.fn(**known)

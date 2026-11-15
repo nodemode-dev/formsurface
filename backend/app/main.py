@@ -22,7 +22,7 @@ mimetypes.add_type("text/css", ".css")
 VERSION = "0.60.4"
 ROOT = Path(__file__).resolve().parents[2]
 DATA = Path(os.environ.get("FORMSURFACE_DATA", ROOT / "workspace"))
-SAFE = re.compile(r"^[A-Za-z0-9 _.-]{1,80}$")
+SAFE = re.compile(r"^[A-Za-z0-9 _.-]{1,80}\Z")
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
 
 app = FastAPI(title="FormSurface service", version=VERSION, lifespan=agent_router.lifespan)
@@ -217,7 +217,7 @@ def clean_thumbnail(value):
 
 TEMPLATE_SOURCES = {"basecolor", "normal_gl", "normal_dx", "roughness", "smoothness", "metallic", "height", "ao", "curvature", "thickness", "ao_high", "height_high", "opacity", "extra", "user2", "user3", "diffuse", "specular", "one", "zero"}
 RGB_SOURCES = {"basecolor", "normal_gl", "normal_dx", "diffuse", "specular"}
-SUFFIX = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
+SUFFIX = re.compile(r"^[A-Za-z0-9_-]{1,40}\Z")
 
 
 @app.get("/api/templates")
@@ -380,7 +380,7 @@ async def save_project_file(name: str, request: Request):
 @app.get("/api/projects/{name}/file")
 def read_project_file(name: str):
     path = DATA / "projects" / name / "project.fsproj"
-    if not SAFE.match(name) or not path.exists():
+    if not SAFE.match(name) or name.startswith(".") or not path.exists():
         raise HTTPException(404, "No such project")
     return FileResponse(path, media_type="application/octet-stream")
 
@@ -388,7 +388,7 @@ def read_project_file(name: str):
 @app.get("/api/projects/{name}")
 def read_project(name: str):
     path = DATA / "projects" / name
-    if not SAFE.match(name) or not (path / "project.json").exists():
+    if not SAFE.match(name) or name.startswith(".") or not (path / "project.json").exists():
         raise HTTPException(404, "No such project")
     return {"folder": str(path), "document": json.loads((path / "project.json").read_text()), "maps": sorted(p.name for p in path.glob("*.png"))}
 
