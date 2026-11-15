@@ -229,6 +229,7 @@ impl Engine {
         let split = fs_core::sets::split(positions, normals, uvs, indices, materials, &names).map_err(|e| JsValue::from_str(&e))?;
         let mesh = Mesh::from_flat(&split.positions, &split.normals, &split.uvs, &split.indices).map_err(|e| JsValue::from_str(&e))?;
         let bvh = Bvh::build(&mesh);
+        self.trace = None;
         self.select_texture_set(0);
         let mut old_sets = std::mem::take(&mut self.sets);
         let carry: Vec<Option<usize>> = split.sets.iter().enumerate().map(|(k, s)| {
@@ -614,7 +615,7 @@ impl Engine {
         use std::fmt::Write;
         let (mesh, _) = self.mesh.as_ref().ok_or_else(|| JsValue::from_str("Load a mesh first"))?;
         let displace = subdivide > 0 || amount != 0.0;
-        if displace && (size == 0 || heights.len() != (size * size * 4) as usize * self.sets.len()) {
+        if displace && (size == 0 || size > 8192 || heights.len() as u64 != (size * size * 4) as u64 * self.sets.len() as u64) {
             return Err(JsValue::from_str("Displacement needs one height map per texture set"));
         }
         let mut uvs = mesh.uvs.clone();
@@ -741,7 +742,7 @@ impl Engine {
     }
 
     pub fn select_texture_set(&mut self, index: u32) -> bool {
-        if self.stroking || self.gpu.export_scaled() || index as usize >= self.sets.len() {
+        if self.stroking || self.trace.is_some() || self.gpu.export_scaled() || index as usize >= self.sets.len() {
             return false;
         }
         self.switch_set(index as usize);
@@ -809,13 +810,17 @@ impl Engine {
             let (layers, fills, filters, gens, base, active) = (self.layers.clone(), self.fills.clone(), self.filters.clone(), self.mask_gens.clone(), self.gpu.base, self.active);
             for &k in group.iter().filter(|&&k| k != leader) {
                 self.switch_set(k);
-                while let Some(layer) = self.layers.pop() {
-                    let index = self.layers.len();
-                    self.gpu.remove_layer(index, layer.id);
-                }
-                for (i, layer) in layers.iter().enumerate() {
-                    self.layers.push(layer.clone());
-                    self.gpu.insert_layer(i, layer.id);
+                if self.layers.iter().map(|l| l.id).eq(layers.iter().map(|l| l.id)) {
+                    self.layers = layers.clone();
+                } else {
+                    while let Some(layer) = self.layers.pop() {
+                        let index = self.layers.len();
+                        self.gpu.remove_layer(index, layer.id);
+                    }
+                    for (i, layer) in layers.iter().enumerate() {
+                        self.layers.push(layer.clone());
+                        self.gpu.insert_layer(i, layer.id);
+                    }
                 }
                 self.fills = fills.clone();
                 self.filters = filters.clone();
@@ -899,6 +904,9 @@ impl Engine {
         let mut value: serde_json::Value = serde_json::from_str(json).map_err(bad)?;
         let mut take = |key: &str| value.get_mut(key).map(serde_json::Value::take).unwrap_or(serde_json::Value::Null);
         let layers: Vec<LayerInfo> = serde_json::from_value(take("layers")).map_err(bad)?;
+        if layers.is_empty() || layers.iter().enumerate().any(|(i, l)| l.id == 0 || l.id == u32::MAX || layers[..i].iter().any(|o| o.id == l.id)) {
+            return Err(JsValue::from_str("Not a FormSurface texture set document: it needs at least one layer, and every layer its own id above zero"));
+        }
         let fills: HashMap<u32, FillSettings> = serde_json::from_value(take("fills")).map_err(bad)?;
         let filters: HashMap<u32, FilterSettings> = serde_json::from_value(take("filters")).map_err(bad)?;
         let mask_gens: HashMap<u32, FillSettings> = serde_json::from_value(take("mask_gens")).map_err(bad)?;
@@ -1348,8 +1356,8 @@ impl Engine {
             "acescg" => true,
             _ => return Err(JsValue::from_str("working space is linear_rec709 or acescg")),
         };
-        if self.stroking {
-            return Err(JsValue::from_str("Finish the stroke first"));
+        if self.stroking || self.trace.is_some() {
+            return Err(JsValue::from_str("Finish the stroke or bake first"));
         }
         self.flush();
         self.gpu.set_working_space(ap1);
@@ -1576,7 +1584,7 @@ impl Engine {
         if self.stroking {
             return Err(JsValue::from_str("Finish the stroke first"));
         }
-        let info = &self.sets[self.set_index].info;
+        let info = &self.sets.get(self.set_index).ok_or_else(|| JsValue::from_str("Load a mesh first"))?.info;
         let (first, last) = (info.start / 3, (info.start + info.count) / 3);
         let uv = match self.flat_uv(x, y) {
             Some(uv) => uv,
@@ -1668,6 +1676,7 @@ impl Engine {
         if self.mesh.is_none() || self.gpu.export_scaled() || (self.brush.mode == StrokeMode::Clone && self.clone_source.is_none()) {
             return false;
         }
+        let pressure = if pressure.is_finite() { pressure } else { 1.0 };
         let index = self.layer_index(self.active);
         if self.layers[index].kind != LayerKind::Paint && !self.layers[index].mask && self.gpu.quick_mode != 1 {
             return false;
@@ -1718,6 +1727,7 @@ impl Engine {
         if !self.stroking {
             return;
         }
+        let pressure = if pressure.is_finite() { pressure } else { 1.0 };
         let (x, y) = match self.lazy {
             Some((lx, ly)) if self.brush.lazy_px > 0.0 => {
                 let (dx, dy) = (x - lx, y - ly);
@@ -1949,6 +1959,9 @@ impl Engine {
     }
 
     pub fn remove_layer(&mut self, id: u32) -> bool {
+        if self.stroking {
+            return false;
+        }
         if let Some(r) = self.relay(|e| e.remove_layer(id)) {
             return r;
         }
@@ -1965,7 +1978,10 @@ impl Engine {
             self.filters.remove(d);
             self.mask_gens.remove(d);
             self.gpu.remove_layer(index, *d);
+            let gone = (self.set_index, *d);
+            self.instance_groups.iter_mut().for_each(|g| g.retain(|m| *m != gone));
         }
+        self.instance_groups.retain(|g| g.len() > 1);
         if doomed.contains(&self.active) {
             self.active = self.layers[first.min(self.layers.len() - 1)].id;
         }
@@ -2090,7 +2106,7 @@ impl Engine {
         if self.relay(|e| e.set_mask(id, enabled)).is_some() {
             return;
         }
-        let index = self.layer_index(id);
+        let Some(index) = self.layers.iter().position(|l| l.id == id) else { return };
         self.layers[index].mask = enabled;
         if !enabled {
             self.mask_gens.remove(&id);
@@ -2102,8 +2118,8 @@ impl Engine {
         if self.relay(|e| e.fill_mask(id, white)).is_some() {
             return;
         }
+        let Some(index) = self.layers.iter().position(|l| l.id == id) else { return };
         self.mask_gens.remove(&id);
-        let index = self.layer_index(id);
         self.layers[index].mask = true;
         self.gpu.fill_mask_value(index, if white { 1.0 } else { 0.0 });
         self.dirty = true;
@@ -2119,6 +2135,9 @@ impl Engine {
 
     pub fn select_layer(&mut self, id: u32) {
         if self.relay(|e| e.select_layer(id)).is_some() {
+            return;
+        }
+        if !self.layers.iter().any(|l| l.id == id) {
             return;
         }
         self.active = id;
@@ -2181,7 +2200,7 @@ impl Engine {
         if self.stroking {
             return Err(JsValue::from_str("Finish the stroke first"));
         }
-        let info = &self.sets[self.set_index].info;
+        let info = &self.sets.get(self.set_index).ok_or_else(|| JsValue::from_str("Load a mesh first"))?.info;
         let (first, last) = (info.start / 3, (info.start + info.count) / 3);
         let triangle = if let Some(uv) = self.flat_uv(x, y) {
             self.uv_triangle(uv, first, last).ok_or_else(|| JsValue::from_str("Click inside a UV island to fill"))?
@@ -2314,6 +2333,9 @@ impl Engine {
 
     pub fn bake_maps(&mut self, directions: u32) -> Result<(), JsValue> {
         let (center, radius) = self.mesh.as_ref().map(|m| (m.0.center, m.0.radius)).ok_or_else(|| JsValue::from_str("Load a mesh before baking"))?;
+        if self.trace.is_some() {
+            return Err(JsValue::from_str("A ray-traced bake is running; wait for it to finish"));
+        }
         self.each_set(|engine| {
             engine.gpu.bake_maps(center, radius, directions)?;
             engine.render_fills();
@@ -2341,6 +2363,9 @@ impl Engine {
         let Some(run) = self.trace.as_ref() else { return Ok(1.0) };
         let (next, active, original) = (run.next, run.active, run.original);
         if !active {
+            if self.stroking {
+                return Ok((next as f32 / total).min(0.999));
+            }
             if next >= self.sets.len() {
                 self.switch_set(original);
                 self.trace = None;
@@ -2508,7 +2533,7 @@ impl Engine {
     }
 
     pub fn apply_high_bake(&mut self, index: u32, size: u32, normal: &[u8], id: &[u8]) -> Result<(), JsValue> {
-        if size == 0 || normal.len() != (size * size * 4) as usize || id.len() != normal.len() {
+        if size == 0 || size > 8192 || normal.len() != (size * size * 4) as usize || id.len() != normal.len() {
             return Err(JsValue::from_str("Baked maps do not match their size"));
         }
         if index as usize >= self.sets.len() {
@@ -3029,7 +3054,7 @@ impl Engine {
         let Some(settings) = self.fills.get(&id).copied() else { return };
         let Some((mesh, _)) = &self.mesh else { return };
         let uniform = settings.uniform(mesh.center, mesh.radius);
-        let index = self.layer_index(id);
+        let Some(index) = self.layers.iter().position(|l| l.id == id) else { return };
         self.gpu.fill_layer_content(index, &uniform);
         self.dirty = true;
     }

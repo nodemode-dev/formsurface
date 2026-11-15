@@ -58,7 +58,7 @@ fn rasterize(low: &Mesh, size: usize) -> Vec<Option<Texel>> {
         let min_y = uv.iter().map(|p| p[1]).fold(f32::MAX, f32::min).floor().max(0.0) as usize;
         let max_y = (uv.iter().map(|p| p[1]).fold(f32::MIN, f32::max).ceil() as usize).min(size);
         let area = (uv[1][0] - uv[0][0]) * (uv[2][1] - uv[0][1]) - (uv[2][0] - uv[0][0]) * (uv[1][1] - uv[0][1]);
-        if area.abs() < 1e-12 {
+        if area.abs() < 1e-12 || !area.is_finite() {
             continue;
         }
         for y in min_y..max_y {
