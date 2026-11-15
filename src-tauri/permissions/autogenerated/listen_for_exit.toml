@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-listen-for-exit"
+description = "Enables the listen_for_exit command without any pre-configured scope."
+commands.allow = ["listen_for_exit"]
+
+[[permission]]
+identifier = "deny-listen-for-exit"
+description = "Denies the listen_for_exit command without any pre-configured scope."
+commands.deny = ["listen_for_exit"]

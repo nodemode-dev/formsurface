@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "engine-page",
-  "description": "The main window shows the page the engine serves on 127.0.0.1, a remote origin to Tauri, so it may call the app's own set_window_title and app_ready commands and nothing else.",
+  "description": "The main window shows the page the engine serves on 127.0.0.1, a remote origin to Tauri. It sets its menus in the macOS menu bar and hears the shell's quit request (core:default holds the core menu and event permissions), closes its own window for File > Exit, and calls the app's own commands: set_window_title, app_ready, text_edit, listen_for_exit and confirm_exit.",
   "windows": ["main"],
   "remote": { "urls": ["http://127.0.0.1:*"] },
-  "permissions": ["core:default", "core:window:allow-start-dragging", "core:window:allow-toggle-maximize", "allow-set-window-title", "allow-app-ready"]
+  "permissions": ["core:default", "core:window:allow-start-dragging", "core:window:allow-toggle-maximize", "core:window:allow-close", "allow-set-window-title", "allow-app-ready", "allow-text-edit", "allow-listen-for-exit", "allow-confirm-exit"]
 }
