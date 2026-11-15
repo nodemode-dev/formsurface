@@ -46,6 +46,70 @@
   --accent-color-dim: var(--accent-soft);
   --accent-line: var(--accent);
   --font-mono: var(--mono);
+  --font-ui: var(--font);
+  --bg-primary: var(--bg);
+  --bg-secondary: var(--surface);
+  --bg-tertiary: var(--surface-2);
+  --bg-node: color-mix(in srgb, var(--bg) 60%, var(--surface-2));
+  --bg-input: var(--surface-2);
+  --border-color: var(--border);
+  --border-light: var(--surface-3);
+  --border-soft: rgba(255, 255, 255, 0.08);
+  --text-secondary: var(--text-muted);
+  --text-on-accent: #fff;
+  --text-on-cta: #000;
+  --surface-field: var(--bg-input);
+  --group-head: color-mix(in srgb, var(--bg) 30%, #000);
+  --line-3: color-mix(in srgb, var(--surface-3) 75%, var(--text-faint));
+  --cta-bg: #ffffff;
+  --cta-bg-hover: #f2f2f2;
+  --cta-text: #000000;
+  --accent-intensity: 1;
+  --accent-color-hover: color-mix(in srgb, var(--accent) 82%, #ffffff);
+  --accent-glow: color-mix(in srgb, var(--accent) calc(30% * var(--accent-intensity)), var(--bg-node));
+  --accent-ink: color-mix(in srgb, var(--accent) calc(80% * var(--accent-intensity)), var(--text));
+  --accent-wash: color-mix(in srgb, var(--accent) calc(10% * var(--accent-intensity)), transparent);
+  --accent-tint: color-mix(in srgb, var(--accent) 6%, transparent);
+  --accent-tint-strong: color-mix(in srgb, var(--accent) 10%, transparent);
+  --brand-orange: #f97316;
+  --ok-soft: #86efac;
+  --warn: #fbbf24;
+  --danger-soft: #f87171;
+  --danger-text: #fca5a5;
+  --success-fill: #059669;
+  --success-fill-hover: #047857;
+  --danger-fill: #dc2626;
+  --danger-fill-hover: #b91c1c;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --radius-xs: 3px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-pill: 999px;
+  --fs-9: 9px;
+  --fs-10: 10px;
+  --fs-13: 13px;
+  --fs-16: 16px;
+  --fs-18: 18px;
+  --ctl-sm: 24px;
+  --ctl-md: 28px;
+  --ctl: 32px;
+  --ctl-lg: 36px;
+  --ctl-xl: 40px;
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+  --ease-glass: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-window: 0 24px 60px rgba(0, 0, 0, 0.6);
+  --glass-bg: color-mix(in srgb, var(--bg-node) 82%, transparent);
+  --glass-border: color-mix(in srgb, var(--text) 16%, transparent);
+  --glass-highlight: color-mix(in srgb, var(--text) 12%, transparent);
+  --glass-filter: blur(40px) saturate(1.8);
+  --glass-shadow: 0 22px 56px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.25);
+  --fs-titlebar-h: var(--bar-h);
+  --fs-status-h: var(--status-h);
   --z-base: 0;
   --z-raised: 5;
   --z-viewport-overlay: 10;
@@ -56,6 +120,36 @@
   --z-overlay-root: 100;
   --z-menu: 110;
   --z-modal: 120;
+  --z-home: 60;
+  --z-home-modal: 130;
+  --z-home-preview: 140;
+}
+
+:root.theme-light {
+  --group-head: var(--surface-2);
+  --cta-bg: var(--text);
+  --cta-bg-hover: color-mix(in srgb, var(--text) 85%, var(--bg));
+  --cta-text: var(--surface);
+  --bg-input: var(--surface);
+  --border-soft: rgba(0, 0, 0, 0.1);
+  --shadow-window: 0 18px 44px rgba(96, 90, 70, 0.22);
+  --glass-shadow: 0 10px 30px rgba(96, 90, 70, 0.2), 0 1px 4px rgba(96, 90, 70, 0.12);
+}
+
+.fs-family {
+  --surface-1: color-mix(in srgb, var(--bg-primary) 55%, var(--bg-tertiary));
+  --surface-2: var(--bg-node);
+  --surface-raised: color-mix(in srgb, var(--bg-node) 70%, var(--text-primary) 8%);
+  --line-0: color-mix(in srgb, var(--bg-primary) 55%, #000);
+  --line-2: var(--border-light);
+  --text-muted: var(--text-faint);
+  --accent-soft: color-mix(in srgb, var(--accent-color) calc(20% * var(--accent-intensity)), var(--bg-node));
+  --accent-line: color-mix(in srgb, var(--accent-color) calc(48% * var(--accent-intensity)), var(--border-light));
+  --accent-color-dim: color-mix(in srgb, var(--accent-color) 20%, transparent);
+}
+.theme-light .fs-family {
+  --line-0: var(--border-color);
+  --surface-raised: color-mix(in srgb, var(--bg-node) 88%, var(--text-primary) 8%);
 }
 
 :root[data-theme="light"] {
