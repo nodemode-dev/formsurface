@@ -10,6 +10,7 @@
       root.classList.add('shell-pending');
       if (/Mac/.test(navigator.platform) && '__TAURI_INTERNALS__' in window) root.classList.add('has-overlay-titlebar');
       try {
+        if (root.classList.contains('has-overlay-titlebar') && localStorage.getItem('formsurface.menusInWindow') !== '1') root.classList.add('has-native-menus');
         var lang = localStorage.getItem('formsurface.language');
         if (lang && lang !== 'en') { root.classList.add('i18n-pending'); root.lang = lang; }
         var dock = JSON.parse(localStorage.getItem('formsurface.dock') || 'null');
@@ -58,6 +59,7 @@
     })();
   </script>
   <link rel="preload" href="/formsurface-logo.png" as="image">
+  <link rel="icon" type="image/png" href="/formsurface-logo.png">
   <style>
     html, body { background: #0a0a0a; }
   </style>
@@ -95,7 +97,7 @@
 
 <div class="app">
   <header class="topbar">
-    <div class="brand" translate="no"><img src="/formsurface-logo.png" width="18" height="18" alt="" draggable="false">FormSurface</div>
+    <div class="brand" translate="no" role="button" tabindex="0" title="Home" data-cmd="file.home"><img src="/formsurface-logo.png" width="18" height="18" alt="" draggable="false">FormSurface</div>
     <nav class="cv-menubar" aria-label="Menu"></nav>
     <button class="btn" id="open-mesh" title="Open a mesh (glTF, GLB, OBJ, FBX, USD, USDA, USDC, USDZ, PLY, Collada)"><svg><use href="#i-open"/></svg>Open mesh</button>
     <div class="menu">
@@ -121,7 +123,7 @@
     <button class="icon-btn" data-cmd="file.preferences" title="Preferences"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
     <span class="sep" aria-hidden="true"></span>
     <button class="btn" id="agent-link" aria-pressed="false" title="Let MCP agents (Claude Code, Codex, Cursor) drive this editor through the local service"><svg><use href="#i-link"/></svg><span id="agent-label">Agent link off</span></button>
-    <button class="btn" id="screenshot"title="Save a PNG of the viewport"><svg><use href="#i-frame"/></svg>Screenshot</button>
+    <button class="btn" id="screenshot" title="Save a PNG of the viewport"><svg><use href="#i-frame"/></svg>Screenshot</button>
     <button class="btn" id="save-project" title="Save textures to the local FormSurface service"><svg><use href="#i-save"/></svg>Save</button>
     <button class="btn primary" id="export" title="Export texture maps as PNG"><svg><use href="#i-export"/></svg>Export maps</button>
     <span class="version" id="version"></span>
@@ -131,7 +133,7 @@
   <script>
     if (document.documentElement.classList.contains('has-overlay-titlebar')) {
       var bar = document.querySelector('.topbar');
-      [bar].concat(Array.prototype.slice.call(bar.querySelectorAll('.brand, .spacer, .sep, .version'))).forEach(function (n) { n.setAttribute('data-tauri-drag-region', ''); });
+      [bar].concat(Array.prototype.slice.call(bar.querySelectorAll('.spacer, .sep, .version'))).forEach(function (n) { n.setAttribute('data-tauri-drag-region', ''); });
     }
   </script>
 
@@ -463,7 +465,7 @@ print(project.status()["mesh"])</textarea>
       <div class="row" style="grid-template-columns:84px 1fr"><label for="x-pad-color">Pad color</label><input id="x-pad-color" type="color" value="#000000"></div>
       <label class="check" title="Write one map per channel for all texture sets that share a UV tile, each set filling its own UV islands; needs every set at the same size"><input type="checkbox" id="x-merge">Merge texture sets into one map set</label>
       <div class="row" style="grid-template-columns:84px 1fr"><label for="x-uv">UV channel</label><select id="x-uv" title="Write the maps in the layout you painted (UV0) or move them onto the mesh's second UV channel (UV1), for lightmap or trim layouts; tangent-space normals keep UV0's frame"><option value="0" selected>UV0 (painted layout)</option><option value="1" id="x-uv1">UV1 (second channel)</option></select></div>
-      <div class="row" style="grid-template-columns:84px 1fr"><label for="x-names">File names</label><input id="x-names" type="text" spellcheck="false" placeholder="$textureSet_$map.$udim" title="Leave empty for FormSurface's names, or build them from tags: $mesh, $textureSet, $map, $udim (1001), $u and $v (tile column and row from 1), $size. Tiled sets get .1001 appended when no tile tag is used"></div>
+      <div class="row" style="grid-template-columns:84px 1fr"><label for="x-names">File names</label><input id="x-names" type="text" spellcheck="false" placeholder="$textureSet_$map.$udim" style="min-width:0;height:28px;padding:0 8px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius)" title="Leave empty for FormSurface's names, or build them from tags: $mesh, $textureSet, $map, $udim (1001), $u and $v (tile column and row from 1), $size. Tiled sets get .1001 appended when no tile tag is used"></div>
       <p class="check" id="x-maps" style="min-height:42px;margin:6px 0 0"></p>
       <details class="te">
         <summary>Edit templates</summary>

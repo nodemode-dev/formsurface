@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="version 0.60.4" src="https://img.shields.io/badge/version-v0.60.4-eef0f4?style=flat-square">
+  <img alt="version 0.61.0" src="https://img.shields.io/badge/version-v0.61.0-eef0f4?style=flat-square">
   <img alt="Rust and wgpu" src="https://img.shields.io/badge/engine-Rust%20%2B%20wgpu-b7410e?style=flat-square&logo=rust&logoColor=white">
   <img alt="TypeScript" src="https://img.shields.io/badge/editor-TypeScript-3178c6?style=flat-square&logo=typescript&logoColor=white">
   <img alt="macOS, Windows, Linux" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-native-2f7bf5?style=flat-square">
@@ -102,8 +102,9 @@
 - **Brush and tools:** Paint · Eraser · Polygon fill · Clone · Path · Mirror and radial symmetry · Stencil · Quick mask · Lasso fill · 2D UV view
 - **Layers and materials:** Paint, fill and filter layers · Folders · Masks and mask effects · Generators · Intelligent materials and masks · Layer instances
 - **Formats:** opens glTF, GLB, OBJ, FBX, USD, PLY, Collada (meshes need UVs) · saves PNG, TIFF, EXR, HDR, JPEG, PSD
+- **Home and projects:** Home with recent projects and their previews · seven starting templates · a project library with duplicate, Trash and restore · projects keep their mesh
 
-The interface is available in English and 25 more languages, and every command is in one registry shared by the menus, the palette and the keyboard.
+The interface is available in English and 25 more languages, and every command is in one registry shared by the menus, the palette and the keyboard. In the desktop app on macOS the same menus sit in the native menu bar.
 
 ## Built for agents
 
@@ -116,7 +117,7 @@ An MCP server with 68 `formsurface_*` tools drives the editor you have open; a J
 ./formsurface mcp                            # MCP server on stdio for Claude Code and other clients
 ```
 
-`.mcp.json` is already wired in this repo, and the `formsurface-painting` skill lives in `.claude/skills` and `.agents/skills`. Press **Agent link** in the editor to let agents in; it is off by default. See [`CLAUDE.md`](CLAUDE.md).
+`.mcp.json`, `.codex/config.toml` and `.cursor/mcp.json` are already wired in this repo, and the `formsurface-painting` skill lives in `.claude/skills` and `.agents/skills`. Press **Agent link** in the editor to let agents in; it is off by default. See [`AGENTS.md`](AGENTS.md) and [`CLAUDE.md`](CLAUDE.md).
 
 ## Under the hood
 
@@ -152,9 +153,9 @@ On Windows run `formsurface_oc_install.bat`, then `formsurface.bat`. The editor 
 
 > [!IMPORTANT]
 > **Status:** pre-release. Coverage against its reference painter is tracked in [`docs/PARITY.md`](docs/PARITY.md); a few capabilities are partial.
-**Contributing:** branch from `main`, keep changes to source here, and leave packaging and releases to formcompiler. See [`CLAUDE.md`](CLAUDE.md).
+**Contributing:** branch from `main`, keep changes to source here, and leave packaging and releases to formcompiler. See [`CONTRIBUTING.md`](CONTRIBUTING.md), [`.docs/BRANCHING.md`](.docs/BRANCHING.md) and [`CLAUDE.md`](CLAUDE.md).
 
-Repository map: `native/` (Rust engine), `frontend/` (editor), `backend/` (service), `mcp/` (MCP, batch and Python API), `src-tauri/` (desktop shell). Docs: [`docs/PARITY.md`](docs/PARITY.md) · Agents: [`CLAUDE.md`](CLAUDE.md)
+Repository map: `native/` (Rust engine), `frontend/` (editor), `backend/` (service), `mcp/` (MCP, batch and Python API), `src-tauri/` (desktop shell). Docs: [`docs/PARITY.md`](docs/PARITY.md), [`.docs/wiki`](.docs/wiki), [`CHANGELOG.md`](CHANGELOG.md) · Agents: [`CLAUDE.md`](CLAUDE.md), [`AGENTS.md`](AGENTS.md)
 
 <br>
 

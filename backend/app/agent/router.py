@@ -29,6 +29,7 @@ async def lifespan(_app):
     try:
         yield
     finally:
+        cmd_chat.cancel()
         await terminal.stop()
 
 

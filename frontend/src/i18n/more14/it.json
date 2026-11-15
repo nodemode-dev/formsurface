@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita scuro",
   "Breeze Dark": "Breeze scuro",
   "Soft Light": "Morbido chiaro",
-  "Soft Dark": "Morbido scuro"
+  "Soft Dark": "Morbido scuro",
+  "Window": "Finestra",
+  "Cut": "Taglia",
+  "Copy": "Copia",
+  "Paste": "Incolla",
+  "Select All": "Seleziona tutto",
+  "Exit": "Esci",
+  "Menus in Window": "Menu nella finestra",
+  "The menus stay in the window from the next start.": "I menu resteranno nella finestra dal prossimo avvio.",
+  "The menus go to the menu bar from the next start.": "I menu passeranno alla barra dei menu dal prossimo avvio."
 }

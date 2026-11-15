@@ -192,14 +192,21 @@ export class TerminalDock {
     setHidden(this.empty, true);
     term.open(host);
     if (show || !this.active) this.select(info.id);
+    term.onData((data) => {
+      if (t.socket?.readyState === WebSocket.OPEN) t.socket.send(JSON.stringify({ type: 'input', data }));
+    });
     this.connect(t);
   }
 
-  private connect(t: Tab): void {
+  private connect(t: Tab, again = false): void {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const socket = new WebSocket(`${proto}//${location.host}/api/terminal/${encodeURIComponent(t.id)}`);
     t.socket = socket;
-    socket.addEventListener('open', () => this.sendSize(t));
+    socket.addEventListener('open', () => { if (again) t.term.reset(); this.sendSize(t); });
+    socket.addEventListener('close', (e) => {
+      if (this.tabs.get(t.id) !== t || t.socket !== socket || e.code === 4403 || e.code === 4404) return;
+      window.setTimeout(() => { if (this.tabs.get(t.id) === t && t.socket === socket) this.connect(t, true); }, 1500);
+    });
     socket.addEventListener('message', (msg) => {
       const data = String(msg.data);
       if (data === '{"type": "exit"}') {
@@ -207,9 +214,6 @@ export class TerminalDock {
         return;
       }
       t.term.write(data);
-    });
-    t.term.onData((data) => {
-      if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'input', data }));
     });
   }
 

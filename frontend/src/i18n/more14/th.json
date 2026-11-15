@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita มืด",
   "Breeze Dark": "Breeze มืด",
   "Soft Light": "นุ่มนวล สว่าง",
-  "Soft Dark": "นุ่มนวล มืด"
+  "Soft Dark": "นุ่มนวล มืด",
+  "Window": "หน้าต่าง",
+  "Cut": "ตัด",
+  "Copy": "คัดลอก",
+  "Paste": "วาง",
+  "Select All": "เลือกทั้งหมด",
+  "Exit": "ออก",
+  "Menus in Window": "เมนูในหน้าต่าง",
+  "The menus stay in the window from the next start.": "เมนูจะอยู่ในหน้าต่างตั้งแต่การเปิดครั้งถัดไป",
+  "The menus go to the menu bar from the next start.": "เมนูจะย้ายไปที่แถบเมนูตั้งแต่การเปิดครั้งถัดไป"
 }

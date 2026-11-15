@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita sötét",
   "Breeze Dark": "Breeze sötét",
   "Soft Light": "Lágy világos",
-  "Soft Dark": "Lágy sötét"
+  "Soft Dark": "Lágy sötét",
+  "Window": "Ablak",
+  "Cut": "Kivágás",
+  "Copy": "Másolás",
+  "Paste": "Beillesztés",
+  "Select All": "Összes kijelölése",
+  "Exit": "Kilépés",
+  "Menus in Window": "Menük az ablakban",
+  "The menus stay in the window from the next start.": "A menük a következő indítástól az ablakban maradnak.",
+  "The menus go to the menu bar from the next start.": "A menük a következő indítástól a menüsorba kerülnek."
 }

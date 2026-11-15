@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita tmavý",
   "Breeze Dark": "Breeze tmavý",
   "Soft Light": "Jemný světlý",
-  "Soft Dark": "Jemný tmavý"
+  "Soft Dark": "Jemný tmavý",
+  "Window": "Okno",
+  "Cut": "Vyjmout",
+  "Copy": "Kopírovat",
+  "Paste": "Vložit",
+  "Select All": "Vybrat vše",
+  "Exit": "Ukončit",
+  "Menus in Window": "Nabídky v okně",
+  "The menus stay in the window from the next start.": "Nabídky zůstanou od příštího spuštění v okně.",
+  "The menus go to the menu bar from the next start.": "Nabídky se od příštího spuštění přesunou do řádku nabídek."
 }

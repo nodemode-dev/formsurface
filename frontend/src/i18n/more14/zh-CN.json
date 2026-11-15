@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita 深色",
   "Breeze Dark": "Breeze 深色",
   "Soft Light": "柔和 浅色",
-  "Soft Dark": "柔和 深色"
+  "Soft Dark": "柔和 深色",
+  "Window": "窗口",
+  "Cut": "剪切",
+  "Copy": "拷贝",
+  "Paste": "粘贴",
+  "Select All": "全选",
+  "Exit": "退出",
+  "Menus in Window": "在窗口中显示菜单",
+  "The menus stay in the window from the next start.": "从下次启动起，菜单将留在窗口中。",
+  "The menus go to the menu bar from the next start.": "从下次启动起，菜单将移到菜单栏。"
 }

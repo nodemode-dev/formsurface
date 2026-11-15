@@ -113,6 +113,12 @@ fn set_bytes(set: &Set) -> u64 {
     [&set.color, &set.val, &set.cov, &set.mask, &set.aux].iter().map(|t| t.width() as u64 * t.height() as u64 * 8).sum()
 }
 
+fn destroy_set(set: &Set) {
+    for t in [&set.color, &set.val, &set.cov, &set.mask, &set.aux] {
+        t.destroy();
+    }
+}
+
 pub struct Gpu {
     pub backend: String,
     pub size: u32,
@@ -578,6 +584,7 @@ fn read_bytes(buffer: wgpu::Buffer) -> js_sys::Promise {
                 }
             };
             readback.unmap();
+            readback.destroy();
             let _ = resolve.call1(&JsValue::NULL, &bytes);
         });
     })
@@ -608,6 +615,7 @@ fn read_rgba(buffer: wgpu::Buffer, width: u32, height: u32, row: u32, bgra: bool
                 Err(e) => return fail(e.to_string()),
             };
             readback.unmap();
+            readback.destroy();
             let _ = resolve.call1(&JsValue::NULL, &js_sys::Uint8Array::from(&pixels[..]));
         });
     })
@@ -625,6 +633,14 @@ fn camera_bytes(view_proj: [f32; 16], eye: Vec3, cursor: Option<(Vec3, Vec3, f32
     }
     data.extend_from_slice(&[exposure, normal_strength, overlay, 0.0]);
     data
+}
+
+impl Drop for Gpu {
+    fn drop(&mut self) {
+        if self.backend != "Gl" {
+            self.device.destroy();
+        }
+    }
 }
 
 impl Gpu {
@@ -989,6 +1005,7 @@ impl Gpu {
                         }
                     };
                     readback.unmap();
+                    readback.destroy();
                     slots.borrow_mut()[k] = Some(bytes);
                     done.set(done.get() + 1);
                     if done.get() == total {
@@ -1013,6 +1030,7 @@ impl Gpu {
         }
         let freed: u64 = stack_sets(state).into_iter().map(set_bytes).sum();
         for set in stack_sets_mut(state) {
+            destroy_set(set);
             *set = new_set(device, 1);
         }
         state.paged = Some(data);
@@ -1047,6 +1065,10 @@ impl Gpu {
         if self.group_mask.width() == self.size {
             return;
         }
+        for t in [&self.group_mask, &self.ping.color, &self.ping.mat, &self.ping.aux, &self.pong.color, &self.pong.mat, &self.pong.aux] {
+            t.destroy();
+        }
+        destroy_set(&self.scratch);
         self.group_mask = texture(&self.device, self.size, LAYER_FORMAT, "folder mask");
         self.ping = new_pair(&self.device, self.size);
         self.pong = new_pair(&self.device, self.size);
@@ -1086,14 +1108,27 @@ impl Gpu {
             let next = new_set(&self.device, size);
             self.resample_set(&layer.set, &next);
             let fx = layer.fx.as_ref().map(|_| [texture(&self.device, size, LAYER_FORMAT, "mask effects"), texture(&self.device, size, LAYER_FORMAT, "mask effects")]);
+            destroy_set(&layer.set);
+            for t in layer.fx.iter().flatten() {
+                t.destroy();
+            }
             resized.push(LayerTex { id: layer.id, set: next, effects: layer.effects.clone(), fx, blank: layer.blank, pending_fill: layer.pending_fill });
         }
         self.layers = resized;
         let quick = texture(&self.device, size, LAYER_FORMAT, "quick mask");
         self.resample_one(&self.quick, &quick);
+        for old in self.undo_stack.iter().chain(self.redo_stack.iter()) {
+            destroy_set(&old.set);
+        }
+        for old in &self.pool {
+            destroy_set(old);
+        }
         self.undo_stack.clear();
         self.redo_stack.clear();
         self.pool.clear();
+        for t in [&self.final_set.color, &self.final_set.mat, &self.final_set.aux, &self.coverage, &self.bake, &self.mask] {
+            t.destroy();
+        }
         self.final_set = new_pair(&self.device, size);
         self.coverage = texture(&self.device, size, wgpu::TextureFormat::R8Unorm, "uv coverage");
         self.bake = texture(&self.device, size, LAYER_FORMAT, "baked maps");
@@ -1668,6 +1703,7 @@ impl Gpu {
                     }
                 };
                 readback.unmap();
+                readback.destroy();
                 let _ = resolve.call1(&JsValue::NULL, &js_sys::Float32Array::from(&values[..]));
             });
         })
@@ -1711,6 +1747,7 @@ impl Gpu {
             wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
         );
         self.queue.submit([encoder.finish()]);
+        target.destroy();
         read_rgba(buffer, size, size, size * 4, false, true)
     }
 
@@ -1743,6 +1780,7 @@ impl Gpu {
             wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
         );
         self.queue.submit([encoder.finish()]);
+        target.destroy();
         read_rgba(buffer, size, size, size * 4, false, false)
     }
 
@@ -2190,6 +2228,7 @@ impl Gpu {
             wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
         );
         self.queue.submit([encoder.finish()]);
+        target.destroy();
         let bgra = matches!(self.config.format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
         Ok(read_rgba(buffer, width, height, row, bgra, false))
     }
@@ -2718,6 +2757,9 @@ impl Gpu {
         }
         let size = self.size;
         let Some(layer) = self.layers.get_mut(index) else { return };
+        for t in layer.fx.iter().flatten() {
+            t.destroy();
+        }
         layer.fx = if effects.is_empty() { None } else { Some([texture(&self.device, size, LAYER_FORMAT, "mask effects"), texture(&self.device, size, LAYER_FORMAT, "mask effects")]) };
         layer.effects = effects;
     }
@@ -2818,6 +2860,9 @@ impl Gpu {
                     pass.draw(0..3, 0..1);
                 }
                 self.queue.submit([encoder.finish()]);
+                for t in &inner {
+                    t.destroy();
+                }
                 cur = 1 - cur;
                 continue;
             }
@@ -3060,6 +3105,7 @@ impl Gpu {
             wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
         );
         self.queue.submit([encoder.finish()]);
+        target.destroy();
         let bgra = matches!(self.config.format, wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb);
         read_rgba(buffer, width, height, row, bgra, false)
     }
@@ -3232,6 +3278,7 @@ impl Gpu {
             wgpu::Extent3d { width: size, height: size, depth_or_array_layers: 1 },
         );
         self.queue.submit([encoder.finish()]);
+        target.destroy();
         js_sys::Promise::new(&mut |resolve, reject| {
             let readback = buffer.clone();
             buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| {
@@ -3247,6 +3294,7 @@ impl Gpu {
                     }
                 };
                 readback.unmap();
+                readback.destroy();
                 let _ = resolve.call1(&JsValue::NULL, &bytes);
             });
         })

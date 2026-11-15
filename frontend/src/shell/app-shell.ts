@@ -6,11 +6,15 @@ import { el, isMac, q, revealApp, setClass, setHidden, setText } from './dom';
 import { events } from './events';
 import { icon } from './icons';
 import { MenuBar, type MenuDef, type MenuItem } from './menu';
+import { MENUS_IN_WINDOW_KEY, NativeMenus, isMacDesktop, menusInWindow, textFieldFocused, wantsNativeMenus } from './native-menu';
+import { toast } from './toast';
 import { TerminalDock } from './terminal-dock';
 import { CommandPalette } from './command-palette';
 import { Dialog } from './dialog';
+import { DEMOS } from './demos';
+import { homePrefs, isHomeOpen, showHome } from './home';
 import { THEMES, currentTheme, setTheme } from './themes';
-import { language, languages, setLanguage, t, type Lang } from '../i18n';
+import { language, languages, onLanguage, setLanguage, t, type Lang } from '../i18n';
 import { mountColorWheel } from '../ui/color-wheel';
 
 const SHORTCUTS_KEY = 'formsurface.shortcuts';
@@ -21,6 +25,9 @@ const PANEL_KEY = 'formsurface.panel';
 const SWATCH_KEY = 'formsurface.swatches';
 const SWATCH_LOCK_KEY = 'formsurface.swatchesLocked';
 const SWATCHES = 12;
+const HOME_MENU = new Set(['file.home', 'file.open', 'file.preferences', 'file.exit', 'edit.palette', 'edit.shortcuts', 'view.menusInWindow', 'agent.connect', 'help.about']);
+const FIELD_KEYS = new Set(['edit.cut', 'edit.copy', 'edit.paste', 'edit.selectAll']);
+const inTauri = (): boolean => '__TAURI_INTERNALS__' in window;
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
 const click = (id: string): void => { byId(id)?.click(); };
@@ -76,7 +83,7 @@ function fail(err: unknown): void {
 
 const SAMPLES: Array<[string, string]> = [
   ['sphere', 'Sphere'], ['knot', 'Torus Knot'], ['torus', 'Torus'], ['capsule', 'Capsule'],
-  ['sets', 'Figure with Two Texture Sets'], ['pair', 'Sphere Pair with High-Poly'],
+  ['sets', 'Figure with Two Texture Sets'], ['pair', 'Sphere Pair with High-Poly'], ['uv2', 'Sphere with a second UV channel'],
 ];
 
 const PANEL_TABS: Array<{ id: string; label: string; sections: string[] }> = [
@@ -97,17 +104,30 @@ export class Shell {
   private readonly folded = new Set(read<string[]>(FOLD_KEY, []));
   private readonly sections = new Map<string, { node: HTMLElement; tab: string }>();
   private readonly tabButtons = new Map<string, HTMLButtonElement>();
+  private readonly menuList: MenuDef[];
+  private readonly menuBar: MenuBar;
+  private native: NativeMenus | null = null;
+  private quitDialog: Dialog | null = null;
+  unsavedWork: () => boolean = () => false;
 
   constructor() {
     this.app = q(document, '.app');
     this.dockHost = q(document, '.fl-dock');
     this.register();
+    this.registerShell();
     this.loadKeys();
     this.buildPanel();
-    new MenuBar(q(document, '.cv-menubar'), this.commands, this.menus());
+    this.menuList = this.menus();
+    this.menuBar = new MenuBar(q(document, '.cv-menubar'), this.commands, this.menuList);
+    this.startNativeMenus();
+    void this.listenShell();
     document.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-cmd]');
       if (b?.dataset.cmd) { e.preventDefault(); this.commands.run(b.dataset.cmd); }
+    });
+    document.addEventListener('keydown', (e) => {
+      const b = e.target instanceof HTMLElement && e.target.matches('[data-cmd][role="button"]') ? e.target : null;
+      if (b?.dataset.cmd && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); this.commands.run(b.dataset.cmd); }
     });
     window.addEventListener('keydown', (e) => this.onKey(e), true);
     const dock = read<{ open: boolean; h: number }>(DOCK_KEY, { open: false, h: 280 });
@@ -118,22 +138,83 @@ export class Shell {
 
   private menus(): MenuDef[] {
     const sample: MenuItem = { label: 'Sample Mesh', items: SAMPLES.map(([id]) => `file.sample.${id}`) };
+    const exit: MenuItem[] = inTauri() ? ['-', 'file.exit'] : [];
+    const inWindow: MenuItem[] = isMacDesktop() ? ['-', 'view.menusInWindow'] : [];
+    const demos: MenuItem[] = DEMOS.length ? [{ label: 'Demos', items: DEMOS.map((d) => d.command) }] : [];
     return [
-      { label: 'File', items: ['file.open', sample, '-', 'file.save', 'file.screenshot', '-', 'file.exportMaps', 'file.exportMesh', '-', 'file.preferences'] },
-      { label: 'Edit', items: ['edit.undo', 'edit.redo', '-', 'edit.palette', 'edit.shortcuts'] },
+      { label: 'File', items: ['file.home', '-', 'file.open', sample, '-', 'file.save', 'file.screenshot', '-', 'file.exportMaps', 'file.exportMesh', '-', 'file.close', ...exit] },
+      { label: 'Edit', items: ['edit.undo', 'edit.redo', '-', 'edit.cut', 'edit.copy', 'edit.paste', 'edit.selectAll', '-', 'edit.palette', 'edit.shortcuts', 'file.preferences'] },
       { label: 'Tools', items: ['tool.paint', 'tool.erase', 'tool.clone', 'tool.polyfill', 'tool.path', '-', 'tool.mirror', 'tool.quickMask', '-', 'tool.lassoFill', 'tool.rectFill', 'tool.lassoLimit', 'tool.rectLimit', '-', 'tool.brushBigger', 'tool.brushSmaller', 'tool.pickColor'] },
       { label: 'Layer', items: ['layer.addPaint', 'layer.addFill', 'layer.addFillBlack', 'layer.addFilter', 'layer.addFolder', '-', 'layer.maskBlack', 'layer.maskWhite', 'layer.maskNone', '-', 'layer.pickUnderCursor', '-', 'layer.mergeDown', 'layer.flattenFolder', 'layer.flatten', '-', 'layer.export', 'layer.exportMask', 'layer.editExternal', '-', 'layer.delete'] },
       { label: 'Bake', items: ['bake.mesh', 'bake.loadHigh', 'bake.high'] },
-      { label: 'View', items: ['view.frame', 'view.2d', '-', 'view.hidePart', 'view.hideIsland', 'view.isolatePart', 'view.showParts', '-', ...PANEL_TABS.map((p) => `view.tab.${p.id}`), 'view.panel', '-', 'view.render'] },
       { label: 'Agent', items: ['view.terminal', 'view.newTerminal', 'agent.claude', 'agent.chat', '-', 'agent.link', 'agent.connect'] },
-      { label: 'Help', items: ['edit.shortcuts', 'agent.connect', '-', 'help.about'] },
+      { label: 'View', items: ['view.frame', 'view.2d', '-', 'view.hidePart', 'view.hideIsland', 'view.isolatePart', 'view.showParts', '-', 'view.render', ...inWindow] },
+      { label: 'Window', items: [...PANEL_TABS.map((p) => `view.tab.${p.id}`), 'view.panel', '-', { label: 'Theme', items: THEMES.map(([id]) => `window.theme.${id}`) }] },
+      { label: 'Help', items: [...demos, 'edit.shortcuts', 'agent.connect', '-', 'help.about'] },
     ];
+  }
+
+  private registerShell(): void {
+    const edit = (action: 'cut' | 'copy' | 'selectAll'): void => { document.execCommand(action); };
+    const paste = (): void => {
+      if (document.execCommand('paste')) return;
+      void navigator.clipboard?.readText().then((text) => { if (text && textFieldFocused()) document.execCommand('insertText', false, text); }).catch(() => undefined);
+    };
+    const selected = (): boolean => textFieldFocused() || !(document.getSelection()?.isCollapsed ?? true);
+    this.commands.add(
+      { id: 'edit.cut', label: 'Cut', keys: ['Mod+X'], enabled: textFieldFocused, run: () => edit('cut') },
+      { id: 'edit.copy', label: 'Copy', keys: ['Mod+C'], enabled: selected, run: () => edit('copy') },
+      { id: 'edit.paste', label: 'Paste', keys: ['Mod+V'], enabled: textFieldFocused, run: paste },
+      { id: 'edit.selectAll', label: 'Select All', keys: ['Mod+A'], enabled: textFieldFocused, run: () => edit('selectAll') },
+      { id: 'file.exit', label: 'Exit', keys: inTauri() && !isMacDesktop() ? ['Mod+Q'] : [], enabled: inTauri, run: () => { void import('@tauri-apps/api/window').then((m) => m.getCurrentWindow().close()).catch(fail); } },
+      { id: 'view.menusInWindow', label: 'Menus in Window', enabled: isMacDesktop, checked: menusInWindow, run: () => {
+        try { localStorage.setItem(MENUS_IN_WINDOW_KEY, menusInWindow() ? '0' : '1'); } catch { return; }
+        toast(t(menusInWindow() ? 'The menus stay in the window from the next start.' : 'The menus go to the menu bar from the next start.'), 'info');
+      } },
+      ...THEMES.map(([id, label]) => ({ id: `window.theme.${id}`, label, checked: () => currentTheme() === id, run: () => setTheme(id) })),
+    );
+  }
+
+  private startNativeMenus(): void {
+    if (!wantsNativeMenus()) return;
+    const native = new NativeMenus(this.commands, () => this.menuList);
+    native.allow = (id) => !isHomeOpen() || HOME_MENU.has(id) || id.startsWith('window.theme.') || DEMOS.some((d) => d.command === id);
+    this.native = native;
+    void native.build().catch(() => undefined);
+    onLanguage(() => { void native.build(true).catch(() => undefined); });
+  }
+
+  private async listenShell(): Promise<void> {
+    if (!inTauri()) return;
+    try {
+      const { listen } = await import('@tauri-apps/api/event');
+      const { invoke } = await import('@tauri-apps/api/core');
+      await listen('formsurface://exit-requested', () => this.exitRequested());
+      await invoke('listen_for_exit');
+    } catch { return; }
+  }
+
+  private exitRequested(): void {
+    const leave = (): void => { void import('@tauri-apps/api/core').then((m) => m.invoke('confirm_exit', {})).catch(fail); };
+    if (!this.unsavedWork()) { leave(); return; }
+    if (this.quitDialog?.scrim.isConnected) return;
+    const d = new Dialog('Exit');
+    d.body.appendChild(el('<div class="fs-form"><p>Painting that is not saved is lost.</p></div>'));
+    d.action('Cancel', () => d.close(), false);
+    d.action('Exit', () => { d.close(); leave(); }, true);
+    this.quitDialog = d;
+    d.open();
   }
 
   private register(): void {
     const c = this.commands;
     const btn = (id: string, label: string, target: string, keys?: string[], extra: Partial<Command> = {}): Command => ({ id, label, keys, run: () => click(target), ...extra });
     c.add(
+      { id: 'file.home', label: 'Home', keys: ['Alt+Mod+H'], icon: 'home', run: () => showHome() },
+      { id: 'file.close', label: 'Close Project', run: () => { byId('canvas')?.dispatchEvent(new Event('fs-close-project')); } },
+      { id: 'home.showAtLaunch', label: 'Show Home Screen at Launch', checked: () => homePrefs.autoShow(), run: () => homePrefs.setAutoShow(!homePrefs.autoShow()) },
+      { id: 'home.showOnLastClose', label: 'Show Home Screen When the Last Document Closes', checked: () => homePrefs.afterClose(), run: () => homePrefs.setAfterClose(!homePrefs.afterClose()) },
+      ...DEMOS.map((d) => ({ id: d.command, label: d.label, run: () => { byId('canvas')?.dispatchEvent(new CustomEvent('fs-demo', { detail: d.id })); } })),
       btn('file.open', 'Open Mesh...', 'open-mesh', ['Mod+O']),
       ...SAMPLES.map(([id, label]) => ({ id: `file.sample.${id}`, label, run: () => (document.querySelector<HTMLElement>(`[data-sample="${id}"]`))?.click() })),
       btn('file.save', 'Save Project', 'save-project', ['Mod+S']),
@@ -228,8 +309,10 @@ export class Shell {
 
   private onKey(e: KeyboardEvent): void {
     if (e.isComposing || ['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
+    if (this.menuBar.isOpen || (e.target instanceof Element && e.target.closest('.cv-menubar'))) return;
     const cmd = this.commands.forEvent(e);
-    if (!cmd) return;
+    if (!cmd || FIELD_KEYS.has(cmd.id)) return;
+    if (isHomeOpen() && !['file.home', 'file.open', 'file.preferences', 'edit.palette', 'edit.shortcuts'].includes(cmd.id)) return;
     const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
     if (this.typing(e) && (plain || !['edit.palette', 'view.terminal', 'agent.claude', 'agent.chat'].includes(cmd.id))) return;
     if (document.querySelector('.cv-scrim:not([hidden])') && cmd.id !== 'edit.palette') return;
@@ -237,6 +320,7 @@ export class Shell {
     e.stopPropagation();
     if (e.repeat && !['edit.undo', 'edit.redo', 'tool.brushBigger', 'tool.brushSmaller'].includes(cmd.id)) return;
     this.commands.run(cmd.id);
+    this.native?.refresh();
   }
 
   private buildPanel(): void {
@@ -388,16 +472,18 @@ export class Shell {
       const up = () => {
         grip.removeEventListener('pointermove', move);
         grip.removeEventListener('pointerup', up);
+        grip.removeEventListener('pointercancel', up);
         write(DOCK_KEY, { open: true, h: parseInt(this.app.style.getPropertyValue('--fs-dock-open-h'), 10) || 280 });
         window.dispatchEvent(new Event('resize'));
       };
       grip.addEventListener('pointermove', move);
       grip.addEventListener('pointerup', up);
+      grip.addEventListener('pointercancel', up);
     });
   }
 
   private openPalette(): void {
-    if (!this.palette) this.palette = new CommandPalette(this.commands, () => this.menus());
+    if (!this.palette) this.palette = new CommandPalette(this.commands, () => this.menuList);
     this.palette.open();
   }
 
@@ -407,6 +493,7 @@ export class Shell {
     const note = el<HTMLElement>('<p class="cv-note">Click a shortcut, then press the new keys. Escape cancels, Backspace clears.</p>');
     d.body.append(note, list);
     const rows = this.commands.all().filter((c) => !c.id.startsWith('file.sample.'));
+    let release: (() => void) | null = null;
     for (const cmd of rows) {
       const row = el<HTMLElement>('<div class="fs-keys-row"><span class="fs-keys-label"></span><button type="button" class="fs-keys-combo"></button></div>');
       setText(q(row, '.fs-keys-label'), t(this.commands.label(cmd)));
@@ -414,17 +501,20 @@ export class Shell {
       const show = () => setText(combo, (cmd.keys ?? []).map(formatKeys).join(', ') || t('None'));
       show();
       combo.addEventListener('click', () => {
+        release?.();
         setText(combo, t('Press keys'));
         const grab = (e: KeyboardEvent) => {
+          if (!list.isConnected) { release?.(); return; }
           if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
           e.preventDefault(); e.stopPropagation();
-          window.removeEventListener('keydown', grab, true);
-          if (e.key === 'Escape') { show(); return; }
+          release?.();
+          if (e.key === 'Escape') return;
           this.commands.setKeys(cmd.id, e.key === 'Backspace' ? [] : [comboOf(e)]);
           write(SHORTCUTS_KEY, this.commands.overrides());
           this.syncTitles();
           for (const b of list.querySelectorAll<HTMLButtonElement>('.fs-keys-combo')) b.dispatchEvent(new Event('fs-refresh'));
         };
+        release = () => { window.removeEventListener('keydown', grab, true); release = null; show(); };
         window.addEventListener('keydown', grab, true);
       });
       combo.addEventListener('fs-refresh', show);
@@ -442,6 +532,8 @@ export class Shell {
 <h3>Interface</h3>
 <label class="fs-field"><span>Language</span><select class="fs-lang" translate="no"></select></label>
 <label class="fs-field"><span>Theme</span><select class="fs-theme"></select></label>
+<label class="check"><input class="fs-home-launch" type="checkbox">Show Home screen at launch</label>
+<label class="check"><input class="fs-home-close" type="checkbox">Show Home screen when the last document closes</label>
 <h3>AI agents</h3>
 <label class="fs-field"><span>Claude Code program</span><input class="fs-claude-bin" type="text" spellcheck="false" placeholder="Found automatically"></label>
 <label class="fs-field"><span>Starts in folder</span><input class="fs-claude-folder" type="text" spellcheck="false" placeholder="FormSurface Agent folder"></label>
@@ -457,6 +549,10 @@ export class Shell {
     for (const [id, label] of THEMES) { const o = document.createElement('option'); o.value = id; o.textContent = label; themePick.appendChild(o); }
     themePick.value = currentTheme();
     themePick.addEventListener('change', () => setTheme(themePick.value));
+    const homeLaunch = q<HTMLInputElement>(form, '.fs-home-launch');
+    const homeClose = q<HTMLInputElement>(form, '.fs-home-close');
+    homeLaunch.checked = homePrefs.autoShow();
+    homeClose.checked = homePrefs.afterClose();
     q<HTMLInputElement>(form, '.fs-claude-bin').value = prefs.claudeBin ?? '';
     q<HTMLInputElement>(form, '.fs-claude-folder').value = prefs.claudeFolder ?? '';
     q<HTMLInputElement>(form, '.fs-claude-first').value = prefs.claudeFirstMessage ?? '';
@@ -476,6 +572,8 @@ export class Shell {
         } });
       } catch (err) { fail(err); }
       d.close();
+      if (homeLaunch.checked !== homePrefs.autoShow()) homePrefs.setAutoShow(homeLaunch.checked);
+      if (homeClose.checked !== homePrefs.afterClose()) homePrefs.setAfterClose(homeClose.checked);
       if (lang.value !== language()) setLanguage(lang.value as Lang);
     }, true);
     d.open();

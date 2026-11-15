@@ -43,8 +43,8 @@ backend\venv\Scripts\python.exe -I mcp\server.py
 goto :eof
 :claude
 where claude >nul 2>nul || (echo Claude Code is not installed: https://claude.com/claude-code & exit /b 1)
-shift
-claude --mcp-config "{\"mcpServers\":{\"formsurface\":{\"type\":\"stdio\",\"command\":\"%~dp0formsurface.bat\",\"args\":[\"mcp\"]}}}" --allowedTools mcp__formsurface %1 %2 %3 %4 %5 %6 %7 %8 %9
+set "FS_ROOT=%~dp0"& shift
+claude --mcp-config "{\"mcpServers\":{\"formsurface\":{\"type\":\"stdio\",\"command\":\"%FS_ROOT:\=\\%formsurface.bat\",\"args\":[\"mcp\"]}}}" --allowedTools mcp__formsurface %1 %2 %3 %4 %5 %6 %7 %8 %9
 goto :eof
 :doctor
 echo FormSurface on Windows
@@ -73,7 +73,7 @@ call venv\Scripts\activate.bat
 set TRIPLE=
 for /f "tokens=2" %%t in ('rustc -vV ^| findstr host') do set TRIPLE=%%t
 if not defined TRIPLE (echo [formsurface] error: rustc not found, install Rust from https://rustup.rs 1>&2 & popd & exit /b 1)
-pyinstaller --noconfirm --clean --onefile --name formsurface-engine --distpath dist-engine --workpath build\pyinstaller --specpath build\pyinstaller --paths "%~dp0backend" --add-data "%~dp0frontend\dist;frontend_dist" --add-data "%~dp0mcp;mcp" --hidden-import app.agent.router --hidden-import app.agent.cmd_terminal --hidden-import app.agent.claude_code --hidden-import app.agent.cmd_chat --hidden-import app.agent.cmd_prefs --hidden-import winpty --collect-submodules uvicorn --collect-submodules app --collect-submodules mcp.server --collect-submodules mcp.shared --collect-submodules mcp_types --collect-submodules httpx --collect-all PyOpenColorIO "%~dp0backend\formsurface_engine.py" || (popd & exit /b 1)
+pyinstaller --noconfirm --clean --onefile --name formsurface-engine --distpath dist-engine --workpath build\pyinstaller --specpath build\pyinstaller --paths "%~dp0backend" --add-data "%~dp0frontend\dist;frontend_dist" --add-data "%~dp0mcp;mcp" --hidden-import app.agent.router --hidden-import app.agent.cmd_terminal --hidden-import app.agent.claude_code --hidden-import app.agent.cmd_chat --hidden-import app.agent.cmd_prefs --hidden-import winpty --collect-all winpty --collect-submodules uvicorn --collect-submodules app --collect-submodules mcp.server --collect-submodules mcp.shared --collect-submodules mcp_types --collect-submodules httpx --collect-all PyOpenColorIO "%~dp0backend\formsurface_engine.py" || (popd & exit /b 1)
 dist-engine\formsurface-engine.exe --selfcheck || (popd & exit /b 1)
 if not exist "%~dp0src-tauri\binaries" mkdir "%~dp0src-tauri\binaries"
 copy /y dist-engine\formsurface-engine.exe "%~dp0src-tauri\binaries\formsurface-engine-%TRIPLE%.exe" || (popd & exit /b 1)

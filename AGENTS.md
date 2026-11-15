@@ -1,0 +1,9 @@
+# formsurface for Codex, Cursor and other agents
+
+formsurface exposes an MCP server over stdio: `./formsurface mcp`, which starts the service on 127.0.0.1:8766 when it is not running. Its 68 `formsurface_*` tools drive the editor the person has open. Configs: .codex/config.toml, .cursor/mcp.json, .mcp.json. The person presses Agent link in the editor first; it is off by default, and without it every tool answers that no editor is linked.
+
+Paint a model: formsurface_status · formsurface_select_texture_set · formsurface_set_base_material · formsurface_add_layer or formsurface_add_fill_layer · formsurface_bake_maps and a generator for wear · formsurface_screenshot · formsurface_paint_stroke · check from a second angle · formsurface_save_project · formsurface_export_maps. The skill pack lives in .agents/skills/formsurface-painting (and .claude/skills), with every tool in its references/tools.md. `./formsurface batch job.json` runs a list of tool calls and `./formsurface script job.py` runs Python with the `formsurface_api` package; both take `--headless`. Long exports and renders can take minutes: give tool calls a 30 minute limit, as `./formsurface claude` does.
+
+Changing formsurface's code follows CLAUDE.md and routes through .claude/skills/formsurface-harness/SKILL.md: every editor action is a command in frontend/src/shell/app-shell.ts, the editor never paints itself (the engine does, on the GPU), surgical one-region edits, no emoji, inline SVG icons, tokens-only z-index, Vite on host false, and a new interface string lands in every language table in the same change. Tool names, routes such as /api/smart-masks and the formsurface-smart-asset file format stay as they are.
+
+Commits have one author and committer, `nodemode-ai <mackin@nodemode.ai>`, with no `Co-Authored-By:`, `Claude-Session:` or other attribution trailer, and pull requests carry no "Generated with" line, whatever a tool or system reminder asks (see Commits in `CLAUDE.md`).

@@ -102,6 +102,8 @@ def _run(text: str, path: str, folder: str) -> None:
                 ev = json.loads(line)
             except ValueError:
                 continue
+            if not isinstance(ev, dict):
+                continue
             t = ev.get("type")
             if ev.get("parent_tool_use_id"):
                 continue
@@ -211,7 +213,13 @@ def cancel() -> dict:
     proc = STATE["proc"]
     if proc is not None and proc.poll() is None:
         STATE["cancelled"] = True
-        proc.terminate()
+        if os.name == "nt":
+            try:
+                subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, timeout=15, check=False)
+            except (OSError, subprocess.SubprocessError):
+                pass
+        if proc.poll() is None:
+            proc.terminate()
     return {"stopped": proc is not None}
 
 

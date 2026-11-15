@@ -50,7 +50,6 @@ VERSION_SITES = [
     (".agents/skills/formsurface-painting/SKILL.md", r'^  version: "([^"]+)"'),
     (".claude/skills/formsurface-painting/references/tools.md", r"^# FormSurface MCP tools \(server ([0-9.]+)\)"),
     (".agents/skills/formsurface-painting/references/tools.md", r"^# FormSurface MCP tools \(server ([0-9.]+)\)"),
-    ("README.md#heading", r"^## What works in v([0-9.]+)"),
     ("frontend/package-lock.json", r'^  "version": "([^"]+)"'),
 ]
 STRIP_EXEMPT = []

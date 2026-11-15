@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita donker",
   "Breeze Dark": "Breeze donker",
   "Soft Light": "Zacht licht",
-  "Soft Dark": "Zacht donker"
+  "Soft Dark": "Zacht donker",
+  "Window": "Venster",
+  "Cut": "Knippen",
+  "Copy": "Kopiëren",
+  "Paste": "Plakken",
+  "Select All": "Alles selecteren",
+  "Exit": "Afsluiten",
+  "Menus in Window": "Menu's in het venster",
+  "The menus stay in the window from the next start.": "De menu's blijven vanaf de volgende start in het venster.",
+  "The menus go to the menu bar from the next start.": "De menu's gaan vanaf de volgende start naar de menubalk."
 }

@@ -3,7 +3,7 @@ import { LANG_NAMES, LANG_PARENT, isLang, type Lang } from './langs';
 export type { Lang } from './langs';
 
 const KEY = 'formsurface.language';
-const loaders = import.meta.glob<{ default: Record<string, string> }>(['./locales/*.json', './more/*.json', './more2/*.json', './more3/*.json', './more4/*.json', './more5/*.json', './more6/*.json', './more7/*.json', './more8/*.json', './more9/*.json', './more10/*.json', './more11/*.json', './more12/*.json', './more13/*.json', './more14/*.json']);
+const loaders = import.meta.glob<{ default: Record<string, string> }>(['./locales/*.json', './more/*.json', './more2/*.json', './more3/*.json', './more4/*.json', './more5/*.json', './more6/*.json', './more7/*.json', './more8/*.json', './more9/*.json', './more10/*.json', './more11/*.json', './more12/*.json', './more13/*.json', './more14/*.json', './more15/*.json']);
 const SKIP = 'script, style, textarea, code, pre, canvas, [translate="no"], [data-no-i18n], [contenteditable="true"], .xterm, .fl-chat-msg, .fl-md, .layer .name, .set-row .name';
 const ATTRS = ['title', 'placeholder', 'aria-label', 'alt'] as const;
 
@@ -30,7 +30,7 @@ export function locale(): string { return current; }
 
 async function load(code: Lang): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
-  for (const folder of ['locales', 'more', 'more2', 'more3', 'more4', 'more5']) {
+  for (const folder of ['locales', 'more', 'more2', 'more3', 'more4', 'more5', 'more6', 'more7', 'more8', 'more9', 'more10', 'more11', 'more12', 'more13', 'more14', 'more15']) {
     const loader = loaders[`./${folder}/${code}.json`];
     if (!loader) continue;
     try { Object.assign(out, (await loader()).default); } catch { continue; }

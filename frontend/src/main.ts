@@ -11,7 +11,7 @@ import { transferToUv1 } from './ui/uv-transfer';
 import { sharedUvShare } from './ui/uv-overlap';
 import { checkNameTemplate, fileName } from './ui/export-names';
 import { TemplateEditor, loadTemplates, saveTemplate } from './ui/template-editor';
-import { api } from './ui/api';
+import { api, safeStem } from './ui/api';
 import { AgentLink } from './ui/agent-link';
 import { AssetBrowser, builtInThumb, slug, type AssetItem, type AssetKind } from './ui/asset-browser';
 import { BUILT_IN_MATERIALS, MASK_THUMBS, SMART_MASKS, generatorPart, saveMask, saveMaterial, savedMasks, savedMaterials, type SmartMaterial } from './ui/smart';
@@ -22,9 +22,36 @@ import { clickPythonButton, emitPython, pythonLoaded, runPython, setPythonOutput
 import { fontLabel, loadFont, textImage } from './ui/text';
 import { startLanguage, startPageTranslator } from './i18n';
 import { startShell } from './shell/app-shell';
+import { DEMOS } from './shell/demos';
+import { Dialog } from './shell/dialog';
+import { el } from './shell/dom';
+import { isHomeOpen, mountHome } from './shell/home';
+import { library as projects } from './shell/project-library';
+import { toast } from './shell/toast';
 
 await startLanguage();
 const shell = startShell();
+let currentProject: { id: string; title: string } | null = null;
+let documentOpen = false;
+shell.unsavedWork = () => documentOpen;
+let quietMesh = false;
+let meshSource: { name: string; file: File } | null = null;
+const storedMeshes = new Set<string>();
+let engineStarted: () => void = () => undefined;
+const engineReady = new Promise<void>((resolve) => { engineStarted = resolve; });
+const home = mountHome({
+  openProject: (id) => openLibraryProject(id),
+  closeProject: (id) => { if (currentProject?.id === id) closeDocument(); },
+  createProject: (template, title) => createFromTemplate(template, title),
+  openFiles: (files) => { void openMeshFiles(files); },
+  pickMesh: () => { shell.commands.run('file.open'); },
+  preferences: () => { shell.commands.run('file.preferences'); },
+  agents: () => { shell.commands.run('agent.connect'); },
+  demo: (id) => { const demo = DEMOS.find((d) => d.id === id); if (demo) shell.commands.run(demo.command); },
+  hasDocument: () => documentOpen,
+  onVisible: (open) => { if (!open) adoptWorkspace(); },
+});
+home.sync();
 startPageTranslator();
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -307,7 +334,29 @@ function layers(): LayerInfo[] {
   return engine ? JSON.parse(engine.layers_json()) as LayerInfo[] : [];
 }
 
-const setList = new TextureSetList($('texture-sets'), (index) => { selectTextureSet(index); });
+function requireLayer(id: unknown): LayerInfo {
+  const layer = layers().find((l) => l.id === Number(id));
+  if (!layer) throw new Error(`No layer with id ${id}`);
+  return layer;
+}
+
+function removeRefusal(id: number): string {
+  const all = layers();
+  const doomed = new Set<number>([id]);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const l of all) if (l.parent && doomed.has(l.parent) && !doomed.has(l.id)) { doomed.add(l.id); grew = true; }
+  }
+  return all.length <= doomed.size ? 'A texture set keeps at least one layer' : 'Finish the stroke first';
+}
+
+function setRefusal(e: Engine, stroke: string): string {
+  return e.tracing() ? 'Ray tracing ambient occlusion and thickness on the GPU, a band at a time' : stroke;
+}
+
+const setList = new TextureSetList($('texture-sets'), (index) => {
+  try { selectTextureSet(index); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+});
 
 // Shared UV area per texture set, measured once per mesh and set (see ui/uv-overlap.ts).
 const uvShared = new Map<string, number>();
@@ -463,7 +512,7 @@ function selectTextureSet(index: number): TextureSetInfo {
   const e = requireEngine();
   const set = textureSets().find((s) => s.index === index);
   if (!set) throw new Error(`No texture set ${index}`);
-  if (!e.select_texture_set(index)) throw new Error('Finish the stroke before switching texture sets');
+  if (!e.select_texture_set(index)) throw new Error(setRefusal(e, 'Finish the stroke before switching texture sets'));
   const base = JSON.parse(e.base_json()) as { base_color: number[]; roughness: number; metallic: number };
   $<HTMLInputElement>('m-color').value = `#${base.base_color.map((v) => Math.round(Math.pow(Math.max(0, v), 1 / 2.2) * 255).toString(16).padStart(2, '0')).join('')}`;
   $<HTMLInputElement>('m-rough').value = String(base.roughness);
@@ -1071,12 +1120,12 @@ function syncUvChannel(): void {
 
 function applyMesh(next: FlatMesh, name: string): void {
   if (!engine) return;
+  const info = engine.set_mesh(next.positions, next.normals, next.uvs, next.indices, next.materials, JSON.stringify(next.materialNames));
   meshGeneration++;
   highMaps.clear();
   $('k-cage-state').textContent = 'Distance cage';
   mesh = next;
   meshName = name;
-  const info = engine.set_mesh(next.positions, next.normals, next.uvs, next.indices, next.materials, JSON.stringify(next.materialNames));
   let polygons = '';
   if (next.polygons) {
     try { polygons = `, ${engine.set_polygons(next.polygons)}`; } catch { polygons = ''; }
@@ -1090,6 +1139,7 @@ function applyMesh(next: FlatMesh, name: string): void {
   refreshLayers();
   status(next.skipped ? `Loaded ${name}. ${next.skipped} part(s) without UVs were skipped.` : `Loaded ${name}`);
   emitPython('mesh_loaded', { name, texture_sets: textureSets().map((s) => s.name) });
+  noteDocument();
 }
 
 async function boot(): Promise<void> {
@@ -1099,6 +1149,7 @@ async function boot(): Promise<void> {
     resize();
     engine?.free();
     engine = undefined;
+    await init();
     engine = await create_engine(canvas, Number($<HTMLSelectElement>('tex-size').value));
     $('gpu-info').textContent = `${engine.backend()} · ${engine.texture_size()} px`;
     // WebGL 2 has no storage buffers: the path tracer and the ray-traced bake stay off there, with the reason on hover.
@@ -1113,7 +1164,8 @@ async function boot(): Promise<void> {
     engine.set_cross_sets(checked('ts-cross'));
     if (sel('d-env')) useEnvironment(sel('d-env'));
     if (!sel('d-ocio')) refreshOcioConfigs().catch(() => { $('d-ocio-state').textContent = 'OpenColorIO needs the FormSurface service'; });
-    applyMesh(mesh ?? sampleMesh('sphere'), mesh ? meshName : 'sphere');
+    quietMesh = true;
+    try { applyMesh(mesh ?? sampleMesh('sphere'), mesh ? meshName : 'sphere'); } finally { quietMesh = false; }
     refreshLayers();
     notice.hidden = true;
     if (new URLSearchParams(location.search).get('agent') === '1' && $('agent-link').getAttribute('aria-pressed') !== 'true') agentLink.toggle();
@@ -1127,6 +1179,13 @@ async function boot(): Promise<void> {
 }
 
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+canvas.addEventListener('webglcontextlost', (event) => {
+  event.preventDefault();
+  notice.textContent = 'The GPU engine is not running';
+  notice.hidden = false;
+  status('GPU engine unavailable', true);
+});
+canvas.addEventListener('webglcontextrestored', () => { void boot(); });
 canvas.addEventListener('pointerdown', (event) => {
   if (!engine) return;
   canvas.focus();
@@ -1233,7 +1292,8 @@ canvas.addEventListener('pointerleave', () => { if (!painting) engine?.clear_hov
 canvas.addEventListener('wheel', (event) => { event.preventDefault(); engine?.zoom(event.deltaY); }, { passive: false });
 
 window.addEventListener('keydown', (event) => {
-  if (!engine || (event.target as HTMLElement).tagName === 'INPUT' && !['range', 'checkbox'].includes((event.target as HTMLInputElement).type)) return;
+  const target = event.target as HTMLElement;
+  if (!engine || target.closest?.('textarea, .cv-scrim') || target.tagName === 'INPUT' && !['range', 'checkbox'].includes((target as HTMLInputElement).type)) return;
   const key = event.key.toLowerCase();
   if (tool === 'path' && pathPoints.length && (key === 'enter' || key === 'backspace' || key === 'escape')) {
     event.preventDefault();
@@ -1516,7 +1576,7 @@ async function exportMesh(name = meshName.replace(/\.[^.]+$/, ''), ngons = check
     const raw: [Uint8Array, number][] = [];
     try {
       for (const set of textureSets()) {
-        if (!e.select_texture_set(set.index)) throw new Error('Finish the stroke before exporting');
+        if (!e.select_texture_set(set.index)) throw new Error(setRefusal(e, 'Finish the stroke before exporting'));
         raw.push([await e.export_channel(3) as Uint8Array, e.texture_size()]);
       }
     } finally {
@@ -2284,7 +2344,7 @@ async function cageOffsets(e: Engine, sets: TextureSetInfo[]): Promise<Map<numbe
   try {
     for (const set of sets) {
       if (!e.user_channels(set.index).includes(slot)) continue;
-      if (!e.select_texture_set(set.index)) throw new Error('Finish the stroke before baking');
+      if (!e.select_texture_set(set.index)) throw new Error(setRefusal(e, 'Finish the stroke before baking'));
       const source = e.texture_size();
       const pixels = await e.export_channel(slot + 11) as Uint8Array;
       const size = (e.texture_set_mesh(set.index) as [Float32Array, Float32Array, Float32Array, Uint32Array, number])[4];
@@ -2316,10 +2376,10 @@ async function bakeHigh(): Promise<string> {
   let hits = 0;
   let texels = 0;
   let matchNote = '';
-  if (checked('k-match') && mesh) matchNote = `; ${e.set_match_names(mesh.parts, JSON.stringify(mesh.partNames), JSON.stringify(highMesh.partNames))}`;
-  else e.clear_match_names();
   const started = performance.now();
   try {
+    if (checked('k-match') && mesh) matchNote = `; ${e.set_match_names(mesh.parts, JSON.stringify(mesh.partNames), JSON.stringify(highMesh.partNames))}`;
+    else e.clear_match_names();
     const offsets = await cageOffsets(e, sets);
     for (const set of sets) {
       const [positions, normals, uvs, indices, size] = e.texture_set_mesh(set.index) as [Float32Array, Float32Array, Float32Array, Uint32Array, number];
@@ -2422,7 +2482,8 @@ $('k-bake').addEventListener('click', () => {
 $('f-image-load').addEventListener('click', () => { imageTarget = 'fill'; imageInput.click(); });
 $('layer-delete').addEventListener('click', () => {
   if (!engine) return;
-  if (!engine.remove_layer(engine.active_layer())) status('A texture set keeps at least one layer.', true);
+  const id = engine.active_layer();
+  if (!engine.remove_layer(id)) status(removeRefusal(id), true);
   refreshLayers();
 });
 
@@ -2449,12 +2510,7 @@ fileInput.addEventListener('change', async () => {
   const file = fileInput.files?.[0];
   fileInput.value = '';
   if (!file) return;
-  try {
-    status(`Reading ${file.name}`);
-    applyMesh(await loadMeshFile(file), file.name);
-  } catch (error) {
-    status(error instanceof Error ? error.message : String(error), true);
-  }
+  await openMeshFile(file);
 });
 
 $('tex-size').addEventListener('change', () => {
@@ -2542,7 +2598,7 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
   try {
     for (const set of sets) {
       e.export_size_end();
-      if (!e.select_texture_set(set.index)) throw new Error('Finish the stroke before exporting');
+      if (!e.select_texture_set(set.index)) throw new Error(setRefusal(e, 'Finish the stroke before exporting'));
       if (choice.size && choice.size !== e.texture_size()) {
         document.body.inert = true;
         e.export_size_begin(choice.size);
@@ -2785,6 +2841,7 @@ async function saveProjectFile(name: string): Promise<{ folder: string; file: st
   const response = await fetch(`/api/projects/${encodeURIComponent(name)}/file`, { method: 'POST', body: blob });
   if (!response.ok) throw new Error(`FormSurface service: ${response.status} ${await response.text()}`);
   const saved = await response.json() as { folder: string; file: string };
+  await afterProjectSave(name, sets, count);
   return { ...saved, bytes: blob.size, sets, layers: count };
 }
 
@@ -2799,9 +2856,16 @@ async function openProjectFile(name: string): Promise<{ mesh: string; sets: numb
     sets: { index: number; size: number; extra_channel: string; extra_name?: string; user_channels: { slot: number; name: string }[]; document: unknown; pixels: { id: number; offset: number; length: number }[] }[];
   };
   const body = data.subarray(8 + length);
-  const meshResponse = await fetch(`/api/meshes/${encodeURIComponent(header.mesh)}`);
-  if (!meshResponse.ok) throw new Error(`The project's mesh ${header.mesh} is not in the workspace meshes folder`);
-  applyMesh(await loadMeshFile(new File([await meshResponse.arrayBuffer()], header.mesh)), header.mesh);
+  if (!/\.[^.]+$/.test(header.mesh)) applyMesh(sampleMesh(header.mesh), header.mesh);
+  else {
+    const stored = await fetch(projects.meshUrl(name)).catch(() => null);
+    const meshResponse = stored?.ok ? stored : await fetch(`/api/meshes/${encodeURIComponent(header.mesh)}`);
+    if (!meshResponse.ok) throw new Error(`The project's mesh ${header.mesh} is not in the workspace meshes folder`);
+    const file = new File([await meshResponse.arrayBuffer()], header.mesh);
+    applyMesh(await loadMeshFile(file), header.mesh);
+    meshSource = { name: header.mesh, file };
+    if (stored?.ok) storedMeshes.add(meshKey(name, file));
+  }
   const e = requireEngine();
   let count = 0;
   for (const set of header.sets) {
@@ -2819,13 +2883,136 @@ async function openProjectFile(name: string): Promise<{ mesh: string; sets: numb
   selectTextureSet(header.active_set);
   refreshLayers();
   refreshSets();
+  adoptProject(name);
   return { mesh: header.mesh, sets: header.sets.length, layers: count };
 }
+
+const meshKey = (id: string, file: File): string => `${id}|${file.name}|${file.size}`;
+
+function syncHomeDocument(): void {
+  home.setOpenProjects(documentOpen ? [{ id: currentProject?.id ?? '', title: currentProject?.title ?? meshName }] : []);
+}
+
+function noteDocument(): void {
+  if (quietMesh) return;
+  documentOpen = true;
+  currentProject = null;
+  syncHomeDocument();
+  home.documentOpened();
+}
+
+function adoptProject(id: string, title?: string): void {
+  currentProject = { id, title: title || (currentProject?.id === id ? currentProject.title : id) };
+  documentOpen = true;
+  syncHomeDocument();
+}
+
+function closeDocument(): void {
+  quietMesh = true;
+  try { applyMesh(sampleMesh('sphere'), 'sphere'); } finally { quietMesh = false; }
+  documentOpen = false;
+  currentProject = null;
+  meshSource = null;
+  syncHomeDocument();
+  home.documentClosed();
+  adoptWorkspace();
+}
+
+function adoptWorkspace(): void {
+  if (documentOpen || isHomeOpen() || !engine) return;
+  documentOpen = true;
+  syncHomeDocument();
+  home.documentOpened();
+}
+
+async function openMeshFile(file: File): Promise<void> {
+  try {
+    status(`Reading ${file.name}`);
+    applyMesh(await loadMeshFile(file), file.name);
+    meshSource = { name: file.name, file };
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error);
+    status(text, true);
+    if (isHomeOpen()) toast(text, 'error');
+  }
+}
+
+async function openMeshFiles(files: File[]): Promise<void> {
+  const accept = fileInput.accept.split(',');
+  const file = files.find((f) => accept.some((suffix) => f.name.toLowerCase().endsWith(suffix)));
+  if (!file) { toast(`${files[0]?.name ?? ''}: ${$('open-mesh').title}`, 'error'); return; }
+  await engineReady;
+  if (!engine) { toast(notice.textContent ?? '', 'error'); return; }
+  await openMeshFile(file);
+}
+
+async function projectThumb(): Promise<Blob> {
+  const e = requireEngine();
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const [w, h] = e.viewport_size();
+  if (!w || !h) throw new Error('The viewport has no size');
+  const bytes = await e.snapshot() as Uint8Array;
+  const full = new OffscreenCanvas(w, h);
+  full.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength), w, h), 0, 0);
+  const cw = Math.min(w, Math.round((h * 16) / 9));
+  const ch = Math.min(h, Math.round((w * 9) / 16));
+  const out = new OffscreenCanvas(480, 270);
+  const ctx = out.getContext('2d')!;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(full, (w - cw) / 2, (h - ch) / 2, cw, ch, 0, 0, 480, 270);
+  const webp = await out.convertToBlob({ type: 'image/webp', quality: 0.82 });
+  return webp.type === 'image/webp' ? webp : out.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
+}
+
+async function afterProjectSave(id: string, sets: number, layers: number): Promise<void> {
+  const source = meshSource && meshSource.name === meshName ? meshSource.file : null;
+  if (source && !storedMeshes.has(meshKey(id, source))) {
+    await projects.putMesh(id, source);
+    storedMeshes.add(meshKey(id, source));
+  }
+  const info = await projects.putInfo(id, { mesh: meshName, sets, layers }).catch(() => null);
+  adoptProject(id, info?.title);
+  void projectThumb().then((image) => projects.putThumb(id, image)).then(() => home.refresh()).catch(() => undefined);
+}
+
+async function projectIdForSave(): Promise<string> {
+  if (currentProject) return currentProject.id;
+  const stem = safeStem(meshName.replace(/\.[^.]+$/, ''));
+  return (await projects.create({ title: stem, mesh: meshName })).id;
+}
+
+async function openLibraryProject(id: string): Promise<void> {
+  await engineReady;
+  requireEngine();
+  if (documentOpen && currentProject?.id === id) { home.leave(); return; }
+  await openProjectFile(id);
+  const info = await projects.opened(id).catch(() => null);
+  adoptProject(id, info?.title);
+}
+
+async function createFromTemplate(template: string, title?: string): Promise<void> {
+  await engineReady;
+  requireEngine();
+  const made = await projects.create({ template, title });
+  applyMesh(sampleMesh(made.sample), made.sample);
+  if (made.sample === 'pair') setHigh(sampleHighPoly('pair'), 'two bumpy spheres (left_high, right_high)');
+  adoptProject(made.id, made.title);
+  await saveProjectFile(made.id);
+}
+
+canvas.addEventListener('fs-close-project', () => {
+  if (!documentOpen) return;
+  const d = new Dialog('Close Project');
+  d.body.appendChild(el('<div class="fs-form"><p>Painting that is not saved is lost.</p></div>'));
+  d.action('Cancel', () => d.close(), false);
+  d.action('Close Project', () => { d.close(); closeDocument(); }, true);
+  d.open();
+});
 
 $('save-project').addEventListener('click', async () => {
   try {
     if (!(await api.alive())) { status('Start the FormSurface service (./formsurface) to save projects.', true); return; }
-    const saved = await saveProjectFile(meshName.replace(/\.[^.]+$/, '') || 'untitled');
+    const saved = await saveProjectFile(await projectIdForSave());
     status(`Saved ${saved.layers} layers in ${saved.sets} texture sets to ${saved.folder}`);
   } catch (error) {
     status(error instanceof Error ? error.message : String(error), true);
@@ -2913,7 +3100,7 @@ const agentLink = new AgentLink({
     const hit = await pickLayerAt(Number(x) * canvas.width, Number(y) * canvas.height);
     return hit ? { selected: hit } : { selected: null, note: 'No visible layer paints this point' };
   },
-  save_project: async ({ name }) => saveProjectFile(String(name ?? (meshName.replace(/\.[^.]+$/, '') || 'untitled'))),
+  save_project: async ({ name }) => saveProjectFile(String(name ?? safeStem(meshName.replace(/\.[^.]+$/, '')))),
   open_project: async ({ name }) => ({ ...(await openProjectFile(String(name))), ...snapshotState() }),
   load_mesh: async ({ file, reproject }) => {
     const name = String(file);
@@ -3032,7 +3219,7 @@ const agentLink = new AgentLink({
     const e = requireEngine();
     const kind = String(target ?? 'fill') as ImageTarget;
     if (!['alpha', 'stencil', 'fill', 'mask'].includes(kind)) throw new Error('target is alpha, stencil, fill or mask');
-    if (layer_id !== undefined && layer_id !== null) { e.select_layer(Number(layer_id)); refreshLayers(); }
+    if (layer_id !== undefined && layer_id !== null) { e.select_layer(requireLayer(layer_id).id); refreshLayers(); }
     const response = await fetch(`/api/images/${encodeURIComponent(String(file))}`);
     if (!response.ok) throw new Error(`Image ${file} is not in the workspace images folder`);
     const blob = await response.blob();
@@ -3043,7 +3230,7 @@ const agentLink = new AgentLink({
   fill_tile_images: async ({ files, layer_id }) => {
     const e = requireEngine();
     if (!Array.isArray(files) || !files.length) throw new Error('files is a list of image names in the workspace images folder');
-    if (layer_id !== undefined && layer_id !== null) { e.select_layer(Number(layer_id)); refreshLayers(); }
+    if (layer_id !== undefined && layer_id !== null) { e.select_layer(requireLayer(layer_id).id); refreshLayers(); }
     const loaded: { name: string; file: File }[] = [];
     for (const name of files.map(String)) {
       const response = await fetch(`/api/images/${encodeURIComponent(name)}`);
@@ -3095,7 +3282,7 @@ const agentLink = new AgentLink({
   },
   mask: ({ id, action, paint_target, effects }) => {
     const e = requireEngine();
-    const layerId = Number(id);
+    const layerId = requireLayer(id).id;
     if (action === 'remove') e.set_mask(layerId, false);
     else if (action === 'add_white' || action === 'add_black') e.fill_mask(layerId, action === 'add_white');
     if (paint_target === 'mask' || paint_target === 'layer') e.set_paint_target(paint_target === 'mask');
@@ -3259,9 +3446,10 @@ const agentLink = new AgentLink({
     refreshLayers();
     return { layers: layers() };
   },
-  move_layer: ({ id, offset }) => { requireEngine().move_layer(Number(id), Number(offset)); refreshLayers(); return { layers: layers() }; },
+  move_layer: ({ id, offset }) => { requireLayer(id); requireEngine().move_layer(Number(id), Number(offset)); refreshLayers(); return { layers: layers() }; },
   remove_layer: ({ id }) => {
-    if (!requireEngine().remove_layer(Number(id))) throw new Error('A texture set keeps at least one layer');
+    requireLayer(id);
+    if (!requireEngine().remove_layer(Number(id))) throw new Error(removeRefusal(Number(id)));
     refreshLayers();
     return { layers: layers() };
   },
@@ -3458,8 +3646,9 @@ function tick(now: number): void {
   requestAnimationFrame(tick);
 }
 
-await init();
 const startSize = new URLSearchParams(location.search).get('size');
 if (startSize && [...$<HTMLSelectElement>('tex-size').options].some((o) => o.value === startSize)) $<HTMLSelectElement>('tex-size').value = startSize;
 await boot();
+engineStarted();
+adoptWorkspace();
 requestAnimationFrame(tick);

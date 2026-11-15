@@ -1,17 +1,21 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_updater::UpdaterExt;
 
 mod reveal;
+mod text_edit;
 mod traffic_lights;
 
 struct Backend(Mutex<Option<CommandChild>>);
+struct PageListening(AtomicBool);
+struct ExitGate(AtomicBool);
 
 const ENGINE_PORT: &str = "8766";
 const FALLBACK_LOGICAL: (f64, f64) = (1440.0, 900.0);
@@ -19,7 +23,28 @@ const MIN_LOGICAL: (f64, f64) = (1080.0, 680.0);
 const SCREEN_FRACTION: f64 = 0.9;
 
 fn kill_backend(handle: &tauri::AppHandle) {
-    if let Some(child) = handle.state::<Backend>().0.lock().unwrap().take() {
+    let child = handle.state::<Backend>().0.lock().unwrap().take();
+    if let Some(child) = child {
+        #[cfg(unix)]
+        {
+            let pid = child.pid().to_string();
+            let signal = |sig: &str| {
+                std::process::Command::new("kill")
+                    .args([sig, pid.as_str()])
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .is_ok_and(|s| s.success())
+            };
+            if signal("-TERM") {
+                for _ in 0..30 {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    if !signal("-0") {
+                        return;
+                    }
+                }
+            }
+        }
         let _ = child.kill();
     }
 }
@@ -28,6 +53,51 @@ fn close_splash(handle: &tauri::AppHandle) {
     if let Some(splash) = handle.get_webview_window("splash") {
         let _ = splash.close();
     }
+}
+
+fn open_exit_gate(handle: &tauri::AppHandle) {
+    handle.state::<ExitGate>().0.store(true, Ordering::SeqCst);
+}
+
+fn ask_page_to_quit(handle: &tauri::AppHandle) -> bool {
+    if handle.state::<ExitGate>().0.load(Ordering::SeqCst) {
+        return false;
+    }
+    let ready = handle.state::<PageListening>().0.load(Ordering::SeqCst);
+    if !ready || handle.get_webview_window("main").is_none() {
+        return false;
+    }
+    handle.emit("formsurface://exit-requested", ()).is_ok()
+}
+
+fn show_main_window(handle: &tauri::AppHandle) {
+    if let Some(window) = handle.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+#[tauri::command]
+fn listen_for_exit(listening: tauri::State<PageListening>) {
+    listening.0.store(true, Ordering::SeqCst);
+}
+
+#[tauri::command]
+fn confirm_exit(app: tauri::AppHandle, cancel: Option<bool>) {
+    if cancel == Some(true) {
+        return;
+    }
+    open_exit_gate(&app);
+    app.exit(0);
+}
+
+fn single_instance() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri_plugin_single_instance::Builder::<tauri::Wry>::new()
+        .callback(|app, _args, _cwd| {
+            show_main_window(app);
+        })
+        .build()
 }
 
 fn check_for_updates(handle: tauri::AppHandle) {
@@ -52,6 +122,7 @@ fn check_for_updates(handle: tauri::AppHandle) {
             .buttons(MessageDialogButtons::OkCancel)
             .blocking_show();
         if install && update.download_and_install(|_, _| {}, || {}).await.is_ok() {
+            open_exit_gate(&handle);
             kill_backend(&handle);
             handle.restart();
         }
@@ -61,11 +132,32 @@ fn check_for_updates(handle: tauri::AppHandle) {
 fn main() {
     reveal::mark_launch();
     let app = tauri::Builder::default()
+        .plugin(single_instance())
+        .manage(PageListening(AtomicBool::new(false)))
+        .manage(ExitGate(AtomicBool::new(false)))
+        .on_window_event(|window, event| {
+            if window.label() == "main"
+                && matches!(event, WindowEvent::Resized(_) | WindowEvent::Focused(_) | WindowEvent::ThemeChanged(_) | WindowEvent::ScaleFactorChanged { .. })
+            {
+                traffic_lights::place(window);
+            }
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" && ask_page_to_quit(window.app_handle()) {
+                    api.prevent_close();
+                }
+            }
+        })
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Backend(Mutex::new(None)))
-        .invoke_handler(tauri::generate_handler![traffic_lights::set_window_title, reveal::app_ready])
+        .invoke_handler(tauri::generate_handler![
+            listen_for_exit,
+            confirm_exit,
+            traffic_lights::set_window_title,
+            reveal::app_ready,
+            text_edit::text_edit
+        ])
         .setup(|app| {
             let handle = app.handle().clone();
             reveal::round_splash(&handle);
@@ -143,10 +235,10 @@ fn main() {
                         close_splash(&handle);
                         handle
                             .dialog()
-                            .message("The FormSurface engine failed to start. Please relaunch the app.")
+                            .message("The formsurface engine failed to start. Please relaunch the app.")
                             .blocking_show();
                         kill_backend(&handle);
-                        std::process::exit(1);
+                        handle.exit(1);
                     }
                 }
             });
@@ -155,9 +247,13 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("tauri app should build");
 
-    app.run(|handle, event| {
-        if let RunEvent::Exit = event {
-            kill_backend(handle);
+    app.run(|handle, event| match event {
+        RunEvent::Exit => kill_backend(handle),
+        RunEvent::ExitRequested { api, .. } => {
+            if ask_page_to_quit(handle) {
+                api.prevent_exit();
+            }
         }
+        _ => {}
     });
 }

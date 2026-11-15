@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita тёмная",
   "Breeze Dark": "Breeze тёмная",
   "Soft Light": "Мягкая светлая",
-  "Soft Dark": "Мягкая тёмная"
+  "Soft Dark": "Мягкая тёмная",
+  "Window": "Окно",
+  "Cut": "Вырезать",
+  "Copy": "Копировать",
+  "Paste": "Вставить",
+  "Select All": "Выбрать все",
+  "Exit": "Выход",
+  "Menus in Window": "Меню в окне",
+  "The menus stay in the window from the next start.": "Со следующего запуска меню останутся в окне.",
+  "The menus go to the menu bar from the next start.": "Со следующего запуска меню перейдут в строку меню."
 }

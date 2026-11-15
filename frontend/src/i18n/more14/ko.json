@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita 다크",
   "Breeze Dark": "Breeze 다크",
   "Soft Light": "소프트 라이트",
-  "Soft Dark": "소프트 다크"
+  "Soft Dark": "소프트 다크",
+  "Window": "윈도우",
+  "Cut": "오려두기",
+  "Copy": "복사",
+  "Paste": "붙여넣기",
+  "Select All": "전체 선택",
+  "Exit": "종료",
+  "Menus in Window": "윈도우에 메뉴 표시",
+  "The menus stay in the window from the next start.": "다음 시작부터 메뉴가 윈도우 안에 표시됩니다.",
+  "The menus go to the menu bar from the next start.": "다음 시작부터 메뉴가 메뉴 막대에 표시됩니다."
 }

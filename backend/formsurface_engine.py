@@ -78,6 +78,11 @@ def exit_with_parent() -> None:
 
         while alive():
             time.sleep(1.5)
+        unpacked = getattr(sys, "_MEIPASS", "")
+        if os.path.basename(unpacked).startswith("_MEI"):
+            import shutil
+
+            shutil.rmtree(unpacked, ignore_errors=True)
         os._exit(0)
 
     import threading
@@ -101,7 +106,6 @@ def main() -> int:
     exit_with_parent()
     port = usable_port(int(os.environ.get("FORMSURFACE_PORT", "8766") or 8766)) or free_port()
     os.environ["FORMSURFACE_PORT"] = str(port)
-    print(f"FormSurface engine on http://127.0.0.1:{port}", flush=True)
     uvicorn.run(fastapi_app, host="127.0.0.1", port=port, log_level="info")
     return 0
 
