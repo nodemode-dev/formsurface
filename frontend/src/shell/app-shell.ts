@@ -76,7 +76,7 @@ function fail(err: unknown): void {
 
 const SAMPLES: Array<[string, string]> = [
   ['sphere', 'Sphere'], ['knot', 'Torus Knot'], ['torus', 'Torus'], ['capsule', 'Capsule'],
-  ['sets', 'Figure with Two Texture Sets'], ['pair', 'Sphere Pair with High-Poly'],
+  ['sets', 'Figure with Two Texture Sets'], ['pair', 'Sphere Pair with High-Poly'], ['uv2', 'Sphere with a second UV channel'],
 ];
 
 const PANEL_TABS: Array<{ id: string; label: string; sections: string[] }> = [
@@ -388,11 +388,13 @@ export class Shell {
       const up = () => {
         grip.removeEventListener('pointermove', move);
         grip.removeEventListener('pointerup', up);
+        grip.removeEventListener('pointercancel', up);
         write(DOCK_KEY, { open: true, h: parseInt(this.app.style.getPropertyValue('--fs-dock-open-h'), 10) || 280 });
         window.dispatchEvent(new Event('resize'));
       };
       grip.addEventListener('pointermove', move);
       grip.addEventListener('pointerup', up);
+      grip.addEventListener('pointercancel', up);
     });
   }
 
@@ -407,6 +409,7 @@ export class Shell {
     const note = el<HTMLElement>('<p class="cv-note">Click a shortcut, then press the new keys. Escape cancels, Backspace clears.</p>');
     d.body.append(note, list);
     const rows = this.commands.all().filter((c) => !c.id.startsWith('file.sample.'));
+    let release: (() => void) | null = null;
     for (const cmd of rows) {
       const row = el<HTMLElement>('<div class="fs-keys-row"><span class="fs-keys-label"></span><button type="button" class="fs-keys-combo"></button></div>');
       setText(q(row, '.fs-keys-label'), t(this.commands.label(cmd)));
@@ -414,17 +417,20 @@ export class Shell {
       const show = () => setText(combo, (cmd.keys ?? []).map(formatKeys).join(', ') || t('None'));
       show();
       combo.addEventListener('click', () => {
+        release?.();
         setText(combo, t('Press keys'));
         const grab = (e: KeyboardEvent) => {
+          if (!list.isConnected) { release?.(); return; }
           if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
           e.preventDefault(); e.stopPropagation();
-          window.removeEventListener('keydown', grab, true);
-          if (e.key === 'Escape') { show(); return; }
+          release?.();
+          if (e.key === 'Escape') return;
           this.commands.setKeys(cmd.id, e.key === 'Backspace' ? [] : [comboOf(e)]);
           write(SHORTCUTS_KEY, this.commands.overrides());
           this.syncTitles();
           for (const b of list.querySelectorAll<HTMLButtonElement>('.fs-keys-combo')) b.dispatchEvent(new Event('fs-refresh'));
         };
+        release = () => { window.removeEventListener('keydown', grab, true); release = null; show(); };
         window.addEventListener('keydown', grab, true);
       });
       combo.addEventListener('fs-refresh', show);

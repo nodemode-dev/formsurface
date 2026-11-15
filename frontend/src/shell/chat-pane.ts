@@ -49,6 +49,7 @@ export class ChatPane {
     q(this.root, '.fl-chat-adopt').addEventListener('click', () => void this.adopt());
     events.on('chat.usage', (e) => this.showUsage({ ...this.usage, context: Number(e.context ?? 0), window: Number(e.window ?? 0) || this.usage.window, model: String(e.model ?? this.usage.model) }, Number(e.output ?? 0)));
     events.on('chat.adopted', () => { this.loaded = false; this.log.replaceChildren(this.empty); this.reply = null; this.md = null; this.chips.clear(); void this.load(); });
+    events.on('resync', () => { if (!this.loaded) return; this.loaded = false; this.log.replaceChildren(this.empty); setHidden(this.empty, false); this.reply = null; this.md = null; this.chips.clear(); this.setBusy(false); void this.load(); });
     events.on('chat.start', (e) => { this.user(String(e.text ?? ''), String(e.note ?? '')); this.begin(); });
     events.on('chat.delta', (e) => this.delta(String(e.text ?? '')));
     events.on('chat.tool', (e) => this.tool({ kind: 'tool', id: String(e.id ?? ''), name: String(e.name ?? ''), input: String(e.input ?? ''), status: 'running' }));
@@ -81,7 +82,7 @@ export class ChatPane {
       }
       if (s.usage) this.showUsage(s.usage, -1);
       if (s.busy) { this.begin(); this.setBusy(true); }
-    } catch (err) { this.onFail(err); }
+    } catch (err) { this.loaded = false; this.onFail(err); }
   }
 
   async send(text: string, context = '', note = ''): Promise<void> {
