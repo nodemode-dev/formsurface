@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita escuro",
   "Breeze Dark": "Breeze escuro",
   "Soft Light": "Suave claro",
-  "Soft Dark": "Suave escuro"
+  "Soft Dark": "Suave escuro",
+  "Window": "Janela",
+  "Cut": "Recortar",
+  "Copy": "Copiar",
+  "Paste": "Colar",
+  "Select All": "Selecionar tudo",
+  "Exit": "Sair",
+  "Menus in Window": "Menus na janela",
+  "The menus stay in the window from the next start.": "Os menus ficarão na janela a partir da próxima inicialização.",
+  "The menus go to the menu bar from the next start.": "Os menus irão para a barra de menus a partir da próxima inicialização."
 }

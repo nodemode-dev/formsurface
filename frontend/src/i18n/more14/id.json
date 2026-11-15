@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita Gelap",
   "Breeze Dark": "Breeze Gelap",
   "Soft Light": "Lembut Terang",
-  "Soft Dark": "Lembut Gelap"
+  "Soft Dark": "Lembut Gelap",
+  "Window": "Jendela",
+  "Cut": "Potong",
+  "Copy": "Salin",
+  "Paste": "Tempel",
+  "Select All": "Pilih Semua",
+  "Exit": "Keluar",
+  "Menus in Window": "Menu di Jendela",
+  "The menus stay in the window from the next start.": "Menu tetap di jendela mulai dari pembukaan berikutnya.",
+  "The menus go to the menu bar from the next start.": "Menu pindah ke bilah menu mulai dari pembukaan berikutnya."
 }

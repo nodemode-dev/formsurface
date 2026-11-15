@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita ダーク",
   "Breeze Dark": "Breeze ダーク",
   "Soft Light": "ソフト ライト",
-  "Soft Dark": "ソフト ダーク"
+  "Soft Dark": "ソフト ダーク",
+  "Window": "ウインドウ",
+  "Cut": "カット",
+  "Copy": "コピー",
+  "Paste": "ペースト",
+  "Select All": "すべてを選択",
+  "Exit": "終了",
+  "Menus in Window": "メニューをウインドウ内に表示",
+  "The menus stay in the window from the next start.": "次回の起動からメニューはウインドウ内に表示されます。",
+  "The menus go to the menu bar from the next start.": "次回の起動からメニューはメニューバーに表示されます。"
 }

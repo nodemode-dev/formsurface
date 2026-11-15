@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita tối",
   "Breeze Dark": "Breeze tối",
   "Soft Light": "Dịu sáng",
-  "Soft Dark": "Dịu tối"
+  "Soft Dark": "Dịu tối",
+  "Window": "Cửa sổ",
+  "Cut": "Cắt",
+  "Copy": "Sao chép",
+  "Paste": "Dán",
+  "Select All": "Chọn tất cả",
+  "Exit": "Thoát",
+  "Menus in Window": "Menu trong cửa sổ",
+  "The menus stay in the window from the next start.": "Từ lần khởi động sau, menu sẽ nằm trong cửa sổ.",
+  "The menus go to the menu bar from the next start.": "Từ lần khởi động sau, menu sẽ chuyển lên thanh menu."
 }

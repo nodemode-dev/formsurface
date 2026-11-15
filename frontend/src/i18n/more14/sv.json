@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita mörk",
   "Breeze Dark": "Breeze mörk",
   "Soft Light": "Mjuk ljus",
-  "Soft Dark": "Mjuk mörk"
+  "Soft Dark": "Mjuk mörk",
+  "Window": "Fönster",
+  "Cut": "Klipp ut",
+  "Copy": "Kopiera",
+  "Paste": "Klistra in",
+  "Select All": "Markera allt",
+  "Exit": "Avsluta",
+  "Menus in Window": "Menyer i fönstret",
+  "The menus stay in the window from the next start.": "Menyerna stannar i fönstret från nästa start.",
+  "The menus go to the menu bar from the next start.": "Menyerna flyttas till menyraden från nästa start."
 }

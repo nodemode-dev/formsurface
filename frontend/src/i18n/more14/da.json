@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita mørk",
   "Breeze Dark": "Breeze mørk",
   "Soft Light": "Blød lys",
-  "Soft Dark": "Blød mørk"
+  "Soft Dark": "Blød mørk",
+  "Window": "Vindue",
+  "Cut": "Klip",
+  "Copy": "Kopier",
+  "Paste": "Indsæt",
+  "Select All": "Vælg alt",
+  "Exit": "Afslut",
+  "Menus in Window": "Menuer i vinduet",
+  "The menus stay in the window from the next start.": "Menuerne bliver i vinduet fra næste start.",
+  "The menus go to the menu bar from the next start.": "Menuerne flytter til menulinjen fra næste start."
 }

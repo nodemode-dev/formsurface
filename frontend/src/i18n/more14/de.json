@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita Dunkel",
   "Breeze Dark": "Breeze Dunkel",
   "Soft Light": "Sanft Hell",
-  "Soft Dark": "Sanft Dunkel"
+  "Soft Dark": "Sanft Dunkel",
+  "Window": "Fenster",
+  "Cut": "Ausschneiden",
+  "Copy": "Kopieren",
+  "Paste": "Einfügen",
+  "Select All": "Alles auswählen",
+  "Exit": "Beenden",
+  "Menus in Window": "Menüs im Fenster",
+  "The menus stay in the window from the next start.": "Die Menüs bleiben ab dem nächsten Start im Fenster.",
+  "The menus go to the menu bar from the next start.": "Die Menüs wechseln ab dem nächsten Start in die Menüleiste."
 }

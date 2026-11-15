@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita Koyu",
   "Breeze Dark": "Breeze Koyu",
   "Soft Light": "Yumuşak Açık",
-  "Soft Dark": "Yumuşak Koyu"
+  "Soft Dark": "Yumuşak Koyu",
+  "Window": "Pencere",
+  "Cut": "Kes",
+  "Copy": "Kopyala",
+  "Paste": "Yapıştır",
+  "Select All": "Tümünü Seç",
+  "Exit": "Çık",
+  "Menus in Window": "Menüler Pencerede",
+  "The menus stay in the window from the next start.": "Menüler bir sonraki açılıştan itibaren pencerede kalır.",
+  "The menus go to the menu bar from the next start.": "Menüler bir sonraki açılıştan itibaren menü çubuğuna geçer."
 }

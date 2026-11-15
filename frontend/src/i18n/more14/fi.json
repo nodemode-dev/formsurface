@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita tumma",
   "Breeze Dark": "Breeze tumma",
   "Soft Light": "Pehmeä vaalea",
-  "Soft Dark": "Pehmeä tumma"
+  "Soft Dark": "Pehmeä tumma",
+  "Window": "Ikkuna",
+  "Cut": "Leikkaa",
+  "Copy": "Kopioi",
+  "Paste": "Liitä",
+  "Select All": "Valitse kaikki",
+  "Exit": "Lopeta",
+  "Menus in Window": "Valikot ikkunassa",
+  "The menus stay in the window from the next start.": "Valikot pysyvät ikkunassa seuraavasta käynnistyksestä alkaen.",
+  "The menus go to the menu bar from the next start.": "Valikot siirtyvät valikkoriville seuraavasta käynnistyksestä alkaen."
 }

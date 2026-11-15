@@ -27,5 +27,14 @@
   "Adwaita Dark": "Adwaita ciemny",
   "Breeze Dark": "Breeze ciemny",
   "Soft Light": "Miękki jasny",
-  "Soft Dark": "Miękki ciemny"
+  "Soft Dark": "Miękki ciemny",
+  "Window": "Okno",
+  "Cut": "Wytnij",
+  "Copy": "Kopiuj",
+  "Paste": "Wklej",
+  "Select All": "Zaznacz wszystko",
+  "Exit": "Zakończ",
+  "Menus in Window": "Menu w oknie",
+  "The menus stay in the window from the next start.": "Od następnego uruchomienia menu pozostaną w oknie.",
+  "The menus go to the menu bar from the next start.": "Od następnego uruchomienia menu przejdą na pasek menu."
 }
