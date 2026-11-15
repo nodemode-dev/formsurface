@@ -1,0 +1,14 @@
+{
+  "name": "formsurface",
+  "description": "Paint textures onto 3D models in formsurface, the 3D texture painting app, in plain language: the formsurface MCP server and the skill that drives it.",
+  "author": { "name": "nodemode-dev", "email": "mackin@nodemode.ai" },
+  "license": "Apache-2.0",
+  "keywords": ["texture painting", "3d", "pbr", "baking", "mcp"],
+  "skills": ["./.claude/skills/formsurface-painting"],
+  "mcpServers": {
+    "formsurface": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/formsurface",
+      "args": ["mcp"]
+    }
+  }
+}
