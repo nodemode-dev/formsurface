@@ -10,6 +10,7 @@
       root.classList.add('shell-pending');
       if (/Mac/.test(navigator.platform) && '__TAURI_INTERNALS__' in window) root.classList.add('has-overlay-titlebar');
       try {
+        if (root.classList.contains('has-overlay-titlebar') && localStorage.getItem('formsurface.menusInWindow') !== '1') root.classList.add('has-native-menus');
         var lang = localStorage.getItem('formsurface.language');
         if (lang && lang !== 'en') { root.classList.add('i18n-pending'); root.lang = lang; }
         var dock = JSON.parse(localStorage.getItem('formsurface.dock') || 'null');
@@ -96,7 +97,7 @@
 
 <div class="app">
   <header class="topbar">
-    <div class="brand" translate="no"><img src="/formsurface-logo.png" width="18" height="18" alt="" draggable="false">FormSurface</div>
+    <div class="brand" translate="no" role="button" tabindex="0" title="Home" data-cmd="file.home"><img src="/formsurface-logo.png" width="18" height="18" alt="" draggable="false">FormSurface</div>
     <nav class="cv-menubar" aria-label="Menu"></nav>
     <button class="btn" id="open-mesh" title="Open a mesh (glTF, GLB, OBJ, FBX, USD, USDA, USDC, USDZ, PLY, Collada)"><svg><use href="#i-open"/></svg>Open mesh</button>
     <div class="menu">
@@ -132,7 +133,7 @@
   <script>
     if (document.documentElement.classList.contains('has-overlay-titlebar')) {
       var bar = document.querySelector('.topbar');
-      [bar].concat(Array.prototype.slice.call(bar.querySelectorAll('.brand, .spacer, .sep, .version'))).forEach(function (n) { n.setAttribute('data-tauri-drag-region', ''); });
+      [bar].concat(Array.prototype.slice.call(bar.querySelectorAll('.spacer, .sep, .version'))).forEach(function (n) { n.setAttribute('data-tauri-drag-region', ''); });
     }
   </script>
 
