@@ -30,7 +30,7 @@ export function locale(): string { return current; }
 
 async function load(code: Lang): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
-  for (const folder of ['locales', 'more', 'more2', 'more3', 'more4', 'more5']) {
+  for (const folder of ['locales', 'more', 'more2', 'more3', 'more4', 'more5', 'more6', 'more7', 'more8', 'more9', 'more10', 'more11', 'more12', 'more13', 'more14']) {
     const loader = loaders[`./${folder}/${code}.json`];
     if (!loader) continue;
     try { Object.assign(out, (await loader()).default); } catch { continue; }
