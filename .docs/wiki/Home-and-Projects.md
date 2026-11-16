@@ -6,7 +6,7 @@ Home is the start screen over the project library. It follows the Form family's 
 | --- | --- |
 | `frontend/src/shell/home.ts` | the Home screen: side panel, Start, Recent, Templates and Trash pages, card menu, confirm bar |
 | `frontend/src/shell/project-library.ts` | the editor's client for the library routes |
-| `frontend/src/shell/demos.ts` | the demos list, empty in 0.61.0 |
+| `frontend/src/shell/demos.ts` | the demos list, empty in 0.62.0 |
 | `frontend/src/shell/toast.ts` | undo toasts |
 | `frontend/src/styles/home.css` | Home's styles, on the family tokens in `frontend/src/styles/tokens.css` |
 | `backend/app/project_library.py`, `backend/app/projects.py` | the library service and its routes |

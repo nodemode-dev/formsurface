@@ -2,6 +2,59 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. Entries before 0.61.0 were reconstructed from the commit history.
 
+## 0.62.0 · 2026-11-16
+
+A polish round on 0.61.0: the app tracks unsaved changes and asks only when there are some, long operations take turns instead of getting in each other's way, the desktop app says so when its engine fails, and dialogs, menus and controls take the Form family look.
+
+### Added
+
+- Unsaved changes are tracked. The window title names the open document and marks it with a dot while it has changes that are not saved, in the browser and in the desktop window.
+- Close Project has a shortcut in the desktop app: Cmd+W on macOS, Ctrl+W on Windows and Linux. In a browser the key stays with the browser.
+- The engine reports a lost GPU device (WebGPU or WebGL 2) instead of failing every later call with a logged error. The editor then shows that the engine is not running and starts it again.
+- `formsurface.bat` runs `backend`, `frontend`, `batch`, `script` and `desktop dev`, as `./formsurface` does.
+- CI compile-checks the desktop shell on Linux.
+- Window tests for Home, the project library from the window, export and save for a mesh named with brackets and a space, a failed engine download and agent commands with an unknown layer id; service tests for library links, the engine entry's address and the cleanup after a failed headless start.
+
+### Changed
+
+- Quit, Close Project, Open Mesh, the sample meshes, opening a project from Home and starting one from a template ask first only when the document has changes that are not saved. In 0.61.0 the question came whenever a project was open, also right after a save.
+- Exports, bakes, renders, saving and opening a project take turns: while one runs, the others, painting, texture set changes and agent and Python edits wait with a message, and the buttons that start them show they are busy. Painting stays allowed during the high-poly bake.
+- Dialogs, menus, the command palette, buttons, fields, tabs, panel headings, the title bar and the status bar look like the rest of the Form apps: glass menus with larger rows, rounder dialogs with a blurred backdrop, and white primary buttons.
+- The top bar shows its labels whenever they fit and hides them step by step per language, so nothing is ever cut, also on macOS with the menus in the window.
+- Home's side panel is 250 px wide by default, so Home shows five card columns at 1440 px like the other Form apps. The brand line stays whole.
+- The Python panel says when this window's web engine cannot run Python (it lacks JavaScript Promise Integration) and disables its buttons, instead of failing at the first script.
+- The figure sample and template are named "Figure with Three Texture Sets", for the three sets they load.
+- `npm audit` in CI reports findings without failing the build, and CI actions are pinned to fixed versions as formcompiler pins them.
+- Cargo commands on the native workspace work on the host (the engine crate is empty there).
+
+### Fixed
+
+- Changing the Texture size no longer clears every layer without asking. It asks first and says the cleared layers cannot be recovered; Cancel keeps the old size. Before, a later Save also overwrote the project with the empty layers.
+- Desktop: the app shows a message and closes when its engine cannot start, does not answer within two minutes, or stops while the app runs, instead of closing silently or keeping the splash up for good.
+- Desktop: the update feed is now https://dl.formai.studio/formsurface/updates/latest.json, the family download store. It named GitHub releases in an organisation the family has left, which the public cannot read, so the app could not find an update.
+- Desktop: on Windows the app asks its engine to stop before ending it, so the unpacked engine no longer stays in the temp folder after each quit. On macOS and Linux, folders left by earlier forced closes are removed at start.
+- Service: the project library no longer reads or writes through a symbolic link that leads out of the projects folder (project file, maps, previews, stored mesh, info, settings, Trash). A library whose own folder is a link still works.
+- Fill layers that use an image keep the image after a project is saved and reopened, also through a resize, a working space change or a bake.
+- After a lost GPU device, Save makes a new project instead of overwriting the saved one with empty layers.
+- UV tiles: turning UV tiles on keeps every tile's paint; it wiped all tiles but the first. The MCP tool description no longer says it wipes them.
+- A blurred mask is blurred as much in a larger export as in the viewport; at 4096 px it covered a quarter of what the viewport showed.
+- An export or a page-out that does not fit in memory fails with a message instead of stopping the engine.
+- Terminals, Claude Code and Chat in the Linux and macOS packages no longer load the app's bundled libraries.
+- Opening Chat or Claude Code no longer starts an extra shell tab.
+- Home: the confirm bar (Empty Trash, Delete permanently) no longer pushes the page down when it appears, so a second click cannot land on another row, and it keeps clear of the page title in every language.
+- Home: template and project previews show the whole model instead of cutting off its top and bottom.
+- Home: a stored side panel width outside 180 to 420 px is brought back within those limits.
+- The accent colour chosen in another Form app applies from the first frame, so nothing recolours after load.
+- Keyboard focus is visible on every control, disabled buttons look disabled, and hover colours work in the light themes.
+- The Preferences dialog opens at its final size instead of moving when its Claude Code line appears.
+- Languages: Redo in German and the Chat usage line are translated, and the new strings are in all 25 languages.
+- `formsurface.bat` with an unknown command prints help instead of starting the app.
+- The README asks for Python 3.12 or newer, as the installers do.
+
+### Notes
+
+- Nothing in this release was run on macOS or Windows. The desktop shell was compile-checked on Linux only; the engine start and stop messages, the Windows shutdown request, Cmd+W in the desktop app, the `.bat` twins, the frozen engine and the Python panel's check in WebKit were not run, and the WebGPU device-loss path was checked by compiling and reading only. No signing ran.
+
 ## 0.61.0 · 2026-11-15
 
 FormSurface joins the Form family standard for Home, the menu bar and the splash, with a full review of the engine, the editor, the service and the desktop app behind it.
