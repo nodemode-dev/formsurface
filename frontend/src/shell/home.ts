@@ -176,7 +176,7 @@ ${demos}
     const hide = (on: boolean): void => { setClass(root, 'is-nav-hidden', on); save(); };
     try {
       const w = localStorage.getItem(NAV_KEY);
-      if (w && /^\d{2,4}px$/.test(w.trim())) root.style.setProperty('--fs-home-nav-w', w.trim());
+      if (w && /^\d{2,4}px$/.test(w.trim())) root.style.setProperty('--fs-home-nav-w', `${Math.max(180, Math.min(420, parseInt(w, 10)))}px`);
       if (localStorage.getItem(NAV_HIDDEN_KEY) === '1') root.classList.add('is-nav-hidden');
     } catch { void 0; }
     root.querySelector('.fs-home-nav-hide')?.addEventListener('click', () => hide(true));
@@ -184,7 +184,7 @@ ${demos}
     bar.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       const x0 = e.clientX;
-      const start = root.querySelector('.fs-home-nav')?.getBoundingClientRect().width || 264;
+      const start = root.querySelector('.fs-home-nav')?.getBoundingClientRect().width || 250;
       bar.classList.add('is-dragging');
       const mv = (ev: PointerEvent): void => {
         const raw = start + ev.clientX - x0;
