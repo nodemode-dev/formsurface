@@ -1,0 +1,19 @@
+{
+  "Change Texture Size": "Изменить размер текстуры",
+  "Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.": "При изменении размера текстуры GPU-движок перезапускается, а все слои во всех наборах текстур очищаются. Очищенные слои восстановить нельзя.",
+  "Change Size": "Изменить размер",
+  "Discard Changes": "Отбросить изменения",
+  "An export is running; wait for it to finish": "Идёт экспорт; дождитесь его завершения",
+  "A bake is running; wait for it to finish": "Идёт запекание; дождитесь его завершения",
+  "A render is running; wait for it to finish": "Идёт рендер; дождитесь его завершения",
+  "The project is being saved; wait for it to finish": "Проект сохраняется; дождитесь завершения",
+  "A project is opening; wait for it to finish": "Проект открывается; дождитесь завершения",
+  "Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window's web engine does not have. The formsurface MCP tools reach the same commands.": "Скриптам Python нужна JavaScript Promise Integration (переключение стека WebAssembly), которой нет в веб-движке этого окна. Инструменты MCP formsurface дают доступ к тем же командам.",
+  "Redo": "Повторить",
+  "Figure with Three Texture Sets": "Фигура с тремя наборами текстур",
+  "Memory {0} of {1}": "Память {0} из {1}",
+  "Memory {0}": "Память {0}",
+  "Reply {0} tokens": "Ответ {0} токенов",
+  "Chat {0} tokens": "Чат {0} токенов",
+  "UV tiles on: the UDIM tiles of each material share the active tile's layer stack and strokes paint across them; each tile keeps its own paint": "UV-тайлы включены: UDIM-тайлы каждого материала делят стек слоёв активного тайла, мазки рисуют сразу по ним; каждый тайл сохраняет свой рисунок"
+}

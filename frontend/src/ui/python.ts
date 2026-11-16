@@ -94,7 +94,15 @@ async function boot(handlers: Record<string, Handler>): Promise<Pyodide> {
   return py;
 }
 
+export const PYTHON_UNSUPPORTED = 'Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window\'s web engine does not have. The formsurface MCP tools reach the same commands.';
+
+export function pythonSupported(): boolean {
+  try { new WebAssembly.Module(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0])); } catch { return false; }
+  return 'Suspending' in WebAssembly || 'Suspender' in WebAssembly;
+}
+
 export function loadPython(handlers: Record<string, Handler>): Promise<Pyodide> {
+  if (!pythonSupported()) return Promise.reject(new Error(PYTHON_UNSUPPORTED));
   loading ??= boot(handlers).catch((error) => { loading = undefined; throw error; });
   return loading;
 }

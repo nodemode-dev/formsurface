@@ -267,7 +267,6 @@ def test_trash_routes_refuse_entries_that_are_not_in_the_trash(engine, entry, me
     assert tree(engine["data"].parent) == before
 
 
-@pytest.mark.xfail(strict=True, reason="POST /api/projects/{name}/file follows a symlinked project folder and writes project.fsproj outside projects/ (answers 200)")
 def test_a_symlinked_project_folder_is_not_written_through(engine):
     outside = engine["data"].parent / "outside-projects"
     outside.mkdir(exist_ok=True)
@@ -285,7 +284,7 @@ def test_a_symlinked_project_folder_is_not_written_through(engine):
 
 
 @pytest.mark.parametrize("method,suffix,body", [
-    pytest.param("GET", "/file", None, marks=pytest.mark.xfail(strict=True, reason="GET /api/projects/{name}/file follows a symlinked project folder and serves the project.fsproj it finds outside projects/ (answers 200)")),
+    ("GET", "/file", None),
     ("POST", "/duplicate", None), ("PUT", "/thumb", PNG), ("PUT", "/mesh?file=a.glb", GLB), ("DELETE", "", None)])
 def test_library_routes_do_not_follow_a_symlinked_project_folder(engine, method, suffix, body):
     outside = engine["data"].parent / "outside-library"

@@ -3,6 +3,7 @@ import { events, type EngineEvent } from './events';
 import { el, q, setClass, setHidden, setText } from './dom';
 import { icon } from './icons';
 import { MarkdownStream } from './markdown';
+import { t } from '../i18n';
 
 interface Part { kind: 'text' | 'tool'; text?: string; id?: string; name?: string; input?: string; status?: string; images?: string[] }
 interface Meta { seconds?: number; turns?: number | null; costUsd?: number | null; inputTokens?: number; outputTokens?: number }
@@ -150,8 +151,9 @@ export class ChatPane {
     const parts: string[] = [];
     if (u.context) parts.push(`Memory ${tokens(u.context)}${u.window ? ` of ${tokens(u.window)}` : ''}`);
     if (reply >= 0) parts.push(`Reply ${tokens(reply)} tokens`);
-    if (u.input || u.output) parts.push(`Chat ${tokens(u.input + u.output)} tokens${u.costUsd ? ` · $${u.costUsd.toFixed(u.costUsd < 1 ? 3 : 2)}` : ''}`);
-    setText(this.meter, parts.join(' · '));
+    if (u.input || u.output) parts.push(`Chat ${tokens(u.input + u.output)} tokens`);
+    if ((u.input || u.output) && u.costUsd) parts.push(`$${u.costUsd.toFixed(u.costUsd < 1 ? 3 : 2)}`);
+    setText(this.meter, parts.map((p) => t(p)).join(' · '));
     setClass(this.meter, 'is-high', !!u.window && u.context / u.window > 0.8);
   }
 

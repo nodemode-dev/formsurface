@@ -37,7 +37,11 @@ export class Dialog {
     first?.focus();
   }
 
+  onClose: (() => void) | null = null;
+
   close(): void {
+    this.onClose?.();
+    this.onClose = null;
     this.scrim.remove();
     if (this.before instanceof HTMLElement) this.before.focus();
   }

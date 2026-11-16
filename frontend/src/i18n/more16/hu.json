@@ -1,0 +1,19 @@
+{
+  "Change Texture Size": "Textúraméret módosítása",
+  "Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.": "A textúraméret módosítása újraindítja a GPU-motort, és minden textúrakészlet minden rétegét törli. A törölt rétegek nem állíthatók vissza.",
+  "Change Size": "Méret módosítása",
+  "Discard Changes": "Változtatások elvetése",
+  "An export is running; wait for it to finish": "Exportálás fut; várja meg, amíg befejeződik",
+  "A bake is running; wait for it to finish": "Bake-elés fut; várja meg, amíg befejeződik",
+  "A render is running; wait for it to finish": "Renderelés fut; várja meg, amíg befejeződik",
+  "The project is being saved; wait for it to finish": "A projekt mentése folyamatban; várja meg, amíg befejeződik",
+  "A project is opening; wait for it to finish": "Egy projekt megnyitása folyamatban; várja meg, amíg befejeződik",
+  "Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window's web engine does not have. The formsurface MCP tools reach the same commands.": "A Python-szkriptekhez JavaScript Promise Integration (WebAssembly veremváltás) kell, ami ennek az ablaknak a webmotorjából hiányzik. A formsurface MCP-eszközei ugyanezeket a parancsokat érik el.",
+  "Redo": "Újra",
+  "Figure with Three Texture Sets": "Figura három textúrakészlettel",
+  "Memory {0} of {1}": "Memória {0} / {1}",
+  "Memory {0}": "Memória {0}",
+  "Reply {0} tokens": "Válasz {0} token",
+  "Chat {0} tokens": "Chat {0} token",
+  "UV tiles on: the UDIM tiles of each material share the active tile's layer stack and strokes paint across them; each tile keeps its own paint": "UV-csempék be: az egyes anyagok UDIM-csempéi az aktív csempe rétegvermét osztják meg, és a húzások átfestenek rajtuk; minden csempe megtartja a saját festését"
+}

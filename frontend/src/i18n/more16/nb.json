@@ -1,0 +1,19 @@
+{
+  "Change Texture Size": "Endre teksturstørrelse",
+  "Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.": "Når teksturstørrelsen endres, starter GPU-motoren på nytt, og alle lag i alle teksturssett tømmes. De tømte lagene kan ikke gjenopprettes.",
+  "Change Size": "Endre størrelse",
+  "Discard Changes": "Forkast endringer",
+  "An export is running; wait for it to finish": "En eksport pågår; vent til den er ferdig",
+  "A bake is running; wait for it to finish": "En baking pågår; vent til den er ferdig",
+  "A render is running; wait for it to finish": "En rendering pågår; vent til den er ferdig",
+  "The project is being saved; wait for it to finish": "Prosjektet lagres; vent til det er ferdig",
+  "A project is opening; wait for it to finish": "Et prosjekt åpnes; vent til det er ferdig",
+  "Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window's web engine does not have. The formsurface MCP tools reach the same commands.": "Python-skript trenger JavaScript Promise Integration (WebAssembly stack switching), som nettmotoren i dette vinduet mangler. formsurface-MCP-verktøyene når de samme kommandoene.",
+  "Redo": "Gjør om",
+  "Figure with Three Texture Sets": "Figur med tre teksturssett",
+  "Memory {0} of {1}": "Minne {0} av {1}",
+  "Memory {0}": "Minne {0}",
+  "Reply {0} tokens": "Svar {0} tokens",
+  "Chat {0} tokens": "Chat {0} tokens",
+  "UV tiles on: the UDIM tiles of each material share the active tile's layer stack and strokes paint across them; each tile keeps its own paint": "UV-tiles på: UDIM-tilene til hvert materiale deler den aktive tilens lagstabel, og strøk maler på tvers av dem; hver tile beholder sin egen maling"
+}

@@ -1,0 +1,19 @@
+{
+  "Change Texture Size": "Ubah Ukuran Tekstur",
+  "Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.": "Mengubah ukuran tekstur akan memulai ulang mesin GPU dan menghapus setiap lapisan di setiap set tekstur. Lapisan yang dihapus tidak dapat dipulihkan.",
+  "Change Size": "Ubah Ukuran",
+  "Discard Changes": "Buang Perubahan",
+  "An export is running; wait for it to finish": "Ekspor sedang berjalan; tunggu sampai selesai",
+  "A bake is running; wait for it to finish": "Bake sedang berjalan; tunggu sampai selesai",
+  "A render is running; wait for it to finish": "Render sedang berjalan; tunggu sampai selesai",
+  "The project is being saved; wait for it to finish": "Proyek sedang disimpan; tunggu sampai selesai",
+  "A project is opening; wait for it to finish": "Proyek sedang dibuka; tunggu sampai selesai",
+  "Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window's web engine does not have. The formsurface MCP tools reach the same commands.": "Skrip Python memerlukan JavaScript Promise Integration (peralihan stack WebAssembly), yang tidak dimiliki mesin web jendela ini. Alat MCP formsurface menjangkau perintah yang sama.",
+  "Redo": "Ulangi",
+  "Figure with Three Texture Sets": "Figur dengan Tiga Set Tekstur",
+  "Memory {0} of {1}": "Memori {0} dari {1}",
+  "Memory {0}": "Memori {0}",
+  "Reply {0} tokens": "Balasan {0} token",
+  "Chat {0} tokens": "Obrolan {0} token",
+  "UV tiles on: the UDIM tiles of each material share the active tile's layer stack and strokes paint across them; each tile keeps its own paint": "Tile UV aktif: tile UDIM setiap material berbagi tumpukan lapisan tile aktif dan goresan melukis di semuanya; setiap tile mempertahankan lukisannya sendiri"
+}

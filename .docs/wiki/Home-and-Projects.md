@@ -6,7 +6,7 @@ Home is the start screen over the project library. It follows the Form family's 
 | --- | --- |
 | `frontend/src/shell/home.ts` | the Home screen: side panel, Start, Recent, Templates and Trash pages, card menu, confirm bar |
 | `frontend/src/shell/project-library.ts` | the editor's client for the library routes |
-| `frontend/src/shell/demos.ts` | the demos list, empty in 0.61.0 |
+| `frontend/src/shell/demos.ts` | the demos list, empty in 0.62.0 |
 | `frontend/src/shell/toast.ts` | undo toasts |
 | `frontend/src/styles/home.css` | Home's styles, on the family tokens in `frontend/src/styles/tokens.css` |
 | `backend/app/project_library.py`, `backend/app/projects.py` | the library service and its routes |
@@ -18,7 +18,7 @@ Home is the start screen over the project library. It follows the Form family's 
 - Esc leaves Home only when a project is open. The brand in the title bar, File, Home and Alt+Ctrl+H (Alt+Cmd+H on macOS) bring it back.
 - Recent lists saved projects with a preview, newest first. A card's menu has Open, Duplicate, Pin to list, Remove from list and Delete. Delete moves the project to Trash and shows an undo toast.
 - Trash lists deleted projects with Restore and Delete permanently, and Empty Trash; the last two ask in a confirm bar first.
-- Templates start a new project on a mesh the app makes itself: Sphere, Capsule, Torus, Torus Knot, Sphere with a second UV channel, Figure with Two Texture Sets, Sphere Pair with High-Poly.
+- Templates start a new project on a mesh the app makes itself: Sphere, Capsule, Torus, Torus Knot, Sphere with a second UV channel, Figure with Three Texture Sets, Sphere Pair with High-Poly.
 - A mesh dropped on Home, or chosen from the hero, opens as a new unsaved project. Saving stores the mesh with the project, so it opens again later.
 
 ## Where the data lives
@@ -27,7 +27,7 @@ Home is the start screen over the project library. It follows the Form family's 
 
 ## The menu bar and quitting
 
-One list in `frontend/src/shell/app-shell.ts` feeds the menu bar in the window, the command palette and, in the desktop app on macOS, the native menu bar. The order is File, Edit, Tools, Layer, Bake, Agent, View, Window, Help. Menus in Window (View menu, macOS desktop only) keeps the bar in the window. In the desktop app Quit, Cmd+Q and the window's close button ask first whenever a project is open, because the app does not track unsaved changes.
+One list in `frontend/src/shell/app-shell.ts` feeds the menu bar in the window, the command palette and, in the desktop app on macOS, the native menu bar. The order is File, Edit, Tools, Layer, Bake, Agent, View, Window, Help. Menus in Window (View menu, macOS desktop only) keeps the bar in the window. In the desktop app Quit, Cmd+Q and the window's close button ask first only when the open document has changes that are not saved; the window title marks such a document with a dot.
 
 ## Contract for changes here
 

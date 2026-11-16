@@ -1,0 +1,19 @@
+{
+  "Change Texture Size": "Doku Boyutunu Değiştir",
+  "Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.": "Doku boyutunu değiştirmek GPU motorunu yeniden başlatır ve her doku setindeki her katmanı temizler. Temizlenen katmanlar geri getirilemez.",
+  "Change Size": "Boyutu Değiştir",
+  "Discard Changes": "Değişiklikleri At",
+  "An export is running; wait for it to finish": "Bir dışa aktarma sürüyor; bitmesini bekleyin",
+  "A bake is running; wait for it to finish": "Bir bake işlemi sürüyor; bitmesini bekleyin",
+  "A render is running; wait for it to finish": "Bir render sürüyor; bitmesini bekleyin",
+  "The project is being saved; wait for it to finish": "Proje kaydediliyor; bitmesini bekleyin",
+  "A project is opening; wait for it to finish": "Bir proje açılıyor; bitmesini bekleyin",
+  "Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window's web engine does not have. The formsurface MCP tools reach the same commands.": "Python betikleri JavaScript Promise Integration (WebAssembly yığın değiştirme) gerektirir; bu pencerenin web motorunda bu yok. formsurface MCP araçları aynı komutlara ulaşır.",
+  "Redo": "Yinele",
+  "Figure with Three Texture Sets": "Üç Doku Setli Figür",
+  "Memory {0} of {1}": "Bellek {0} / {1}",
+  "Memory {0}": "Bellek {0}",
+  "Reply {0} tokens": "Yanıt {0} token",
+  "Chat {0} tokens": "Sohbet {0} token",
+  "UV tiles on: the UDIM tiles of each material share the active tile's layer stack and strokes paint across them; each tile keeps its own paint": "UV karoları açık: her malzemenin UDIM karoları etkin karonun katman yığınını paylaşır ve darbeler bunların üzerinden boyar; her karo kendi boyasını korur"
+}

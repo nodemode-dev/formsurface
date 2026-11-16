@@ -117,6 +117,8 @@ async def put_mesh(name: str, request: Request, file: str = ""):
     if declared.isdigit() and int(declared) > library.MESH_LIMIT:
         raise HTTPException(400, "The mesh is larger than 1 GB")
     partial = target.with_name(f"{target.name}.part")
+    if not library.inside(partial):
+        raise HTTPException(400, library.OUTSIDE)
     size = 0
     try:
         with partial.open("wb") as handle:

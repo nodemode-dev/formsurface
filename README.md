@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="version 0.61.0" src="https://img.shields.io/badge/version-v0.61.0-eef0f4?style=flat-square">
+  <img alt="version 0.62.0" src="https://img.shields.io/badge/version-v0.62.0-eef0f4?style=flat-square">
   <img alt="Rust and wgpu" src="https://img.shields.io/badge/engine-Rust%20%2B%20wgpu-b7410e?style=flat-square&logo=rust&logoColor=white">
   <img alt="TypeScript" src="https://img.shields.io/badge/editor-TypeScript-3178c6?style=flat-square&logo=typescript&logoColor=white">
   <img alt="macOS, Windows, Linux" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-native-2f7bf5?style=flat-square">
@@ -138,7 +138,7 @@ All FormSurface builds are compiled and released from [FormCompiler](https://git
 
 ## Run it from source
 
-Prefer it in your browser, or want to contribute? Run the web UI straight from this repo. **Requires:** Rust (rustup), Node 22.12+, Python 3.11+, and a browser with WebGPU (Chrome, Edge, Safari 26, Firefox on Windows or macOS) or WebGL 2.
+Prefer it in your browser, or want to contribute? Run the web UI straight from this repo. **Requires:** Rust (rustup), Node 22.12+, Python 3.12+, and a browser with WebGPU (Chrome, Edge, Safari 26, Firefox on Windows or macOS) or WebGL 2.
 
 ```sh
 git clone git@github.com:nodemode-dev/formsurface.git

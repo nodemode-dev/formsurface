@@ -22,6 +22,7 @@ MESH_SUFFIXES = {".glb", ".gltf", ".obj", ".fbx", ".usd", ".usda", ".usdc", ".us
 THUMB_LIMIT = 2_000_000
 MESH_LIMIT = 1 << 30
 THUMB_TYPES = ((b"RIFF", "image/webp"), (b"\xff\xd8\xff", "image/jpeg"), (b"\x89PNG\r\n\x1a\n", "image/png"))
+OUTSIDE = "The project library does not follow a link that leads out of it"
 
 TEMPLATE_CATEGORIES = ["Basics", "UV layout", "Texture sets", "Baking"]
 TEMPLATES = [
@@ -30,7 +31,7 @@ TEMPLATES = [
     {"id": "torus", "name": "Torus", "category": "Basics", "tags": ["torus", "ring", "donut", "primitive"], "description": "A torus with one texture set, for painting around a hole and across a wrapping seam.", "sample": "torus"},
     {"id": "knot", "name": "Torus Knot", "category": "UV layout", "tags": ["knot", "seams", "uv"], "description": "A torus knot with many UV seams, for checking that strokes cross seams cleanly.", "sample": "knot"},
     {"id": "uv2", "name": "Sphere with a second UV channel", "category": "UV layout", "tags": ["uv1", "second uv", "lightmap"], "description": "A sphere that carries a second UV channel, for exporting maps onto UV1.", "sample": "uv2"},
-    {"id": "sets", "name": "Figure with Two Texture Sets", "category": "Texture sets", "tags": ["udim", "materials", "figure"], "description": "A figure with two materials and a body spread over UDIM tiles 1001 and 1002.", "sample": "sets"},
+    {"id": "sets", "name": "Figure with Three Texture Sets", "category": "Texture sets", "tags": ["udim", "materials", "figure"], "description": "A figure with two materials and a body spread over UDIM tiles 1001 and 1002.", "sample": "sets"},
     {"id": "pair", "name": "Sphere Pair with High-Poly", "category": "Baking", "tags": ["bake", "high-poly", "normal map"], "description": "Two low-poly spheres with their high-poly pair loaded, ready to bake maps matched by name.", "sample": "pair"},
 ]
 DEFAULT_TEMPLATE = "sphere"
@@ -49,11 +50,18 @@ def check_id(name: str) -> str:
     return name
 
 
+def inside(path: Path) -> bool:
+    try:
+        return path.resolve() == PROJECTS.resolve() / path.relative_to(PROJECTS)
+    except (OSError, ValueError):
+        return False
+
+
 def project_dir(name: str, need_file: bool = False) -> Path:
     path = PROJECTS / check_id(name)
-    if name.lower() in RESERVED or path.is_symlink() or not path.is_dir():
+    if name.lower() in RESERVED or path.is_symlink() or not path.is_dir() or not inside(path):
         raise LibraryError(404, "No such project")
-    if need_file and not (path / PROJECT_FILE).is_file():
+    if need_file and not ((path / PROJECT_FILE).is_file() and inside(path / PROJECT_FILE)):
         raise LibraryError(404, "No such project")
     return path
 
@@ -63,13 +71,15 @@ def trash_dir(entry: str) -> tuple[Path, str, int]:
     if not match or entry.startswith("."):
         raise LibraryError(404, "That project is no longer in the Trash.")
     path = TRASH / entry
-    if path.is_symlink() or not path.is_dir():
+    if path.is_symlink() or not path.is_dir() or not inside(path):
         raise LibraryError(404, "That project is no longer in the Trash.")
     return path, match.group(1), int(match.group(2))
 
 
 def write_bytes_atomic(target: Path, data: bytes) -> None:
     partial = target.with_name(f"{target.name}.part")
+    if not inside(partial):
+        raise LibraryError(400, OUTSIDE)
     partial.write_bytes(data)
     partial.replace(target)
 
@@ -79,6 +89,8 @@ def write_json_atomic(target: Path, value) -> None:
 
 
 def read_json(path: Path) -> dict:
+    if not inside(path):
+        return {}
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -228,6 +240,8 @@ def duplicate(name: str) -> dict:
 
 def move_to_trash(name: str) -> dict:
     source = project_dir(name)
+    if not inside(TRASH):
+        raise LibraryError(400, OUTSIDE)
     TRASH.mkdir(parents=True, exist_ok=True)
     stamp = int(time.time())
     while (TRASH / f"{source.name}-{stamp}").exists():
@@ -242,7 +256,7 @@ def move_to_trash(name: str) -> dict:
 
 
 def list_trash() -> list[dict]:
-    if not TRASH.is_dir():
+    if not TRASH.is_dir() or not inside(TRASH):
         return []
     found = []
     for path in TRASH.iterdir():

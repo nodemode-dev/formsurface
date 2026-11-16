@@ -1,0 +1,19 @@
+{
+  "Change Texture Size": "變更紋理大小",
+  "Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.": "變更紋理大小會重新啟動 GPU 引擎，並清除每個紋理組中的每個圖層。清除的圖層無法復原。",
+  "Change Size": "變更大小",
+  "Discard Changes": "捨棄變更",
+  "An export is running; wait for it to finish": "正在匯出；請等候完成",
+  "A bake is running; wait for it to finish": "正在烘焙；請等候完成",
+  "A render is running; wait for it to finish": "正在算圖；請等候完成",
+  "The project is being saved; wait for it to finish": "正在儲存專案；請等候完成",
+  "A project is opening; wait for it to finish": "正在開啟專案；請等候完成",
+  "Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window's web engine does not have. The formsurface MCP tools reach the same commands.": "Python 指令碼需要 JavaScript Promise Integration（WebAssembly 堆疊切換），但此視窗的網頁引擎不支援。formsurface 的 MCP 工具可以使用相同的指令。",
+  "Redo": "重做",
+  "Figure with Three Texture Sets": "含三個紋理組的人偶",
+  "Memory {0} of {1}": "記憶體 {0} / {1}",
+  "Memory {0}": "記憶體 {0}",
+  "Reply {0} tokens": "回覆 {0} 個權杖",
+  "Chat {0} tokens": "聊天 {0} 個權杖",
+  "UV tiles on: the UDIM tiles of each material share the active tile's layer stack and strokes paint across them; each tile keeps its own paint": "UV 圖磚已開啟：每種材質的 UDIM 圖磚共用目前圖磚的圖層堆疊，筆觸跨圖磚繪製；每個圖磚保留自己的繪製內容"
+}

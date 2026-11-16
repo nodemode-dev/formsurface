@@ -1,0 +1,19 @@
+{
+  "Change Texture Size": "Cambia dimensione della texture",
+  "Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.": "Cambiare la dimensione della texture riavvia il motore GPU e cancella tutti i livelli di tutti i set di texture. I livelli cancellati non si possono recuperare.",
+  "Change Size": "Cambia dimensione",
+  "Discard Changes": "Scarta le modifiche",
+  "An export is running; wait for it to finish": "È in corso un'esportazione; attendi che finisca",
+  "A bake is running; wait for it to finish": "È in corso un bake; attendi che finisca",
+  "A render is running; wait for it to finish": "È in corso un render; attendi che finisca",
+  "The project is being saved; wait for it to finish": "Il progetto è in salvataggio; attendi che finisca",
+  "A project is opening; wait for it to finish": "Un progetto è in apertura; attendi che finisca",
+  "Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window's web engine does not have. The formsurface MCP tools reach the same commands.": "Gli script Python richiedono JavaScript Promise Integration (cambio di stack WebAssembly), che il motore web di questa finestra non ha. Gli strumenti MCP di formsurface raggiungono gli stessi comandi.",
+  "Redo": "Ripeti",
+  "Figure with Three Texture Sets": "Figura con tre set di texture",
+  "Memory {0} of {1}": "Memoria {0} di {1}",
+  "Memory {0}": "Memoria {0}",
+  "Reply {0} tokens": "Risposta {0} token",
+  "Chat {0} tokens": "Chat {0} token",
+  "UV tiles on: the UDIM tiles of each material share the active tile's layer stack and strokes paint across them; each tile keeps its own paint": "Tile UV attivati: i tile UDIM di ogni materiale condividono la pila di livelli del tile attivo e i tratti dipingono attraverso di essi; ogni tile conserva la propria pittura"
+}

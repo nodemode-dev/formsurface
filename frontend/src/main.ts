@@ -18,13 +18,13 @@ import { BUILT_IN_MATERIALS, MASK_THUMBS, SMART_MASKS, generatorPart, saveMask, 
 import { parseHdr, type HdrImage } from './ui/hdr';
 import { clearOverlay, drawPath, filledCover, pathSamples, ribbonCover, type Vec3 } from './ui/path';
 import { newEffect, renderEffects, type MaskEffectSpec } from './ui/mask-effects';
-import { clickPythonButton, emitPython, pythonLoaded, runPython, setPythonOutput } from './ui/python';
+import { PYTHON_UNSUPPORTED, clickPythonButton, emitPython, pythonLoaded, pythonSupported, runPython, setPythonOutput } from './ui/python';
 import { fontLabel, loadFont, textImage } from './ui/text';
 import { startLanguage, startPageTranslator } from './i18n';
 import { startShell } from './shell/app-shell';
 import { DEMOS } from './shell/demos';
 import { Dialog } from './shell/dialog';
-import { el } from './shell/dom';
+import { el, setText } from './shell/dom';
 import { isHomeOpen, mountHome } from './shell/home';
 import { library as projects } from './shell/project-library';
 import { toast } from './shell/toast';
@@ -33,7 +33,9 @@ await startLanguage();
 const shell = startShell();
 let currentProject: { id: string; title: string } | null = null;
 let documentOpen = false;
-shell.unsavedWork = () => documentOpen;
+let revision = 0;
+let savedRevision = 0;
+shell.unsavedWork = () => changed();
 let quietMesh = false;
 let meshSource: { name: string; file: File } | null = null;
 const storedMeshes = new Set<string>();
@@ -355,7 +357,7 @@ function setRefusal(e: Engine, stroke: string): string {
 }
 
 const setList = new TextureSetList($('texture-sets'), (index) => {
-  try { selectTextureSet(index); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
+  try { refuseWhileBusy(); selectTextureSet(index); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
 });
 
 // Shared UV area per texture set, measured once per mesh and set (see ui/uv-overlap.ts).
@@ -414,6 +416,7 @@ $('ts-size').addEventListener('change', () => {
   if (!engine) return;
   const size = Number(sel('ts-size'));
   try {
+    refuseWhileBusy();
     const name = resizeTextureSet(engine.active_texture_set(), size);
     status(`${name} is now ${size} px: its layers were resampled, undo cleared; bake again for generators`);
   } catch (error) {
@@ -439,7 +442,7 @@ function setUvTiles(on: boolean): void {
   const e = requireEngine();
   if (!e.set_uv_tiles(on)) throw new Error('Finish the stroke first');
   refreshLayers();
-  status(on ? 'UV tiles on: the UDIM tiles of each material share the active tile\'s layer stack and strokes paint across them; other tiles\' previous paint was replaced' : 'UV tiles off: every tile keeps its own layer stack from now on');
+  status(on ? 'UV tiles on: the UDIM tiles of each material share the active tile\'s layer stack and strokes paint across them; each tile keeps its own paint' : 'UV tiles off: every tile keeps its own layer stack from now on');
 }
 
 $('uv-tiles').addEventListener('change', () => {
@@ -553,7 +556,7 @@ async function pageOutIdle(): Promise<number> {
       if (set.index === e.active_texture_set()) continue;
       const job = e.page_out_set(set.index) as Promise<number> | undefined;
       if (!job) continue;
-      await job;
+      try { await job; } catch (error) { e.page_out_finish(set.index); throw error; }
       freed += e.page_out_finish(set.index);
     }
   } finally {
@@ -993,6 +996,7 @@ function drawSelection(s: Selecting): void {
 
 function fillSelection(corners: [number, number][], limit: boolean): number {
   const e = requireEngine();
+  refuseWhileBusy();
   const cover = filledCover(corners);
   let [x0, y0, x1, y1] = cover.bounds;
   if (e.view_2d()) {
@@ -1120,6 +1124,7 @@ function syncUvChannel(): void {
 
 function applyMesh(next: FlatMesh, name: string): void {
   if (!engine) return;
+  const clean = !changed();
   const info = engine.set_mesh(next.positions, next.normals, next.uvs, next.indices, next.materials, JSON.stringify(next.materialNames));
   meshGeneration++;
   highMaps.clear();
@@ -1139,7 +1144,7 @@ function applyMesh(next: FlatMesh, name: string): void {
   refreshLayers();
   status(next.skipped ? `Loaded ${name}. ${next.skipped} part(s) without UVs were skipped.` : `Loaded ${name}`);
   emitPython('mesh_loaded', { name, texture_sets: textureSets().map((s) => s.name) });
-  noteDocument();
+  noteDocument(clean);
 }
 
 async function boot(): Promise<void> {
@@ -1150,7 +1155,9 @@ async function boot(): Promise<void> {
     engine?.free();
     engine = undefined;
     await init();
-    engine = await create_engine(canvas, Number($<HTMLSelectElement>('tex-size').value));
+    engine = tracked(await create_engine(canvas, Number($<HTMLSelectElement>('tex-size').value)));
+    lostSeen = false;
+    texSize = $<HTMLSelectElement>('tex-size').value;
     $('gpu-info').textContent = `${engine.backend()} · ${engine.texture_size()} px`;
     // WebGL 2 has no storage buffers: the path tracer and the ray-traced bake stay off there, with the reason on hover.
     const webgl = engine.backend() === 'Gl';
@@ -1181,9 +1188,7 @@ async function boot(): Promise<void> {
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 canvas.addEventListener('webglcontextlost', (event) => {
   event.preventDefault();
-  notice.textContent = 'The GPU engine is not running';
-  notice.hidden = false;
-  status('GPU engine unavailable', true);
+  engineLost();
 });
 canvas.addEventListener('webglcontextrestored', () => { void boot(); });
 canvas.addEventListener('pointerdown', (event) => {
@@ -1195,6 +1200,7 @@ canvas.addEventListener('pointerdown', (event) => {
   if (event.button === 1 || (event.altKey && event.button === 2)) { nav = 'pan'; return; }
   if (event.button === 2 || (event.altKey && event.button === 0)) { nav = 'orbit'; return; }
   if (event.button !== 0) return;
+  if (busy && !busyPaints) { status(BUSY_TEXT[busy], true); return; }
   const [x, y] = local(event);
   if (pickingId) {
     pickingId = false;
@@ -1373,7 +1379,7 @@ for (const id of ['d-path-aperture', 'd-path-focus']) $(id).addEventListener('in
 $('d-path-scatter').addEventListener('input', () => { setOutput('d-path-scatter'); engine?.set_path_scatter(num('d-path-scatter')); });
 $('d-render').addEventListener('click', () => {
   if (!checked('d-path')) { status('Turn on path tracing first, then render', true); return; }
-  renderPath(num('d-render-w'), num('d-render-h'), Number(sel('d-render-samples'))).then((r) => status(`Render written to ${r.folder} as ${r.file}`), (error) => status(error instanceof Error ? error.message : String(error), true));
+  exclusive('render', () => renderPath(num('d-render-w'), num('d-render-h'), Number(sel('d-render-samples')))).then((r) => status(`Render written to ${r.folder} as ${r.file}`), (error) => status(error instanceof Error ? error.message : String(error), true));
 });
 for (const k of POST_FIELDS) $(`p-${k}`).addEventListener('input', () => { setOutput(`p-${k}`); syncView(); });
 function resetPost(): void {
@@ -1697,7 +1703,7 @@ async function editExternally(): Promise<string> {
 }
 
 canvas.addEventListener('fs-edit-external', () => {
-  editExternally().then((text) => status(text), (error) => status(error instanceof Error ? error.message : String(error), true));
+  exclusive('export', editExternally).then((text) => status(text), (error) => status(error instanceof Error ? error.message : String(error), true));
 });
 
 $('l-merge').addEventListener('click', () => {
@@ -1712,7 +1718,8 @@ $('l-flatten-folder').addEventListener('click', () => {
 });
 $('l-export').addEventListener('click', () => {
   if (!engine) return;
-  exportLayer(engine.active_layer(), meshName.replace(/\.[^.]+$/, '')).then((where) => status(`Layer written to ${where}`), (error) => status(error instanceof Error ? error.message : String(error), true));
+  const id = engine.active_layer();
+  exclusive('export', () => exportLayer(id, meshName.replace(/\.[^.]+$/, ''))).then((where) => status(`Layer written to ${where}`), (error) => status(error instanceof Error ? error.message : String(error), true));
 });
 $('b-clone-src').addEventListener('change', () => {
   try { engine?.set_clone_layer(Number(sel('b-clone-src'))); status(Number(sel('b-clone-src')) ? 'Clone copies only the chosen layer' : 'Clone copies everything visible'); } catch (error) { status(error instanceof Error ? error.message : String(error), true); }
@@ -1727,11 +1734,12 @@ function flattenStack(name = 'Flattened'): number {
 }
 
 $('x-mesh').addEventListener('click', () => {
-  exportMesh().then((where) => status(`Mesh written to ${where}`), (error) => status(error instanceof Error ? error.message : String(error), true));
+  exclusive('export', () => exportMesh()).then((where) => status(`Mesh written to ${where}`), (error) => status(error instanceof Error ? error.message : String(error), true));
 });
 $('l-mask-export').addEventListener('click', () => {
   if (!engine) return;
-  exportMask(engine.active_layer(), meshName.replace(/\.[^.]+$/, '')).then((where) => status(`Mask written to ${where}`), (error) => status(error instanceof Error ? error.message : String(error), true));
+  const id = engine.active_layer();
+  exclusive('export', () => exportMask(id, meshName.replace(/\.[^.]+$/, ''))).then((where) => status(`Mask written to ${where}`), (error) => status(error instanceof Error ? error.message : String(error), true));
 });
 $('l-flatten').addEventListener('click', () => {
   if (!window.confirm('Flatten replaces every layer of this texture set with one paint layer. Fill, filter and generator settings are lost and this cannot be undone. Flatten?')) return;
@@ -2431,12 +2439,15 @@ cageInput.addEventListener('change', async () => {
 $('k-cage-clear').addEventListener('click', clearCage);
 $('k-high-sample').addEventListener('click', () => {
   if (!engine) return;
-  applyMesh(sampleMesh('sphere'), 'sphere');
-  setHigh(sampleHighPoly(), 'bumpy sphere (two parts)');
-  status('Low-poly sphere loaded with a bumpy two-part high-poly sphere; press Bake maps from high-poly');
+  void askDiscard().then((go) => {
+    if (!go) return;
+    applyMesh(sampleMesh('sphere'), 'sphere');
+    setHigh(sampleHighPoly(), 'bumpy sphere (two parts)');
+    status('Low-poly sphere loaded with a bumpy two-part high-poly sphere; press Bake maps from high-poly');
+  });
 });
 $('k-bake-high').addEventListener('click', () => {
-  bakeHigh().then((text) => status(text), (error) => status(error instanceof Error ? error.message : String(error), true));
+  exclusive('bake', bakeHigh, true).then((text) => status(text), (error) => status(error instanceof Error ? error.message : String(error), true));
 });
 const TRACE_ROWS = 8;
 
@@ -2463,14 +2474,17 @@ $('k-bake').addEventListener('click', () => {
   if (!engine) return;
   const e = engine;
   if (sel('k-method') === 'traced') {
-    status('Ray tracing ambient occlusion and thickness on the GPU, a band at a time');
-    bakeTraced(e, Number(sel('k-dirs')), Number(sel('k-rays'))).then(
+    exclusive('bake', () => {
+      status('Ray tracing ambient occlusion and thickness on the GPU, a band at a time');
+      return bakeTraced(e, Number(sel('k-dirs')), Number(sel('k-rays')));
+    }).then(
       (seconds) => status(`Mesh maps baked; AO and thickness ray traced in ${seconds.toFixed(1)} s`),
       (error) => status(error instanceof Error ? error.message : String(error), true),
     );
     return;
   }
   try {
+    refuseWhileBusy();
     status('Baking mesh maps on the GPU');
     e.bake_maps(Number(sel('k-dirs')));
     bakeState();
@@ -2497,15 +2511,18 @@ sampleMenu.addEventListener('click', (event) => {
   if (!kind) return;
   sampleMenu.hidden = true;
   $('sample-toggle').setAttribute('aria-expanded', 'false');
-  applyMesh(sampleMesh(kind), kind);
-  if (kind === 'pair') setHigh(sampleHighPoly('pair'), 'two bumpy spheres (left_high, right_high)');
+  void askDiscard().then((go) => {
+    if (!go) return;
+    applyMesh(sampleMesh(kind), kind);
+    if (kind === 'pair') setHigh(sampleHighPoly('pair'), 'two bumpy spheres (left_high, right_high)');
+  });
 });
 document.addEventListener('pointerdown', (event) => {
   if (!sampleMenu.hidden && !(event.target as HTMLElement).closest('.menu')) sampleMenu.hidden = true;
 });
 
 const fileInput = $<HTMLInputElement>('mesh-file');
-$('open-mesh').addEventListener('click', () => fileInput.click());
+$('open-mesh').addEventListener('click', () => { void askDiscard().then((go) => { if (go) fileInput.click(); }); });
 fileInput.addEventListener('change', async () => {
   const file = fileInput.files?.[0];
   fileInput.value = '';
@@ -2514,8 +2531,22 @@ fileInput.addEventListener('change', async () => {
 });
 
 $('tex-size').addEventListener('change', () => {
-  status('Texture size changed: the texture sets were rebuilt and their layers cleared.');
-  void boot();
+  const select = $<HTMLSelectElement>('tex-size');
+  const next = select.value;
+  select.value = texSize;
+  if (busy) { status(BUSY_TEXT[busy], true); return; }
+  const blank = !changed() && !currentProject;
+  const apply = (): void => {
+    select.value = next;
+    status('Texture size changed: the texture sets were rebuilt and their layers cleared.');
+    void boot().then(() => { if (blank) markSaved(); });
+  };
+  if (blank) { apply(); return; }
+  const d = new Dialog('Change Texture Size');
+  d.body.appendChild(el('<div class="fs-form"><p>Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.</p></div>'));
+  d.action('Cancel', () => d.close(), false);
+  d.action('Change Size', () => { d.close(); apply(); }, true);
+  d.open();
 });
 
 const CHANNELS = ['basecolor', 'roughness', 'metallic', 'height', 'normal', 'ambient_occlusion', 'curvature', 'thickness', 'position', 'world_normal', 'id', 'normal_baked'];
@@ -2680,8 +2711,7 @@ async function renderMaps(templateName = sel('x-template'), custom?: MapSpec[], 
 
 $('export').addEventListener('click', async () => {
   try {
-    status('Exporting maps');
-    const maps = await renderMaps();
+    const maps = await exclusive('export', () => { status('Exporting maps'); return renderMaps(); });
     const stem = meshName.replace(/\.[^.]+$/, '');
     if (await api.alive()) {
       const folder = await api.saveMaps(stem, maps);
@@ -2811,19 +2841,30 @@ async function projectBlob(): Promise<{ blob: Blob; sets: number; layers: number
   const sets: unknown[] = [];
   let offset = 0;
   let count = 0;
+  const sharedImages = new Set<number>();
   try {
     for (const s of textureSets()) {
       if (s.index !== e.active_texture_set()) selectTextureSet(s.index);
       const document = JSON.parse(e.set_document_json()) as { layers: { id: number }[] };
       const pixels: { id: number; offset: number; length: number }[] = [];
+      const fill_images: { id: number; tile: boolean; width: number; height: number; offset: number; length: number }[] = [];
       for (const layer of document.layers) {
         const packed = await gzip(await (e.read_layer_raw(layer.id) as Promise<Uint8Array>), 'gzip-in');
         pixels.push({ id: layer.id, offset, length: packed.length });
         blocks.push(packed);
         offset += packed.length;
         count++;
+        for (const tile of [false, true]) {
+          const [width, height] = e.fill_image_size(layer.id, tile);
+          if (!width || (!tile && sharedImages.has(layer.id))) continue;
+          if (!tile) sharedImages.add(layer.id);
+          const image = await gzip(await (e.fill_image(layer.id, tile) as Promise<Uint8Array>), 'gzip-in');
+          fill_images.push({ id: layer.id, tile, width, height, offset, length: image.length });
+          blocks.push(image);
+          offset += image.length;
+        }
       }
-      sets.push({ index: s.index, name: s.name, size: s.size, extra_channel: s.extra_channel, extra_name: s.extra_name, user_channels: s.user_channels, document, pixels });
+      sets.push({ index: s.index, name: s.name, size: s.size, extra_channel: s.extra_channel, extra_name: s.extra_name, user_channels: s.user_channels, document, pixels, fill_images });
     }
   } finally {
     if (e.active_texture_set() !== start) selectTextureSet(start);
@@ -2837,12 +2878,16 @@ async function projectBlob(): Promise<{ blob: Blob; sets: number; layers: number
 
 async function saveProjectFile(name: string): Promise<{ folder: string; file: string; bytes: number; sets: number; layers: number }> {
   if (!/^[A-Za-z0-9 ._-]{1,80}$/.test(name)) throw new Error('A project name uses letters, digits, space, dot, dash and underscore');
-  const { blob, sets, layers: count } = await projectBlob();
-  const response = await fetch(`/api/projects/${encodeURIComponent(name)}/file`, { method: 'POST', body: blob });
-  if (!response.ok) throw new Error(`FormSurface service: ${response.status} ${await response.text()}`);
-  const saved = await response.json() as { folder: string; file: string };
-  await afterProjectSave(name, sets, count);
-  return { ...saved, bytes: blob.size, sets, layers: count };
+  return exclusive('save', async () => {
+    const at = revision;
+    const { blob, sets, layers: count } = await projectBlob();
+    const response = await fetch(`/api/projects/${encodeURIComponent(name)}/file`, { method: 'POST', body: blob });
+    if (!response.ok) throw new Error(`FormSurface service: ${response.status} ${await response.text()}`);
+    const saved = await response.json() as { folder: string; file: string };
+    await afterProjectSave(name, sets, count);
+    markSaved(at);
+    return { ...saved, bytes: blob.size, sets, layers: count };
+  });
 }
 
 async function openProjectFile(name: string): Promise<{ mesh: string; sets: number; layers: number }> {
@@ -2853,7 +2898,7 @@ async function openProjectFile(name: string): Promise<{ mesh: string; sets: numb
   const length = new DataView(data.buffer, data.byteOffset).getUint32(4, true);
   const header = JSON.parse(new TextDecoder().decode(data.subarray(8, 8 + length))) as {
     mesh: string; active_set: number;
-    sets: { index: number; size: number; extra_channel: string; extra_name?: string; user_channels: { slot: number; name: string }[]; document: unknown; pixels: { id: number; offset: number; length: number }[] }[];
+    sets: { index: number; size: number; extra_channel: string; extra_name?: string; user_channels: { slot: number; name: string }[]; document: unknown; pixels: { id: number; offset: number; length: number }[]; fill_images?: { id: number; tile: boolean; width: number; height: number; offset: number; length: number }[] }[];
   };
   const body = data.subarray(8 + length);
   if (!/\.[^.]+$/.test(header.mesh)) applyMesh(sampleMesh(header.mesh), header.mesh);
@@ -2880,10 +2925,20 @@ async function openProjectFile(name: string): Promise<{ mesh: string; sets: numb
       count++;
     }
   }
+  for (const set of header.sets) {
+    if (!set.fill_images?.length) continue;
+    const udim = selectTextureSet(set.index).udim;
+    for (const image of set.fill_images) {
+      const rgba = await gzip(body.subarray(image.offset, image.offset + image.length), 'gzip-out');
+      if (image.tile) e.set_fill_image_tile(image.id, udim, image.width, image.height, rgba);
+      else e.set_fill_image(image.id, image.width, image.height, rgba);
+    }
+  }
   selectTextureSet(header.active_set);
   refreshLayers();
   refreshSets();
   adoptProject(name);
+  markSaved();
   return { mesh: header.mesh, sets: header.sets.length, layers: count };
 }
 
@@ -2891,12 +2946,14 @@ const meshKey = (id: string, file: File): string => `${id}|${file.name}|${file.s
 
 function syncHomeDocument(): void {
   home.setOpenProjects(documentOpen ? [{ id: currentProject?.id ?? '', title: currentProject?.title ?? meshName }] : []);
+  showDocumentTitle();
 }
 
-function noteDocument(): void {
+function noteDocument(clean: boolean): void {
   if (quietMesh) return;
   documentOpen = true;
   currentProject = null;
+  if (clean) savedRevision = revision;
   syncHomeDocument();
   home.documentOpened();
 }
@@ -2913,6 +2970,7 @@ function closeDocument(): void {
   documentOpen = false;
   currentProject = null;
   meshSource = null;
+  savedRevision = revision;
   syncHomeDocument();
   home.documentClosed();
   adoptWorkspace();
@@ -2943,7 +3001,7 @@ async function openMeshFiles(files: File[]): Promise<void> {
   if (!file) { toast(`${files[0]?.name ?? ''}: ${$('open-mesh').title}`, 'error'); return; }
   await engineReady;
   if (!engine) { toast(notice.textContent ?? '', 'error'); return; }
-  await openMeshFile(file);
+  if (await askDiscard()) await openMeshFile(file);
 }
 
 async function projectThumb(): Promise<Blob> {
@@ -2954,12 +3012,15 @@ async function projectThumb(): Promise<Blob> {
   const bytes = await e.snapshot() as Uint8Array;
   const full = new OffscreenCanvas(w, h);
   full.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength), w, h), 0, 0);
-  const cw = Math.min(w, Math.round((h * 16) / 9));
-  const ch = Math.min(h, Math.round((w * 9) / 16));
+  const scale = Math.min(480 / w, 270 / h);
+  const dw = w * scale;
+  const dh = h * scale;
   const out = new OffscreenCanvas(480, 270);
   const ctx = out.getContext('2d')!;
+  ctx.fillStyle = `rgb(${bytes[0]}, ${bytes[1]}, ${bytes[2]})`;
+  ctx.fillRect(0, 0, 480, 270);
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(full, (w - cw) / 2, (h - ch) / 2, cw, ch, 0, 0, 480, 270);
+  ctx.drawImage(full, 0, 0, w, h, (480 - dw) / 2, (270 - dh) / 2, dw, dh);
   const webp = await out.convertToBlob({ type: 'image/webp', quality: 0.82 });
   return webp.type === 'image/webp' ? webp : out.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
 }
@@ -2985,7 +3046,8 @@ async function openLibraryProject(id: string): Promise<void> {
   await engineReady;
   requireEngine();
   if (documentOpen && currentProject?.id === id) { home.leave(); return; }
-  await openProjectFile(id);
+  if (!(await askDiscard())) return;
+  await exclusive('open', () => openProjectFile(id));
   const info = await projects.opened(id).catch(() => null);
   adoptProject(id, info?.title);
 }
@@ -2993,6 +3055,7 @@ async function openLibraryProject(id: string): Promise<void> {
 async function createFromTemplate(template: string, title?: string): Promise<void> {
   await engineReady;
   requireEngine();
+  if (!(await askDiscard())) return;
   const made = await projects.create({ template, title });
   applyMesh(sampleMesh(made.sample), made.sample);
   if (made.sample === 'pair') setHigh(sampleHighPoly('pair'), 'two bumpy spheres (left_high, right_high)');
@@ -3002,6 +3065,8 @@ async function createFromTemplate(template: string, title?: string): Promise<voi
 
 canvas.addEventListener('fs-close-project', () => {
   if (!documentOpen) return;
+  if (busy) { status(BUSY_TEXT[busy], true); return; }
+  if (!changed()) { closeDocument(); return; }
   const d = new Dialog('Close Project');
   d.body.appendChild(el('<div class="fs-form"><p>Painting that is not saved is lost.</p></div>'));
   d.action('Cancel', () => d.close(), false);
@@ -3022,6 +3087,140 @@ $('save-project').addEventListener('click', async () => {
 function requireEngine(): Engine {
   if (!engine) throw new Error('The GPU engine is not running in the editor');
   return engine;
+}
+
+const READS = new Set([
+  'free', 'active_layer', 'active_texture_set', 'backend', 'base_json', 'camera_json', 'clear_cage', 'clear_display_lut', 'clear_environment',
+  'clear_high_mesh', 'clear_hover', 'clear_match_names', 'clone_layer', 'cross_sets', 'device_lost', 'device_lost_reason', 'environment_json',
+  'export_channel', 'export_channel_wide', 'export_layer', 'export_layer_mask', 'export_size_begin', 'export_size_end', 'extra_channel', 'fill_image',
+  'fill_image_size', 'fill_settings', 'filter_settings', 'frame', 'frame_mesh', 'gpu_idle', 'has_cage', 'has_clone_source', 'has_polygons', 'has_uv1',
+  'hidden_triangles', 'hide_part', 'hide_steps', 'hover', 'id_color_at', 'is_baked', 'is_high_baked', 'is_instance_copy', 'layer_coverage_at',
+  'layers_json', 'mask_effects', 'mask_generator_settings', 'max_texture_size', 'mesh_obj', 'mesh_obj_with', 'orbit', 'page_out_finish', 'page_out_set',
+  'paint_target_is_mask', 'pan', 'path_render_begin', 'path_render_end', 'path_render_read', 'path_trace_json', 'path_trace_run', 'post_json',
+  'projection_plane_at', 'projection_plane_to_screen', 'quick_mask_fill', 'quick_mask_invert', 'quick_mask_mode', 'read_layer_raw', 'reproject_on',
+  'reset_post', 'resize', 'screen_point', 'select_layer', 'select_texture_set', 'set_alpha', 'set_brush', 'set_cage', 'set_channels', 'set_clone_layer',
+  'set_clone_source', 'set_cross_sets', 'set_display_lut', 'set_document_json', 'set_environment', 'set_environment_view', 'set_high_mesh',
+  'set_match_names', 'set_orbit', 'set_paint_target', 'set_path_denoise', 'set_path_lens', 'set_path_scatter', 'set_path_trace', 'set_post',
+  'set_quick_mask', 'set_reproject', 'set_stencil', 'set_view', 'set_view_2d', 'set_view_2d_channel', 'set_view_transform', 'show_all_parts',
+  'show_last_hidden', 'skipped_layers', 'snapshot', 'stroke_end', 'stroke_to', 'surface_point', 'texture_memory_json', 'texture_set_cage',
+  'texture_set_match_keys', 'texture_set_mesh', 'texture_set_size', 'texture_sets_json', 'texture_size', 'tracing', 'user_channels', 'uv1', 'uv_at',
+  'uv_tiles', 'uv_to_screen', 'view_2d', 'view_transform', 'viewport_size', 'working_space', 'zoom', 'bake_traced_step',
+]);
+
+function tracked(raw: Engine): Engine {
+  return new Proxy(raw, {
+    get(target, key) {
+      const value: unknown = Reflect.get(target, key, target);
+      if (typeof value !== 'function') return value;
+      const fn = value as (...args: unknown[]) => unknown;
+      if (typeof key !== 'string' || READS.has(key)) return fn.bind(target);
+      return (...args: unknown[]) => {
+        const out = fn.apply(target, args);
+        if (out !== false && out !== 0) documentChanged();
+        return out;
+      };
+    },
+  });
+}
+
+function changed(): boolean {
+  return documentOpen && revision !== savedRevision;
+}
+
+function documentChanged(): void {
+  revision++;
+  showDocumentTitle();
+}
+
+function markSaved(at = revision): void {
+  savedRevision = at;
+  showDocumentTitle();
+}
+
+let windowTitle = '';
+let titleSent: Promise<unknown> = Promise.resolve();
+
+function showDocumentTitle(): void {
+  const name = documentOpen ? currentProject?.title ?? meshName : '';
+  const title = name ? `${changed() ? '• ' : ''}${name} · FormSurface` : 'FormSurface';
+  if (title === windowTitle) return;
+  windowTitle = title;
+  document.title = title;
+  if ('__TAURI_INTERNALS__' in window) titleSent = titleSent.then(() => import('@tauri-apps/api/core')).then((m) => m.invoke('set_window_title', { title })).catch(() => undefined);
+}
+
+function askDiscard(): Promise<boolean> {
+  if (busy) {
+    status(BUSY_TEXT[busy], true);
+    if (isHomeOpen()) toast(BUSY_TEXT[busy], 'error');
+    return Promise.resolve(false);
+  }
+  if (!changed()) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const d = new Dialog('Discard Changes');
+    d.body.appendChild(el('<div class="fs-form"><p>Painting that is not saved is lost.</p></div>'));
+    d.onClose = () => resolve(false);
+    d.action('Cancel', () => d.close(), false);
+    d.action('Discard Changes', () => { resolve(true); d.close(); }, true);
+    d.open();
+  });
+}
+
+type Busy = 'export' | 'bake' | 'render' | 'save' | 'open';
+const BUSY_TEXT: Record<Busy, string> = {
+  export: 'An export is running; wait for it to finish',
+  bake: 'A bake is running; wait for it to finish',
+  render: 'A render is running; wait for it to finish',
+  save: 'The project is being saved; wait for it to finish',
+  open: 'A project is opening; wait for it to finish',
+};
+const BUSY_CONTROLS = ['export', 'x-mesh', 'l-export', 'l-mask-export', 'k-bake', 'k-bake-high', 'd-render', 'save-project', 'tex-size'];
+const AGENT_READS = new Set(['status', 'list_commands', 'texture_sets', 'resources', 'export_templates', 'smart_list']);
+let busy: Busy | null = null;
+let busyPaints = false;
+let lostSeen = false;
+let texSize = $<HTMLSelectElement>('tex-size').value;
+
+function refuseWhileBusy(): void {
+  if (busy) throw new Error(BUSY_TEXT[busy]);
+}
+
+function agentRefusal(command: string): string {
+  return busy && !AGENT_READS.has(command) ? BUSY_TEXT[busy] : '';
+}
+
+function showBusy(on: boolean): void {
+  for (const id of BUSY_CONTROLS) {
+    const node = $(id);
+    if (on) node.setAttribute('aria-busy', 'true');
+    else node.removeAttribute('aria-busy');
+  }
+}
+
+async function exclusive<T>(kind: Busy, run: () => Promise<T>, paints = false): Promise<T> {
+  refuseWhileBusy();
+  busy = kind;
+  busyPaints = paints;
+  showBusy(true);
+  try {
+    return await run();
+  } finally {
+    busy = null;
+    busyPaints = false;
+    showBusy(false);
+  }
+}
+
+function engineLost(): void {
+  if (lostSeen) return;
+  lostSeen = true;
+  notice.textContent = 'The GPU engine is not running';
+  notice.hidden = false;
+  status('GPU engine unavailable', true);
+  const reason = engine?.device_lost_reason();
+  if (reason) console.warn(`FormSurface: ${reason}`);
+  if (currentProject) { currentProject = null; syncHomeDocument(); }
+  if (engine && engine.backend() !== 'Gl') void boot();
 }
 
 function setControl(id: string, value: unknown, event = 'input'): void {
@@ -3101,7 +3300,7 @@ const agentLink = new AgentLink({
     return hit ? { selected: hit } : { selected: null, note: 'No visible layer paints this point' };
   },
   save_project: async ({ name }) => saveProjectFile(String(name ?? safeStem(meshName.replace(/\.[^.]+$/, '')))),
-  open_project: async ({ name }) => ({ ...(await openProjectFile(String(name))), ...snapshotState() }),
+  open_project: async ({ name }) => ({ ...(await exclusive('open', () => openProjectFile(String(name)))), ...snapshotState() }),
   load_mesh: async ({ file, reproject }) => {
     const name = String(file);
     if (reproject !== undefined && reproject !== null) setControl('m-reproject', Boolean(reproject), 'change');
@@ -3213,7 +3412,7 @@ const agentLink = new AgentLink({
     } else if (args.distance_cage) clearCage();
     if (front !== undefined) setControl('k-front', front);
     if (rear !== undefined) setControl('k-rear', rear);
-    return { result: await bakeHigh(), cage: cage || (requireEngine().has_cage() ? 'custom cage kept' : 'distance cage'), maps: ['id', 'normal_baked', 'height_high', 'opacity', 'ambient_occlusion_high', 'bent_normal'] };
+    return { result: await exclusive('bake', bakeHigh, true), cage: cage || (requireEngine().has_cage() ? 'custom cage kept' : 'distance cage'), maps: ['id', 'normal_baked', 'height_high', 'opacity', 'ambient_occlusion_high', 'bent_normal'] };
   },
   load_image: async ({ file, target, layer_id, color_space }) => {
     const e = requireEngine();
@@ -3257,7 +3456,7 @@ const agentLink = new AgentLink({
     if (rays !== undefined && rays !== null) setControl('k-rays', rays, 'change');
     const traced = sel('k-method') === 'traced';
     let seconds: number | undefined;
-    if (traced) seconds = await bakeTraced(e, Number(directions ?? 64), Number(sel('k-rays')));
+    if (traced) seconds = await exclusive('bake', () => bakeTraced(e, Number(directions ?? 64), Number(sel('k-rays'))));
     else e.bake_maps(Number(directions ?? 64));
     bakeState();
     emitPython('bake_finished', { method: traced ? 'traced' : 'depth', seconds });
@@ -3305,11 +3504,11 @@ const agentLink = new AgentLink({
     const keep = ngons === undefined || ngons === null ? checked('x-ngons') : Boolean(ngons);
     const levels = subdivide === undefined || subdivide === null ? Number(sel('x-subdiv')) : Math.max(0, Math.min(3, Math.round(Number(subdivide))));
     const amount = displacement === undefined || displacement === null ? num('x-disp') : Math.max(0, Math.min(0.2, Number(displacement)));
-    const folder = await exportMesh(name ? String(name) : undefined, keep, levels, amount);
+    const folder = await exclusive('export', () => exportMesh(name ? String(name) : undefined, keep, levels, amount));
     return { folder, format: 'obj', ngons: keep && e.has_polygons() && levels === 0 && amount === 0, subdivide: levels, displacement: amount };
   },
   flatten: ({ name }) => ({ id: flattenStack(String(name || 'Flattened')), layers: layers() }),
-  export_mask: async ({ id, name }) => ({ folder: await exportMask(Number(id), String(name || meshName.replace(/\.[^.]+$/, ''))) }),
+  export_mask: async ({ id, name }) => ({ folder: await exclusive('export', () => exportMask(Number(id), String(name || meshName.replace(/\.[^.]+$/, '')))) }),
   clone_source: ({ x, y }) => {
     const e = requireEngine();
     const [w, h] = e.viewport_size();
@@ -3319,7 +3518,7 @@ const agentLink = new AgentLink({
   },
   merge_down: ({ id }) => ({ id: mergeDown(Number(id)), layers: layers() }),
   flatten_folder: ({ id }) => ({ id: flattenFolder(Number(id)), layers: layers() }),
-  export_layer: async ({ id, name }) => ({ folder: await exportLayer(Number(id), String(name || meshName.replace(/\.[^.]+$/, ''))) }),
+  export_layer: async ({ id, name }) => ({ folder: await exclusive('export', () => exportLayer(Number(id), String(name || meshName.replace(/\.[^.]+$/, '')))) }),
   clone_layer: ({ id }) => { requireEngine().set_clone_layer(Number(id ?? 0)); refreshLayers(); return { clone_from: Number(id ?? 0) || 'all layers' }; },
   view_2d: ({ on, center_u, center_v, zoom, channel }) => {
     const e = requireEngine();
@@ -3518,7 +3717,7 @@ const agentLink = new AgentLink({
   },
   path_render: async ({ width, height, samples, name }) => {
     if (!JSON.parse(requireEngine().path_trace_json()).on) throw new Error('Turn path tracing on first (path_trace on true)');
-    return { width: Number(width), height: Number(height), ...(await renderPath(Number(width), Number(height), Number(samples ?? 256), name ? String(name) : undefined)) };
+    return { width: Number(width), height: Number(height), ...(await exclusive('render', () => renderPath(Number(width), Number(height), Number(samples ?? 256), name ? String(name) : undefined))) };
   },
   path_trace: async ({ on, bounces, max_samples, samples, denoise, aperture, focus, scatter_radius }) => {
     const e = requireEngine();
@@ -3552,7 +3751,7 @@ const agentLink = new AgentLink({
       given(padding) ? String(padding) : sel('x-pad'), given(padding_width) ? Number(padding_width) : num('x-pad-width'),
       given(padding_color) ? hexColor(String(padding_color)) : hex('x-pad-color'), given(size) ? Number(size) : Number(sel('x-size')),
       checked('x-merge'), given(uv_channel) ? Number(uv_channel) : Number(sel('x-uv')), given(file_names) ? String(file_names) : $<HTMLInputElement>('x-names').value);
-    const maps = await renderMaps(template ? String(template) : sel('x-template'), custom ? validateMaps(custom) : undefined, choice);
+    const maps = await exclusive('export', () => renderMaps(template ? String(template) : sel('x-template'), custom ? validateMaps(custom) : undefined, choice));
     const folder = await api.saveMaps(String(name || meshName.replace(/\.[^.]+$/, '')), maps);
     emitPython('export_finished', { folder, maps: [...maps.keys()] });
     return { folder, template: custom ? 'custom' : template ?? sel('x-template'), format: choice.format, bit_depth: choice.depth, size: choice.size || 'texture set', padding: choice.padding.mode, padding_width: choice.padding.width, uv_channel: choice.uv, file_names: choice.names || 'default', maps: [...maps.keys()] };
@@ -3571,6 +3770,7 @@ const agentLink = new AgentLink({
   if (state === 'waiting') status('Agent link: waiting for the FormSurface service on 127.0.0.1:8766');
   if (state === 'linked') status('Agent link on: MCP agents can now edit this document');
 });
+agentLink.gate = agentRefusal;
 $('agent-link').addEventListener('click', () => agentLink.toggle());
 
 function pyLog(line: string, error = false): void {
@@ -3597,12 +3797,24 @@ function pyButtonsChanged(labels: string[]): void {
 }
 
 setPythonOutput(pyLog, pyButtonsChanged);
+if (!pythonSupported()) {
+  for (const id of ['py-run', 'py-plugins']) { $<HTMLButtonElement>(id).disabled = true; $(id).title = PYTHON_UNSUPPORTED; }
+  const note = el<HTMLElement>('<p class="cv-note"></p>');
+  note.textContent = PYTHON_UNSUPPORTED;
+  $('py-buttons').before(note);
+}
+
+const pythonHandlers: Record<string, (args: Record<string, unknown>) => unknown> = Object.fromEntries(Object.entries(agentLink.handlers).map(([id, run]) => [id, (args: Record<string, unknown>) => {
+  const refused = agentRefusal(id);
+  if (refused) throw new Error(refused);
+  return run(args);
+}]));
 
 async function runPythonCode(code: string): Promise<string> {
   $<HTMLButtonElement>('py-run').disabled = true;
   if (!pythonLoaded()) status('Python: loading the interpreter (first run only)');
   try {
-    const result = await runPython(agentLink.handlers, code);
+    const result = await runPython(pythonHandlers, code);
     if (result) pyLog(result);
     status('Python script finished');
     return result;
@@ -3612,7 +3824,7 @@ async function runPythonCode(code: string): Promise<string> {
     status('Python script failed: see the Python panel', true);
     throw error;
   } finally {
-    $<HTMLButtonElement>('py-run').disabled = false;
+    $<HTMLButtonElement>('py-run').disabled = !pythonSupported();
   }
 }
 
@@ -3634,12 +3846,13 @@ function tick(now: number): void {
   resize();
   // In software present the snapshot loop is the only render: drawing every animation frame into a canvas the
   // browser never shows starved the readbacks on a software GPU.
-  if (softPresent.hidden) engine?.frame();
+  if (engine && !lostSeen && engine.device_lost()) engineLost();
+  if (softPresent.hidden && !lostSeen) engine?.frame();
   drawPathOverlay();
   showPathState();
   frames++;
   if (now - lastFps > 1000) {
-    $('fps').textContent = `${Math.round((frames * 1000) / (now - lastFps))} fps`;
+    setText($('fps'), `${Math.round((frames * 1000) / (now - lastFps))} fps`);
     frames = 0;
     lastFps = now;
   }
@@ -3649,6 +3862,7 @@ function tick(now: number): void {
 const startSize = new URLSearchParams(location.search).get('size');
 if (startSize && [...$<HTMLSelectElement>('tex-size').options].some((o) => o.value === startSize)) $<HTMLSelectElement>('tex-size').value = startSize;
 await boot();
+markSaved();
 engineStarted();
 adoptWorkspace();
 requestAnimationFrame(tick);

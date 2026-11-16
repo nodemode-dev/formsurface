@@ -19,7 +19,7 @@ mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/javascript", ".mjs")
 mimetypes.add_type("text/css", ".css")
 
-VERSION = "0.61.0"
+VERSION = "0.62.0"
 ROOT = Path(__file__).resolve().parents[2]
 DATA = Path(os.environ.get("FORMSURFACE_DATA", ROOT / "workspace"))
 SAFE = re.compile(r"^[A-Za-z0-9 _.-]{1,80}\Z")
@@ -44,6 +44,8 @@ def folder(kind: str, name: str) -> Path:
     if not SAFE.match(name) or name.startswith("."):
         raise HTTPException(400, "Names may use letters, digits, spaces, dot, dash and underscore")
     path = DATA / kind / name
+    if kind == "projects" and not projects.library.inside(path):
+        raise HTTPException(404, "No such project")
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -168,6 +170,8 @@ async def save_project(name: str, document: str = Form(...), maps: list[UploadFi
         parsed = json.loads(document)
     except json.JSONDecodeError as error:
         raise HTTPException(400, f"Project document is not JSON: {error}") from error
+    if not all(projects.library.inside(path / Path(item).name) for item in ["project.json", *(upload.filename or "" for upload in maps)]):
+        raise HTTPException(400, projects.library.OUTSIDE)
     (path / "project.json").write_text(json.dumps({"formsurface": VERSION, **parsed}, indent=2))
     return {"folder": str(path), "files": await write_maps(path, maps)}
 
@@ -375,6 +379,8 @@ async def save_project_file(name: str, request: Request):
         raise HTTPException(400, "Not a FormSurface project file")
     target = path / "project.fsproj"
     partial = path / "project.fsproj.part"
+    if not projects.library.inside(partial):
+        raise HTTPException(400, projects.library.OUTSIDE)
     partial.write_bytes(data)
     partial.replace(target)
     return {"folder": str(path), "file": str(target), "bytes": len(data)}
@@ -383,7 +389,7 @@ async def save_project_file(name: str, request: Request):
 @app.get("/api/projects/{name}/file")
 def read_project_file(name: str):
     path = DATA / "projects" / name / "project.fsproj"
-    if not SAFE.match(name) or name.startswith(".") or not path.exists():
+    if not SAFE.match(name) or name.startswith(".") or not path.exists() or not projects.library.inside(path):
         raise HTTPException(404, "No such project")
     return FileResponse(path, media_type="application/octet-stream")
 
@@ -391,7 +397,7 @@ def read_project_file(name: str):
 @app.get("/api/projects/{name}")
 def read_project(name: str):
     path = DATA / "projects" / name
-    if not SAFE.match(name) or name.startswith(".") or not (path / "project.json").exists():
+    if not SAFE.match(name) or name.startswith(".") or not (path / "project.json").exists() or not projects.library.inside(path / "project.json"):
         raise HTTPException(404, "No such project")
     return {"folder": str(path), "document": json.loads((path / "project.json").read_text()), "maps": sorted(p.name for p in path.glob("*.png"))}
 

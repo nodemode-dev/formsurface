@@ -75,10 +75,10 @@ export class TerminalDock {
     new ResizeObserver(() => this.fitActive()).observe(this.stage);
   }
 
-  async ensure(): Promise<void> {
+  async ensure(shell = true): Promise<void> {
     const listed = await this.api.cmd<{ terminals: TermInfo[] }>('terminal.list').catch(() => ({ terminals: [] as TermInfo[] }));
     for (const t of listed.terminals) if (!this.tabs.has(t.id)) this.mount(t, false);
-    if (!this.tabs.size && !this.chatTab) await this.open();
+    if (!this.tabs.size && !this.chatTab) { if (shell) await this.open(); }
     else if (!this.active) this.select([...this.tabs.keys()][0] ?? 'chat');
     else this.fitActive();
     this.focus();

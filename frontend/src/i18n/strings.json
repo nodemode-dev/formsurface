@@ -1115,5 +1115,22 @@
 "Exit",
 "Menus in Window",
 "The menus stay in the window from the next start.",
-"The menus go to the menu bar from the next start."
+"The menus go to the menu bar from the next start.",
+"Change Texture Size",
+"Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.",
+"Change Size",
+"Discard Changes",
+"An export is running; wait for it to finish",
+"A bake is running; wait for it to finish",
+"A render is running; wait for it to finish",
+"The project is being saved; wait for it to finish",
+"A project is opening; wait for it to finish",
+"Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window's web engine does not have. The formsurface MCP tools reach the same commands.",
+"Redo",
+"Figure with Three Texture Sets",
+"Memory {0} of {1}",
+"Memory {0}",
+"Reply {0} tokens",
+"Chat {0} tokens",
+"UV tiles on: the UDIM tiles of each material share the active tile's layer stack and strokes paint across them; each tile keeps its own paint"
 ]

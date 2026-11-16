@@ -5,6 +5,7 @@ export class AgentLink {
   private wanted = false;
   private retry = 0;
   private queue: Promise<void> = Promise.resolve();
+  gate: (command: string) => string = () => '';
 
   constructor(readonly handlers: Record<string, Handler>, private readonly onState: (state: 'off' | 'waiting' | 'linked') => void) {}
 
@@ -49,6 +50,8 @@ export class AgentLink {
           id = message.id;
           const handler = this.handlers[message.command];
           if (!handler) throw new Error(`Unknown command ${message.command}`);
+          const refused = this.gate(message.command);
+          if (refused) throw new Error(refused);
           const result = await handler(message.args ?? {});
           socket.send(JSON.stringify({ id, ok: true, result: result ?? {} }));
         } catch (error) {

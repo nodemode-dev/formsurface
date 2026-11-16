@@ -1,5 +1,5 @@
 import type { Commands } from './commands';
-import { el, q, setClass, setText } from './dom';
+import { el, q, setClass, setHidden, setText } from './dom';
 import type { MenuDef, MenuItem } from './menu';
 import { t } from '../i18n';
 
@@ -86,7 +86,7 @@ export class CommandPalette {
     });
     const shown = scored.filter((x) => x.s !== null).sort((x, y) => (y.s ?? 0) - (x.s ?? 0));
     const order = new Set(shown.map((x) => x.r));
-    for (const r of this.rows) r.node.hidden = !order.has(r);
+    for (const r of this.rows) setHidden(r.node, !order.has(r));
     for (const x of shown) this.list.appendChild(x.r.node);
     this.index = 0;
     this.mark();

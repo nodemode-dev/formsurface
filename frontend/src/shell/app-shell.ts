@@ -83,7 +83,7 @@ function fail(err: unknown): void {
 
 const SAMPLES: Array<[string, string]> = [
   ['sphere', 'Sphere'], ['knot', 'Torus Knot'], ['torus', 'Torus'], ['capsule', 'Capsule'],
-  ['sets', 'Figure with Two Texture Sets'], ['pair', 'Sphere Pair with High-Poly'], ['uv2', 'Sphere with a second UV channel'],
+  ['sets', 'Figure with Three Texture Sets'], ['pair', 'Sphere Pair with High-Poly'], ['uv2', 'Sphere with a second UV channel'],
 ];
 
 const PANEL_TABS: Array<{ id: string; label: string; sections: string[] }> = [
@@ -211,7 +211,7 @@ export class Shell {
     const btn = (id: string, label: string, target: string, keys?: string[], extra: Partial<Command> = {}): Command => ({ id, label, keys, run: () => click(target), ...extra });
     c.add(
       { id: 'file.home', label: 'Home', keys: ['Alt+Mod+H'], icon: 'home', run: () => showHome() },
-      { id: 'file.close', label: 'Close Project', run: () => { byId('canvas')?.dispatchEvent(new Event('fs-close-project')); } },
+      { id: 'file.close', label: 'Close Project', keys: inTauri() ? ['Mod+W'] : [], run: () => { byId('canvas')?.dispatchEvent(new Event('fs-close-project')); } },
       { id: 'home.showAtLaunch', label: 'Show Home Screen at Launch', checked: () => homePrefs.autoShow(), run: () => homePrefs.setAutoShow(!homePrefs.autoShow()) },
       { id: 'home.showOnLastClose', label: 'Show Home Screen When the Last Document Closes', checked: () => homePrefs.afterClose(), run: () => homePrefs.setAfterClose(!homePrefs.afterClose()) },
       ...DEMOS.map((d) => ({ id: d.command, label: d.label, run: () => { byId('canvas')?.dispatchEvent(new CustomEvent('fs-demo', { detail: d.id })); } })),
@@ -430,11 +430,11 @@ export class Shell {
   }
 
   private async withDock(fn: (d: TerminalDock) => Promise<void>): Promise<void> {
-    await this.setDock(true);
+    await this.setDock(true, false);
     if (this.dock) await fn(this.dock);
   }
 
-  private async setDock(open: boolean): Promise<void> {
+  private async setDock(open: boolean, shell = true): Promise<void> {
     if (open && !this.dock) {
       this.dock = new TerminalDock(this.dockHost, api, () => void this.setDock(false));
       this.dock.onFail = fail;
@@ -453,7 +453,7 @@ export class Shell {
     const h = parseInt(this.app.style.getPropertyValue('--fs-dock-open-h'), 10) || 280;
     write(DOCK_KEY, { open, h });
     window.dispatchEvent(new Event('resize'));
-    if (open && this.dock) await this.dock.ensure();
+    if (open && this.dock) await this.dock.ensure(shell);
     else (byId('canvas'))?.focus();
   }
 
