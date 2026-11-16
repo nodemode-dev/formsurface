@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use tauri::{Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
-use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_updater::UpdaterExt;
@@ -16,13 +16,21 @@ mod traffic_lights;
 struct Backend(Mutex<Option<CommandChild>>);
 struct PageListening(AtomicBool);
 struct ExitGate(AtomicBool);
+struct EngineDone(AtomicBool);
+#[cfg(windows)]
+struct Service(Mutex<Option<u16>>);
 
 const ENGINE_PORT: &str = "8766";
+const ENGINE_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
+const ENGINE_NEVER_READY: &str = "The FormSurface engine stopped before it was ready. Start FormSurface again; if this keeps happening, install it again.";
+const ENGINE_SILENT: &str = "The FormSurface engine did not answer within two minutes. Start FormSurface again; if this keeps happening, install it again.";
+const ENGINE_GONE: &str = "The FormSurface engine stopped while the app was running, so the window can no longer save or export. FormSurface will close now; start it again to continue from the last saved project.";
 const FALLBACK_LOGICAL: (f64, f64) = (1440.0, 900.0);
 const MIN_LOGICAL: (f64, f64) = (1080.0, 680.0);
 const SCREEN_FRACTION: f64 = 0.9;
 
 fn kill_backend(handle: &tauri::AppHandle) {
+    handle.state::<EngineDone>().0.store(true, Ordering::SeqCst);
     let child = handle.state::<Backend>().0.lock().unwrap().take();
     if let Some(child) = child {
         #[cfg(unix)]
@@ -49,6 +57,56 @@ fn kill_backend(handle: &tauri::AppHandle) {
     }
 }
 
+#[cfg(windows)]
+fn ask_to_close(port: u16) -> bool {
+    use std::io::{Read, Write};
+    let wait = std::time::Duration::from_secs(2);
+    let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let Ok(mut stream) = std::net::TcpStream::connect_timeout(&address, wait) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(wait));
+    let _ = stream.set_write_timeout(Some(wait));
+    let request = format!("POST /api/shutdown HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+    if stream.write_all(request.as_bytes()).is_err() {
+        return false;
+    }
+    let mut reply = [0u8; 12];
+    stream.read_exact(&mut reply).is_ok() && reply.starts_with(b"HTTP/1.") && reply.ends_with(b" 200")
+}
+
+#[cfg(windows)]
+fn wait_exit(pid: u32, millis: u32) {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
+        fn WaitForSingleObject(handle: *mut std::ffi::c_void, millis: u32) -> u32;
+        fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
+    }
+    let handle = unsafe { OpenProcess(0x0010_0000, 0, pid) };
+    if !handle.is_null() {
+        unsafe {
+            WaitForSingleObject(handle, millis);
+            CloseHandle(handle);
+        }
+    }
+}
+
+fn close_backend(handle: &tauri::AppHandle) {
+    handle.state::<EngineDone>().0.store(true, Ordering::SeqCst);
+    #[cfg(windows)]
+    {
+        let port = handle.state::<Service>().0.lock().ok().and_then(|slot| *slot);
+        let pid = handle.state::<Backend>().0.lock().ok().and_then(|slot| slot.as_ref().map(|child| child.pid()));
+        if let (Some(port), Some(pid)) = (port, pid) {
+            if ask_to_close(port) {
+                wait_exit(pid, 4000);
+            }
+        }
+    }
+    kill_backend(handle);
+}
+
 fn close_splash(handle: &tauri::AppHandle) {
     if let Some(splash) = handle.get_webview_window("splash") {
         let _ = splash.close();
@@ -57,6 +115,17 @@ fn close_splash(handle: &tauri::AppHandle) {
 
 fn open_exit_gate(handle: &tauri::AppHandle) {
     handle.state::<ExitGate>().0.store(true, Ordering::SeqCst);
+}
+
+fn engine_failed(handle: &tauri::AppHandle, message: &str) {
+    if handle.state::<EngineDone>().0.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    close_splash(handle);
+    handle.dialog().message(message).title("FormSurface").kind(MessageDialogKind::Error).blocking_show();
+    open_exit_gate(handle);
+    kill_backend(handle);
+    handle.exit(1);
 }
 
 fn ask_page_to_quit(handle: &tauri::AppHandle) -> bool {
@@ -123,7 +192,7 @@ fn check_for_updates(handle: tauri::AppHandle) {
             .blocking_show();
         if install && update.download_and_install(|_, _| {}, || {}).await.is_ok() {
             open_exit_gate(&handle);
-            kill_backend(&handle);
+            close_backend(&handle);
             handle.restart();
         }
     });
@@ -135,6 +204,7 @@ fn main() {
         .plugin(single_instance())
         .manage(PageListening(AtomicBool::new(false)))
         .manage(ExitGate(AtomicBool::new(false)))
+        .manage(EngineDone(AtomicBool::new(false)))
         .on_window_event(|window, event| {
             if window.label() == "main"
                 && matches!(event, WindowEvent::Resized(_) | WindowEvent::Focused(_) | WindowEvent::ThemeChanged(_) | WindowEvent::ScaleFactorChanged { .. })
@@ -161,17 +231,33 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
             reveal::round_splash(&handle);
-            let (mut rx, child) = app
-                .shell()
-                .sidecar("formsurface-engine")
-                .expect("sidecar binary is bundled")
-                .env("FORMSURFACE_PORT", ENGINE_PORT)
-                // The engine exits on its own when this process is gone, so a killed app (SIGTERM at logout,
-                // a crash) never leaves it holding the port.
-                .env("FORMSURFACE_PARENT_PID", std::process::id().to_string())
-                .spawn()
-                .expect("the FormSurface engine failed to spawn");
+            #[cfg(windows)]
+            app.manage(Service(Mutex::new(None)));
+            let spawned = app.shell().sidecar("formsurface-engine").and_then(|engine| {
+                engine
+                    .env("FORMSURFACE_PORT", ENGINE_PORT)
+                    // The engine exits on its own when this process is gone, so a killed app (SIGTERM at logout,
+                    // a crash) never leaves it holding the port.
+                    .env("FORMSURFACE_PARENT_PID", std::process::id().to_string())
+                    .spawn()
+            });
+            let (mut rx, child) = match spawned {
+                Ok(pair) => pair,
+                Err(error) => {
+                    let message = format!("FormSurface could not start its engine ({error}). Install FormSurface again.");
+                    std::thread::spawn(move || engine_failed(&handle, &message));
+                    return Ok(());
+                }
+            };
             app.state::<Backend>().0.lock().unwrap().replace(child);
+
+            let (started, waiting) = std::sync::mpsc::channel::<()>();
+            let watchdog = handle.clone();
+            std::thread::spawn(move || {
+                if waiting.recv_timeout(ENGINE_WAIT) == Err(std::sync::mpsc::RecvTimeoutError::Timeout) {
+                    engine_failed(&watchdog, ENGINE_SILENT);
+                }
+            });
 
             tauri::async_runtime::spawn(async move {
                 let pattern = regex::Regex::new(r"http://127\.0\.0\.1:(\d+)").unwrap();
@@ -191,8 +277,18 @@ fn main() {
                         }
                     }
                 }
+                let _ = started.send(());
+                if port.is_some() && handle.state::<EngineDone>().0.load(Ordering::SeqCst) {
+                    return;
+                }
                 match port {
                     Some(found) => {
+                        #[cfg(windows)]
+                        {
+                            if let Ok(mut slot) = handle.state::<Service>().0.lock() {
+                                *slot = Some(found);
+                            }
+                        }
                         let url: tauri::Url = format!("http://127.0.0.1:{found}")
                             .parse()
                             .expect("loopback url");
@@ -230,16 +326,14 @@ fn main() {
                             close_splash(&handle);
                         }
                         check_for_updates(handle.clone());
+                        while let Some(event) = rx.recv().await {
+                            if matches!(event, CommandEvent::Terminated(_)) {
+                                engine_failed(&handle, ENGINE_GONE);
+                                break;
+                            }
+                        }
                     }
-                    None => {
-                        close_splash(&handle);
-                        handle
-                            .dialog()
-                            .message("The formsurface engine failed to start. Please relaunch the app.")
-                            .blocking_show();
-                        kill_backend(&handle);
-                        handle.exit(1);
-                    }
+                    None => engine_failed(&handle, ENGINE_NEVER_READY),
                 }
             });
             Ok(())
@@ -248,7 +342,7 @@ fn main() {
         .expect("tauri app should build");
 
     app.run(|handle, event| match event {
-        RunEvent::Exit => kill_backend(handle),
+        RunEvent::Exit => close_backend(handle),
         RunEvent::ExitRequested { api, .. } => {
             if ask_page_to_quit(handle) {
                 api.prevent_exit();
