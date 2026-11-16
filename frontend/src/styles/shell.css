@@ -138,6 +138,7 @@ body { font-size: var(--fs-12); line-height: 1.35; -webkit-font-smoothing: antia
 .fs-form h3 { margin: var(--space-3) 0 var(--space-2); font-size: var(--fs-11); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
 .fs-form h3:first-child { margin-top: 0; }
 .fs-form p { margin: 0 0 var(--space-2); color: var(--text-muted); }
+.fs-form .fs-claude-state { min-height: 2.7em; }
 .fs-field { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: var(--space-3); min-height: var(--ctl-lg); color: var(--text-secondary); }
 .fs-field input, .fs-field select { height: var(--ctl); padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--radius-md); background: var(--surface-field); color: var(--text-primary); }
 .fs-field input::placeholder { color: var(--text-faint); }

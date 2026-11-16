@@ -24,7 +24,7 @@ import { startLanguage, startPageTranslator } from './i18n';
 import { startShell } from './shell/app-shell';
 import { DEMOS } from './shell/demos';
 import { Dialog } from './shell/dialog';
-import { el } from './shell/dom';
+import { el, setText } from './shell/dom';
 import { isHomeOpen, mountHome } from './shell/home';
 import { library as projects } from './shell/project-library';
 import { toast } from './shell/toast';
@@ -3852,7 +3852,7 @@ function tick(now: number): void {
   showPathState();
   frames++;
   if (now - lastFps > 1000) {
-    $('fps').textContent = `${Math.round((frames * 1000) / (now - lastFps))} fps`;
+    setText($('fps'), `${Math.round((frames * 1000) / (now - lastFps))} fps`);
     frames = 0;
     lastFps = now;
   }
