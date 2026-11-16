@@ -169,3 +169,42 @@ fn selection_outside_the_range_is_only_the_seed() {
     let m = cube();
     assert_eq!(select(&m, 20, 0, 12, Mode::Mesh), vec![20]);
 }
+
+fn named(id: u32, parent: u32, kind: LayerKind, name: &str) -> LayerInfo {
+    LayerInfo { name: name.to_string(), ..layer(id, parent, kind) }
+}
+
+#[test]
+fn linking_a_tile_stack_keeps_every_layer_and_pairs_by_id_then_name() {
+    let mut shared = vec![layer(1, 0, LayerKind::Paint), named(2, 0, LayerKind::Fill, "Rust"), named(3, 0, LayerKind::Folder, "Group")];
+    let stack = vec![
+        layer(1, 0, LayerKind::Paint),
+        named(7, 0, LayerKind::Fill, "Rust"),
+        named(8, 0, LayerKind::Fill, "Rust"),
+        named(5, 0, LayerKind::Folder, "Group"),
+        named(6, 5, LayerKind::Paint, "Scratches"),
+        named(9, 0, LayerKind::Paint, "Rust"),
+    ];
+    let pairs = fs_core::document::link_stack(&mut shared, &stack);
+    assert_eq!(pairs, vec![(1, 1), (7, 2), (8, 8), (5, 3), (6, 6), (9, 9)]);
+    let ids: Vec<(u32, u32)> = shared.iter().map(|l| (l.id, l.parent)).collect();
+    assert_eq!(ids, vec![(1, 0), (2, 0), (3, 0), (8, 0), (6, 3), (9, 0)]);
+}
+
+#[test]
+fn linking_an_equal_stack_changes_nothing() {
+    let mut shared = vec![layer(1, 0, LayerKind::Paint), layer(2, 0, LayerKind::Fill)];
+    let stack = shared.clone();
+    let pairs = fs_core::document::link_stack(&mut shared, &stack);
+    assert_eq!(pairs, vec![(1, 1), (2, 2)]);
+    assert_eq!(shared.len(), 2);
+}
+
+#[test]
+fn mask_blur_covers_the_same_share_of_the_texture_at_any_export_size() {
+    use fs_core::document::blur_at_size;
+    assert_eq!(blur_at_size(8.0, 1024, 1024), (8.0, 1.0));
+    assert_eq!(blur_at_size(8.0, 1024, 4096), (8.0, 4.0));
+    assert_eq!(blur_at_size(8.0, 2048, 1024), (4.0, 1.0));
+    assert_eq!(blur_at_size(8.0, 0, 4096), (8.0, 1.0));
+}

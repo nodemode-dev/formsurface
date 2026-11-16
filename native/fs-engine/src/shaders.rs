@@ -1496,8 +1496,9 @@ fn fs(i: FOut) -> @location(0) vec4<f32> {
         if (fx.q.x > 0.5) { dir = vec2<i32>(0, 1); }
         var sum = 0.0;
         var n = 0.0;
+        let stride = max(i32(fx.q.y), 1);
         for (var k = -radius; k <= radius; k = k + 1) {
-            let q = clamp(px + dir * k, vec2<i32>(0), size - vec2<i32>(1));
+            let q = clamp(px + dir * (k * stride), vec2<i32>(0), size - vec2<i32>(1));
             sum = sum + textureLoad(acc_tex, q, 0).r;
             n = n + 1.0;
         }

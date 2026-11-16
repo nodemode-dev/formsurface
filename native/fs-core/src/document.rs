@@ -339,6 +339,32 @@ pub fn tree_order(layers: &[LayerInfo]) -> Vec<LayerInfo> {
     out
 }
 
+/// Linking UV tiles: fits one tile's own `stack` to the `shared` stack without dropping a layer. A layer pairs with
+/// the shared layer of the same id, else with the first unpaired shared layer of the same name and kind; a layer with
+/// no partner is appended to `shared` under its own id, its parent following the pairing. Returns
+/// `(id in stack, id in shared)` for every layer of `stack`, in order.
+pub fn link_stack(shared: &mut Vec<LayerInfo>, stack: &[LayerInfo]) -> Vec<(u32, u32)> {
+    let mut taken: Vec<u32> = stack.iter().map(|l| l.id).filter(|id| shared.iter().any(|s| s.id == *id)).collect();
+    let mut pairs: Vec<(u32, u32)> = Vec::with_capacity(stack.len());
+    for layer in stack {
+        let mut to = layer.id;
+        if !shared.iter().any(|s| s.id == layer.id) {
+            if let Some(partner) = shared.iter().find(|s| s.name == layer.name && s.kind == layer.kind && !taken.contains(&s.id)) {
+                to = partner.id;
+                taken.push(to);
+            }
+        }
+        pairs.push((layer.id, to));
+    }
+    for layer in stack {
+        if !shared.iter().any(|s| s.id == layer.id) && pairs.contains(&(layer.id, layer.id)) {
+            let parent = pairs.iter().find(|p| p.0 == layer.parent).map(|p| p.1).unwrap_or(0);
+            shared.push(LayerInfo { parent, ..layer.clone() });
+        }
+    }
+    pairs
+}
+
 pub fn ancestors(layers: &[LayerInfo], id: u32) -> Vec<usize> {
     let mut out = Vec::new();
     let mut parent = layers.iter().find(|l| l.id == id).map(|l| l.parent).unwrap_or(0);
@@ -536,6 +562,19 @@ impl MaskEffect {
             _ => (0.0, 0.0, 0.0, 0.0),
         };
         [kind, blend, self.opacity.clamp(0.0, 1.0), a, b, c, d, 0.0]
+    }
+}
+
+/// A mask blur radius counts texels of the texture set's working size `from`. Rendered at `to` texels (a scaled
+/// export) the same blur must cover `radius * to / from` texels: returns `(taps each side, texels between taps)`.
+/// A larger render keeps the tap count and spreads the taps, so its cost per texel does not grow with the scale.
+pub fn blur_at_size(radius: f32, from: u32, to: u32) -> (f32, f32) {
+    if from == 0 || to == from {
+        (radius, 1.0)
+    } else if to > from {
+        (radius, (to / from) as f32)
+    } else {
+        (radius * to as f32 / from as f32, 1.0)
     }
 }
 

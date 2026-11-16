@@ -177,6 +177,8 @@ pub struct Gpu {
     geometry: Option<(wgpu::Texture, wgpu::Texture)>,
     patterns: std::collections::HashMap<u32, wgpu::Texture>,
     tile_patterns: std::collections::HashMap<(usize, u32), wgpu::Texture>,
+    lost: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+    context_lost: Option<(web_sys::HtmlCanvasElement, Closure<dyn FnMut()>)>,
     white: wgpu::Texture,
     clamp_sampler: wgpu::Sampler,
     alpha_tex: wgpu::Texture,
@@ -602,7 +604,10 @@ fn read_rgba(buffer: wgpu::Buffer, width: u32, height: u32, row: u32, bgra: bool
             }
             let pixels = match readback.slice(..).get_mapped_range() {
                 Ok(view) => {
-                    let mut out = Vec::with_capacity((width * height * 4) as usize);
+                    let mut out = Vec::new();
+                    if out.try_reserve_exact((width * height * 4) as usize).is_err() {
+                        return fail(format!("{width} x {height} pixels do not fit in the engine's memory"));
+                    }
                     for y in 0..height as usize {
                         let line = &view[y * row as usize..y * row as usize + width as usize * 4];
                         for px in line.chunks_exact(4) {
@@ -640,10 +645,17 @@ impl Drop for Gpu {
         if self.backend != "Gl" {
             self.device.destroy();
         }
+        if let Some((canvas, listener)) = self.context_lost.take() {
+            let _ = canvas.remove_event_listener_with_callback("webglcontextlost", listener.as_ref().unchecked_ref());
+        }
     }
 }
 
 impl Gpu {
+    pub fn lost(&self) -> Option<String> {
+        self.lost.lock().ok().and_then(|l| l.clone())
+    }
+
     pub async fn new(canvas: web_sys::HtmlCanvasElement, width: u32, height: u32, size: u32) -> Result<Gpu, String> {
         let size = size.clamp(256, 4096).next_power_of_two();
         let navigator = js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str("navigator")).unwrap_or(JsValue::UNDEFINED);
@@ -670,7 +682,7 @@ impl Gpu {
                 let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
                 descriptor.backends = wgpu::Backends::GL;
                 let instance = wgpu::Instance::new(descriptor);
-                let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas)).map_err(|e| format!("Could not create a drawing surface: {e}"))?;
+                let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone())).map_err(|e| format!("Could not create a drawing surface: {e}"))?;
                 let adapter = instance
                     .request_adapter(&wgpu::RequestAdapterOptions { power_preference: wgpu::PowerPreference::HighPerformance, compatible_surface: Some(&surface), force_fallback_adapter: false, apply_limit_buckets: false })
                     .await
@@ -684,7 +696,29 @@ impl Gpu {
             .request_device(&wgpu::DeviceDescriptor { label: Some("formsurface"), required_limits: adapter.limits(), ..Default::default() })
             .await
             .map_err(|e| format!("The GPU device could not be opened: {e}"))?;
-        device.on_uncaptured_error(std::sync::Arc::new(|error| web_sys::console::error_1(&JsValue::from_str(&format!("FormSurface GPU error: {error}")))));
+        let lost = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
+        let quiet = lost.clone();
+        device.on_uncaptured_error(std::sync::Arc::new(move |error| {
+            if quiet.lock().map(|l| l.is_none()).unwrap_or(true) {
+                web_sys::console::error_1(&JsValue::from_str(&format!("FormSurface GPU error: {error}")));
+            }
+        }));
+        let flag = lost.clone();
+        device.set_device_lost_callback(move |reason, message| {
+            if let Ok(mut l) = flag.lock() {
+                l.get_or_insert(format!("{reason:?}: {message}"));
+            }
+        });
+        let context_lost = webgl.then(|| {
+            let flag = lost.clone();
+            let listener = Closure::<dyn FnMut()>::new(move || {
+                if let Ok(mut l) = flag.lock() {
+                    l.get_or_insert("WebGL context lost".to_string());
+                }
+            });
+            let _ = canvas.add_event_listener_with_callback("webglcontextlost", listener.as_ref().unchecked_ref());
+            (canvas.clone(), listener)
+        });
         let caps = surface.get_capabilities(&adapter);
         let format = caps.formats.iter().copied().find(|f| !f.is_srgb()).unwrap_or(caps.formats[0]);
         let config = wgpu::SurfaceConfiguration {
@@ -814,6 +848,8 @@ impl Gpu {
             geometry: None,
             patterns: std::collections::HashMap::new(),
             tile_patterns: std::collections::HashMap::new(),
+            lost,
+            context_lost,
             white: white_texture(&device, &queue),
             clamp_sampler: device.create_sampler(&wgpu::SamplerDescriptor { mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, ..Default::default() }),
             alpha_tex: white_texture(&device, &queue),
@@ -998,7 +1034,16 @@ impl Gpu {
                         return;
                     }
                     let bytes = match readback.slice(..).get_mapped_range() {
-                        Ok(view) => view.to_vec(),
+                        Ok(view) => {
+                            let mut bytes = Vec::new();
+                            if bytes.try_reserve_exact(view.len()).is_err() {
+                                slots.borrow_mut().clear();
+                                let _ = reject.call1(&JsValue::NULL, &JsValue::from_str("Paging out failed: the engine's memory is full"));
+                                return;
+                            }
+                            bytes.extend_from_slice(&view);
+                            bytes
+                        }
                         Err(e) => {
                             let _ = reject.call1(&JsValue::NULL, &JsValue::from_str(&format!("Paging out failed: {e}")));
                             return;
@@ -1006,7 +1051,9 @@ impl Gpu {
                     };
                     readback.unmap();
                     readback.destroy();
-                    slots.borrow_mut()[k] = Some(bytes);
+                    if let Some(slot) = slots.borrow_mut().get_mut(k) {
+                        *slot = Some(bytes);
+                    }
                     done.set(done.get() + 1);
                     if done.get() == total {
                         let _ = resolve.call1(&JsValue::NULL, &JsValue::from_f64(total as f64));
@@ -2308,12 +2355,36 @@ impl Gpu {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
         self.queue.write_texture(texture.as_image_copy(), rgba, wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(width * 4), rows_per_image: Some(height) }, wgpu::Extent3d { width, height, depth_or_array_layers: 1 });
         self.patterns.insert(id, texture);
         Ok(())
+    }
+
+    fn pattern(&self, id: u32, tile: bool) -> Option<&wgpu::Texture> {
+        if tile { self.tile_patterns.get(&(self.current, id)) } else { self.patterns.get(&id) }
+    }
+
+    pub fn pattern_size(&self, id: u32, tile: bool) -> Option<(u32, u32)> {
+        self.pattern(id, tile).map(|t| (t.width(), t.height()))
+    }
+
+    /// Project save: a fill image's RGBA8 pixels, rows top to bottom, as `set_pattern` received them.
+    pub fn read_pattern(&self, id: u32, tile: bool) -> Option<js_sys::Promise> {
+        let texture = self.pattern(id, tile)?;
+        let (width, height) = (texture.width(), texture.height());
+        let row = (width * 4).next_multiple_of(256);
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("fill image readback"), size: row as u64 * height as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        encoder.copy_texture_to_buffer(
+            texture.as_image_copy(),
+            wgpu::TexelCopyBufferInfo { buffer: &buffer, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(row), rows_per_image: Some(height) } },
+            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        );
+        self.queue.submit([encoder.finish()]);
+        Some(read_rgba(buffer, width, height, row, false, true))
     }
 
     pub fn set_tile_pattern(&mut self, id: u32, width: u32, height: u32, rgba: &[u8]) -> Result<(), String> {
@@ -2360,6 +2431,23 @@ impl Gpu {
         self.undo_stack = keep_u;
         self.redo_stack = keep_r;
         self.pool.extend(drop_u.into_iter().chain(drop_r).map(|s| s.set));
+    }
+
+    pub fn has_layer(&self, id: u32) -> bool {
+        self.layers.iter().any(|l| l.id == id)
+    }
+
+    /// Gives the current set's layer `from` the id `to`, keeping its textures, undo steps and tile image.
+    pub fn relabel_layer(&mut self, from: u32, to: u32) {
+        for layer in self.layers.iter_mut().filter(|l| l.id == from) {
+            layer.id = to;
+        }
+        for step in self.undo_stack.iter_mut().chain(self.redo_stack.iter_mut()).filter(|s| s.layer == from) {
+            step.layer = to;
+        }
+        if let Some(image) = self.tile_patterns.remove(&(self.current, from)) {
+            self.tile_patterns.insert((self.current, to), image);
+        }
     }
 
     pub fn reorder(&mut self, ids: &[u32]) {
@@ -2887,6 +2975,9 @@ impl Gpu {
                 let mut params = effect.params;
                 if params[0] == 4.0 {
                     params[4] = pass;
+                    if let Some(working) = self.export_scale.as_ref().map(|s| s.size) {
+                        (params[3], params[5]) = fs_core::document::blur_at_size(params[3], working, fx[0].width());
+                    }
                 }
                 if params[0] == 5.0 && source.is_none() {
                     continue;

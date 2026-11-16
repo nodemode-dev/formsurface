@@ -1,3 +1,5 @@
+#![cfg(target_arch = "wasm32")]
+
 mod gpu;
 mod shaders;
 
@@ -32,6 +34,7 @@ struct TraceRun {
 
 const VIEW_TRANSFORMS: [&str; 5] = ["aces", "standard", "agx", "filmic", "ocio"];
 const WEBGPU_ONLY: &str = "This needs WebGPU: the path tracer and the ray-traced bake read storage buffers, which WebGL 2 (the Linux desktop app, or a browser without WebGPU) does not have. Use the mesh bake here, or open FormSurface in a browser with WebGPU";
+const DEVICE_LOST: &str = "The GPU device was lost";
 const POST_KEYS: [&str; 16] = ["bloom", "bloom_threshold", "glare", "lens_flare", "vignette", "vignette_softness", "grain", "sharpen", "aberration", "dof_aperture", "dof_focus", "contrast", "saturation", "temperature", "tint", "gain"];
 const POST_DEFAULTS: [f32; 16] = [0.0, 0.8, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
 const POST_RANGES: [(f32, f32); 16] = [(0.0, 2.0), (0.0, 0.99), (0.0, 2.0), (0.0, 2.0), (0.0, 1.0), (0.0, 1.0), (0.0, 1.0), (0.0, 2.0), (0.0, 1.0), (0.0, 24.0), (-1.0, 1.0), (-1.0, 1.0), (0.0, 2.0), (-1.0, 1.0), (-1.0, 1.0), (0.0, 2.0)];
@@ -221,7 +224,20 @@ impl Engine {
         self.gpu.size
     }
 
+    pub fn device_lost(&self) -> bool {
+        self.gpu.lost().is_some()
+    }
+
+    pub fn device_lost_reason(&self) -> String {
+        self.gpu.lost().unwrap_or_default()
+    }
+
+    fn live(&self) -> Result<(), JsValue> {
+        if self.gpu.lost().is_some() { Err(JsValue::from_str(DEVICE_LOST)) } else { Ok(()) }
+    }
+
     pub fn set_mesh(&mut self, positions: &[f32], normals: &[f32], uvs: &[f32], indices: &[u32], materials: &[u32], names_json: &str) -> Result<String, JsValue> {
+        self.live()?;
         if self.stroking {
             return Err(JsValue::from_str("Finish the stroke before loading a mesh"));
         }
@@ -422,6 +438,7 @@ impl Engine {
     }
 
     pub fn merge_down(&mut self, id: u32) -> Result<u32, JsValue> {
+        self.live()?;
         if self.stroking {
             return Err(JsValue::from_str("Finish the stroke first"));
         }
@@ -457,6 +474,7 @@ impl Engine {
     }
 
     pub fn flatten_folder(&mut self, id: u32) -> Result<u32, JsValue> {
+        self.live()?;
         if self.stroking {
             return Err(JsValue::from_str("Finish the stroke first"));
         }
@@ -516,6 +534,7 @@ impl Engine {
     }
 
     pub fn export_layer(&mut self, id: u32, channel: u32) -> Result<js_sys::Promise, JsValue> {
+        self.live()?;
         let index = self.layers.iter().position(|l| l.id == id).ok_or_else(|| JsValue::from_str("No layer with that id"))?;
         let kind = self.layers[index].kind;
         if kind == LayerKind::Folder || kind == LayerKind::Filter {
@@ -526,6 +545,7 @@ impl Engine {
     }
 
     pub fn export_layer_mask(&mut self, id: u32) -> Result<js_sys::Promise, JsValue> {
+        self.live()?;
         let index = self.layers.iter().position(|l| l.id == id).ok_or_else(|| JsValue::from_str("No layer with that id"))?;
         if !self.layers[index].mask {
             return Err(JsValue::from_str("That layer has no mask"));
@@ -550,6 +570,7 @@ impl Engine {
     /// Takes the mesh's second UV channel in the order given to set_mesh (two floats per input vertex, with the same
     /// input indices) and carries it through the texture set split, corner by corner.
     pub fn set_uv1(&mut self, uvs: &[f32], indices: &[u32]) -> Result<String, JsValue> {
+        self.live()?;
         let (mesh, _) = self.mesh.as_ref().ok_or_else(|| JsValue::from_str("Load a mesh first"))?;
         if indices.len() != self.tri_order.len() * 3 || indices.len() != mesh.indices.len() {
             self.uv1 = None;
@@ -750,6 +771,7 @@ impl Engine {
     }
 
     pub fn export_size_begin(&mut self, size: u32) -> Result<(), JsValue> {
+        self.live()?;
         if self.stroking || self.trace.is_some() {
             return Err(JsValue::from_str("Finish the stroke or bake first"));
         }
@@ -807,28 +829,54 @@ impl Engine {
             let group: Vec<usize> = (0..self.sets.len()).filter(|&k| self.sets[k].info.tiled && self.sets[k].info.material == material).collect();
             let leader = if group.contains(&original) { original } else { group[0] };
             self.switch_set(leader);
-            let (layers, fills, filters, gens, base, active) = (self.layers.clone(), self.fills.clone(), self.filters.clone(), self.mask_gens.clone(), self.gpu.base, self.active);
-            for &k in group.iter().filter(|&&k| k != leader) {
+            let (mut layers, mut fills, mut filters, mut gens, base, active) = (self.layers.clone(), self.fills.clone(), self.filters.clone(), self.mask_gens.clone(), self.gpu.base, self.active);
+            let followers: Vec<usize> = group.iter().copied().filter(|&k| k != leader).collect();
+            let mut renames = Vec::with_capacity(followers.len());
+            for &k in &followers {
                 self.switch_set(k);
-                if self.layers.iter().map(|l| l.id).eq(layers.iter().map(|l| l.id)) {
-                    self.layers = layers.clone();
-                } else {
-                    while let Some(layer) = self.layers.pop() {
-                        let index = self.layers.len();
-                        self.gpu.remove_layer(index, layer.id);
+                let known = layers.len();
+                renames.push(fs_core::document::link_stack(&mut layers, &self.layers));
+                for extra in &layers[known..] {
+                    if let Some(f) = self.fills.get(&extra.id) {
+                        fills.insert(extra.id, *f);
                     }
-                    for (i, layer) in layers.iter().enumerate() {
-                        self.layers.push(layer.clone());
-                        self.gpu.insert_layer(i, layer.id);
+                    if let Some(f) = self.filters.get(&extra.id) {
+                        filters.insert(extra.id, *f);
+                    }
+                    if let Some(f) = self.mask_gens.get(&extra.id) {
+                        gens.insert(extra.id, *f);
                     }
                 }
+            }
+            let layers = fs_core::tree_order(&layers);
+            let ids: Vec<u32> = layers.iter().map(|l| l.id).collect();
+            for (n, &k) in [leader].iter().chain(followers.iter()).enumerate() {
+                self.switch_set(k);
+                if n > 0 {
+                    for &(from, to) in renames[n - 1].iter().filter(|p| p.0 != p.1) {
+                        self.gpu.relabel_layer(from, to);
+                        for member in self.instance_groups.iter_mut().flatten().filter(|m| **m == (k, from)) {
+                            member.1 = to;
+                        }
+                    }
+                }
+                let grown = ids.iter().any(|&id| !self.gpu.has_layer(id));
+                for &id in &ids {
+                    if !self.gpu.has_layer(id) {
+                        self.gpu.insert_layer(0, id);
+                    }
+                }
+                self.gpu.reorder(&ids);
+                self.layers = layers.clone();
                 self.fills = fills.clone();
                 self.filters = filters.clone();
                 self.mask_gens = gens.clone();
                 self.gpu.base = base;
                 self.active = active;
-                self.render_fills();
-                self.gpu.composite(&self.layers, &self.filters);
+                if n > 0 || grown {
+                    self.render_fills();
+                    self.gpu.composite(&self.layers, &self.filters);
+                }
             }
         }
         self.switch_set(original);
@@ -837,6 +885,7 @@ impl Engine {
     }
 
     pub fn mask_generator(&mut self, id: u32, json: &str) -> Result<(), JsValue> {
+        self.live()?;
         if let Some(r) = self.relay(|e| e.mask_generator(id, json)) {
             return r;
         }
@@ -852,6 +901,7 @@ impl Engine {
     }
 
     pub fn set_mask_effects(&mut self, id: u32, json: &str) -> Result<(), JsValue> {
+        self.live()?;
         if let Some(r) = self.relay(|e| e.set_mask_effects(id, json)) {
             return r;
         }
@@ -897,6 +947,7 @@ impl Engine {
     /// Project load: replaces the active texture set's stack with one from `set_document_json`. Layers keep their
     /// ids, so folders and references stay intact; their pixels are then written with `write_layer_raw`.
     pub fn restore_set_document(&mut self, json: &str) -> Result<(), JsValue> {
+        self.live()?;
         if self.stroking {
             return Err(JsValue::from_str("Finish the stroke first"));
         }
@@ -944,12 +995,14 @@ impl Engine {
 
     /// Project save: a layer's raw pixels (see `Gpu::read_layer_raw`).
     pub fn read_layer_raw(&self, id: u32) -> Result<js_sys::Promise, JsValue> {
+        self.live()?;
         let index = self.layers.iter().position(|l| l.id == id).ok_or_else(|| JsValue::from_str("No such layer"))?;
         self.gpu.read_layer_raw(index).ok_or_else(|| JsValue::from_str("No such layer"))
     }
 
     /// Project load: writes a layer's raw pixels back.
     pub fn write_layer_raw(&mut self, id: u32, bytes: &[u8]) -> Result<(), JsValue> {
+        self.live()?;
         let index = self.layers.iter().position(|l| l.id == id).ok_or_else(|| JsValue::from_str("No such layer"))?;
         self.gpu.write_layer_raw(index, bytes).map_err(|e| JsValue::from_str(&e))?;
         self.dirty = true;
@@ -979,6 +1032,7 @@ impl Engine {
     }
 
     pub fn mask_from_image(&mut self, id: u32, width: u32, height: u32, rgba: &[u8]) -> Result<(), JsValue> {
+        self.live()?;
         if let Some(r) = self.relay(|e| e.mask_from_image(id, width, height, rgba)) {
             return r;
         }
@@ -991,6 +1045,7 @@ impl Engine {
     }
 
     pub fn mask_from_id(&mut self, id: u32, r: f32, g: f32, b: f32, tolerance: f32) -> Result<(), JsValue> {
+        self.live()?;
         if let Some(out) = self.relay(|e| e.mask_from_id(id, r, g, b, tolerance)) {
             return out;
         }
@@ -1179,6 +1234,7 @@ impl Engine {
     }
 
     pub fn set_environment(&mut self, name: String, width: u32, height: u32, rgb: &[f32]) -> Result<(), JsValue> {
+        self.live()?;
         self.gpu.set_environment(width, height, rgb).map_err(|e| JsValue::from_str(&e))?;
         self.environment = Some(name);
         self.path_key.clear();
@@ -1228,6 +1284,9 @@ impl Engine {
     }
 
     pub fn gpu_idle(&self) -> js_sys::Promise {
+        if self.gpu.lost().is_some() {
+            return js_sys::Promise::reject(&JsValue::from_str(DEVICE_LOST));
+        }
         self.gpu.idle()
     }
 
@@ -1240,6 +1299,7 @@ impl Engine {
     }
 
     pub fn path_render_begin(&mut self, width: u32, height: u32) -> Result<(), JsValue> {
+        self.live()?;
         if self.path_bounces == 0 {
             return Err(JsValue::from_str("Turn path tracing on first"));
         }
@@ -1253,6 +1313,7 @@ impl Engine {
     }
 
     pub fn path_render_read(&mut self) -> Result<js_sys::Promise, JsValue> {
+        self.live()?;
         if self.render.is_none() {
             return Err(JsValue::from_str("Start a render first"));
         }
@@ -1266,6 +1327,7 @@ impl Engine {
     }
 
     pub fn path_trace_run(&mut self, samples: u32) -> Result<u32, JsValue> {
+        self.live()?;
         if self.path_bounces == 0 {
             return Err(JsValue::from_str("Turn path tracing on first"));
         }
@@ -1314,6 +1376,7 @@ impl Engine {
     }
 
     pub fn set_display_lut(&mut self, size: u32, low: f32, high: f32, rgb: &[f32]) -> Result<(), JsValue> {
+        self.live()?;
         if !(2..=129).contains(&size) || rgb.len() != (size * size * size * 3) as usize || !(high > low) {
             return Err(JsValue::from_str("A display LUT is size cubed RGB floats over a log2 shaper with high above low"));
         }
@@ -1325,7 +1388,7 @@ impl Engine {
     }
 
     pub fn page_out_set(&mut self, index: u32) -> Option<js_sys::Promise> {
-        if self.stroking {
+        if self.stroking || self.gpu.lost().is_some() {
             return None;
         }
         self.gpu.page_out(index as usize)
@@ -1351,6 +1414,7 @@ impl Engine {
     }
 
     pub fn set_working_space(&mut self, name: &str) -> Result<String, JsValue> {
+        self.live()?;
         let ap1 = match name {
             "linear_rec709" => false,
             "acescg" => true,
@@ -1461,6 +1525,7 @@ impl Engine {
     }
 
     pub fn set_extra_channel(&mut self, index: u32, role: &str) -> Result<(), JsValue> {
+        self.live()?;
         let parsed: fs_core::ExtraRole = serde_json::from_str(&format!("\"{role}\"")).map_err(|_| JsValue::from_str("Extra channel is off, user, opacity, ambient_occlusion, emissive, transmission or scattering"))?;
         let index = index as usize;
         if index >= self.sets.len() {
@@ -1476,6 +1541,7 @@ impl Engine {
     }
 
     pub fn set_user_channel(&mut self, index: u32, slot: u32, on: bool) -> Result<(), JsValue> {
+        self.live()?;
         if !(2..=3).contains(&slot) {
             return Err(JsValue::from_str("User channel slots beyond the extra channel are 2 and 3"));
         }
@@ -1504,6 +1570,7 @@ impl Engine {
     }
 
     pub fn hide_part(&mut self, x: f32, y: f32, mode: u32, isolate: bool) -> Result<u32, JsValue> {
+        self.live()?;
         if self.stroking {
             return Err(JsValue::from_str("Finish the stroke first"));
         }
@@ -1581,6 +1648,7 @@ impl Engine {
     }
 
     pub fn layer_coverage_at(&mut self, x: f32, y: f32) -> Result<js_sys::Promise, JsValue> {
+        self.live()?;
         if self.stroking {
             return Err(JsValue::from_str("Finish the stroke first"));
         }
@@ -1673,7 +1741,7 @@ impl Engine {
     }
 
     pub fn stroke_begin(&mut self, x: f32, y: f32, pressure: f32) -> bool {
-        if self.mesh.is_none() || self.gpu.export_scaled() || (self.brush.mode == StrokeMode::Clone && self.clone_source.is_none()) {
+        if self.mesh.is_none() || self.gpu.lost().is_some() || self.gpu.export_scaled() || (self.brush.mode == StrokeMode::Clone && self.clone_source.is_none()) {
             return false;
         }
         let pressure = if pressure.is_finite() { pressure } else { 1.0 };
@@ -1809,10 +1877,12 @@ impl Engine {
     }
 
     pub fn set_alpha(&mut self, width: u32, height: u32, rgba: &[u8]) -> Result<(), JsValue> {
+        self.live()?;
         self.gpu.set_image(false, width, height, rgba).map_err(|e| JsValue::from_str(&e))
     }
 
     pub fn set_stencil(&mut self, width: u32, height: u32, rgba: &[u8]) -> Result<(), JsValue> {
+        self.live()?;
         self.gpu.set_image(true, width, height, rgba).map_err(|e| JsValue::from_str(&e))
     }
 
@@ -2008,6 +2078,7 @@ impl Engine {
     }
 
     pub fn update_layer(&mut self, json: &str) -> Result<(), JsValue> {
+        self.live()?;
         if let Some(r) = self.relay(|e| e.update_layer(json)) {
             return r;
         }
@@ -2049,6 +2120,7 @@ impl Engine {
     }
 
     pub fn set_fill(&mut self, id: u32, json: &str) -> Result<(), JsValue> {
+        self.live()?;
         if let Some(r) = self.relay(|e| e.set_fill(id, json)) {
             return r;
         }
@@ -2064,7 +2136,22 @@ impl Engine {
         Ok(())
     }
 
+    /// A fill layer's image, RGBA8 with `width * height * 4` bytes, rows top to bottom. `tile` false: the image
+    /// given with `set_fill_image`; true: the image given to the active texture set with `set_fill_image_tile`.
+    /// Returns `[width, height]`, or an empty array when the layer has no such image.
+    pub fn fill_image_size(&self, id: u32, tile: bool) -> Vec<u32> {
+        self.gpu.pattern_size(id, tile).map(|(w, h)| vec![w, h]).unwrap_or_default()
+    }
+
+    /// Project save: resolves with the pixels `fill_image_size` describes, ready to hand back to `set_fill_image`
+    /// or `set_fill_image_tile`.
+    pub fn fill_image(&self, id: u32, tile: bool) -> Result<js_sys::Promise, JsValue> {
+        self.live()?;
+        self.gpu.read_pattern(id, tile).ok_or_else(|| JsValue::from_str("That layer has no fill image"))
+    }
+
     pub fn set_fill_image(&mut self, id: u32, width: u32, height: u32, rgba: &[u8]) -> Result<(), JsValue> {
+        self.live()?;
         if let Some(r) = self.relay(|e| e.set_fill_image(id, width, height, rgba)) {
             return r;
         }
@@ -2074,6 +2161,7 @@ impl Engine {
     }
 
     pub fn set_fill_image_tile(&mut self, id: u32, udim: u32, width: u32, height: u32, rgba: &[u8]) -> Result<String, JsValue> {
+        self.live()?;
         let entry = self.sets.get(self.set_index).ok_or_else(|| JsValue::from_str("Load a mesh first"))?;
         if !entry.info.tiled {
             return Err(JsValue::from_str("The active texture set has no UV tiles"));
@@ -2152,6 +2240,9 @@ impl Engine {
     }
 
     pub fn frame(&mut self) {
+        if self.gpu.lost().is_some() {
+            return;
+        }
         self.flush();
         let composited = self.dirty;
         if self.dirty {
@@ -2197,6 +2288,7 @@ impl Engine {
     }
 
     pub fn polygon_fill(&mut self, x: f32, y: f32, mode: u32) -> Result<u32, JsValue> {
+        self.live()?;
         if self.stroking {
             return Err(JsValue::from_str("Finish the stroke first"));
         }
@@ -2245,6 +2337,7 @@ impl Engine {
     }
 
     pub fn set_texture_set_size(&mut self, index: u32, size: u32) -> Result<String, JsValue> {
+        self.live()?;
         if self.stroking || self.trace.is_some() {
             return Err(JsValue::from_str("Finish the stroke or bake first"));
         }
@@ -2296,6 +2389,7 @@ impl Engine {
     }
 
     pub fn path_cover(&mut self,width: u32, height: u32, rgba: &[u8], x0: f32, y0: f32, x1: f32, y1: f32) -> Result<(), JsValue> {
+        self.live()?;
         if self.stroking {
             return Err(JsValue::from_str("Finish the stroke first"));
         }
@@ -2332,6 +2426,7 @@ impl Engine {
     }
 
     pub fn bake_maps(&mut self, directions: u32) -> Result<(), JsValue> {
+        self.live()?;
         let (center, radius) = self.mesh.as_ref().map(|m| (m.0.center, m.0.radius)).ok_or_else(|| JsValue::from_str("Load a mesh before baking"))?;
         if self.trace.is_some() {
             return Err(JsValue::from_str("A ray-traced bake is running; wait for it to finish"));
@@ -2345,6 +2440,7 @@ impl Engine {
     }
 
     pub fn bake_traced_begin(&mut self, directions: u32, rays: u32) -> Result<(), JsValue> {
+        self.live()?;
         if self.stroking {
             return Err(JsValue::from_str("Finish the stroke before baking"));
         }
@@ -2359,6 +2455,7 @@ impl Engine {
     }
 
     pub fn bake_traced_step(&mut self, rows: u32) -> Result<f32, JsValue> {
+        self.live()?;
         let total = self.sets.len().max(1) as f32;
         let Some(run) = self.trace.as_ref() else { return Ok(1.0) };
         let (next, active, original) = (run.next, run.active, run.original);
@@ -2470,6 +2567,7 @@ impl Engine {
     }
 
     pub fn bake_high(&mut self, front: f32, rear: f32) -> Result<String, JsValue> {
+        self.live()?;
         if self.mesh.is_none() {
             return Err(JsValue::from_str("Load the low-poly mesh first"));
         }
@@ -2533,6 +2631,7 @@ impl Engine {
     }
 
     pub fn apply_high_bake(&mut self, index: u32, size: u32, normal: &[u8], id: &[u8]) -> Result<(), JsValue> {
+        self.live()?;
         if size == 0 || size > 8192 || normal.len() != (size * size * 4) as usize || id.len() != normal.len() {
             return Err(JsValue::from_str("Baked maps do not match their size"));
         }
@@ -2571,6 +2670,7 @@ impl Engine {
     }
 
     pub fn set_filter(&mut self, id: u32, json: &str) -> Result<(), JsValue> {
+        self.live()?;
         if let Some(r) = self.relay(|e| e.set_filter(id, json)) {
             return r;
         }
@@ -2587,6 +2687,7 @@ impl Engine {
     }
 
     pub fn instance_layer(&mut self, id: u32, target: u32) -> Result<u32, JsValue> {
+        self.live()?;
         let target = target as usize;
         if self.stroking || target >= self.sets.len() || target == self.set_index {
             return Err(JsValue::from_str("Choose another texture set to instance into"));
@@ -2703,6 +2804,9 @@ impl Engine {
     }
 
     pub fn snapshot(&mut self) -> js_sys::Promise {
+        if self.gpu.lost().is_some() {
+            return js_sys::Promise::reject(&JsValue::from_str(DEVICE_LOST));
+        }
         self.flush();
         let composited = self.dirty;
         if self.dirty {
@@ -3008,6 +3112,9 @@ impl Engine {
     }
 
     fn export_any(&mut self, channel: u32, wide: bool) -> js_sys::Promise {
+        if self.gpu.lost().is_some() {
+            return js_sys::Promise::reject(&JsValue::from_str(DEVICE_LOST));
+        }
         self.flush();
         if self.dirty {
             self.gpu.composite(&self.layers, &self.filters);
