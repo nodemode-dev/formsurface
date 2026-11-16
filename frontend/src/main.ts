@@ -3012,12 +3012,15 @@ async function projectThumb(): Promise<Blob> {
   const bytes = await e.snapshot() as Uint8Array;
   const full = new OffscreenCanvas(w, h);
   full.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength), w, h), 0, 0);
-  const cw = Math.min(w, Math.round((h * 16) / 9));
-  const ch = Math.min(h, Math.round((w * 9) / 16));
+  const scale = Math.min(480 / w, 270 / h);
+  const dw = w * scale;
+  const dh = h * scale;
   const out = new OffscreenCanvas(480, 270);
   const ctx = out.getContext('2d')!;
+  ctx.fillStyle = `rgb(${bytes[0]}, ${bytes[1]}, ${bytes[2]})`;
+  ctx.fillRect(0, 0, 480, 270);
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(full, (w - cw) / 2, (h - ch) / 2, cw, ch, 0, 0, 480, 270);
+  ctx.drawImage(full, 0, 0, w, h, (480 - dw) / 2, (270 - dh) / 2, dw, dh);
   const webp = await out.convertToBlob({ type: 'image/webp', quality: 0.82 });
   return webp.type === 'image/webp' ? webp : out.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
 }
