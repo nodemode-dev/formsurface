@@ -78,6 +78,13 @@ def base_env() -> dict:
     env["FORMSURFACE_SERVICE"] = config.service_url()
     if os.name != "nt" and not getattr(sys, "frozen", False):
         env["PATH"] = str(config.REPO_DIR) + os.pathsep + env.get("PATH", "")
+    if getattr(sys, "frozen", False):
+        for key in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
+            original = env.pop(key + "_ORIG", None)
+            if original is None:
+                env.pop(key, None)
+            else:
+                env[key] = original
     return env
 
 
