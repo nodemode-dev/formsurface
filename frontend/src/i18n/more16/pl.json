@@ -1,0 +1,19 @@
+{
+  "Change Texture Size": "Zmień rozmiar tekstur",
+  "Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.": "Zmiana rozmiaru tekstur uruchamia ponownie silnik GPU i czyści każdą warstwę w każdym zestawie tekstur. Wyczyszczonych warstw nie można odzyskać.",
+  "Change Size": "Zmień rozmiar",
+  "Discard Changes": "Odrzuć zmiany",
+  "An export is running; wait for it to finish": "Trwa eksport; poczekaj, aż się zakończy",
+  "A bake is running; wait for it to finish": "Trwa wypiekanie; poczekaj, aż się zakończy",
+  "A render is running; wait for it to finish": "Trwa renderowanie; poczekaj, aż się zakończy",
+  "The project is being saved; wait for it to finish": "Projekt jest zapisywany; poczekaj, aż zapis się zakończy",
+  "A project is opening; wait for it to finish": "Projekt jest otwierany; poczekaj, aż się otworzy",
+  "Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window's web engine does not have. The formsurface MCP tools reach the same commands.": "Skrypty Pythona wymagają JavaScript Promise Integration (przełączania stosu WebAssembly), którego silnik WWW tego okna nie ma. Narzędzia MCP formsurface sięgają do tych samych poleceń.",
+  "Redo": "Ponów",
+  "Figure with Three Texture Sets": "Postać z trzema zestawami tekstur",
+  "Memory {0} of {1}": "Pamięć {0} z {1}",
+  "Memory {0}": "Pamięć {0}",
+  "Reply {0} tokens": "Odpowiedź {0} tokenów",
+  "Chat {0} tokens": "Czat {0} tokenów",
+  "UV tiles on: the UDIM tiles of each material share the active tile's layer stack and strokes paint across them; each tile keeps its own paint": "Kafelki UV włączone: kafelki UDIM każdego materiału współdzielą stos warstw aktywnego kafelka, a pociągnięcia malują przez nie; każdy kafelek zachowuje własne malowanie"
+}

@@ -1,0 +1,19 @@
+{
+  "Change Texture Size": "เปลี่ยนขนาดเท็กซ์เจอร์",
+  "Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.": "การเปลี่ยนขนาดเท็กซ์เจอร์จะเริ่มเอนจิน GPU ใหม่และล้างทุกเลเยอร์ในทุกชุดเท็กซ์เจอร์ เลเยอร์ที่ถูกล้างจะกู้คืนไม่ได้",
+  "Change Size": "เปลี่ยนขนาด",
+  "Discard Changes": "ละทิ้งการเปลี่ยนแปลง",
+  "An export is running; wait for it to finish": "กำลังส่งออกอยู่ โปรดรอจนเสร็จ",
+  "A bake is running; wait for it to finish": "กำลังเบคอยู่ โปรดรอจนเสร็จ",
+  "A render is running; wait for it to finish": "กำลังเรนเดอร์อยู่ โปรดรอจนเสร็จ",
+  "The project is being saved; wait for it to finish": "กำลังบันทึกโปรเจกต์ โปรดรอจนเสร็จ",
+  "A project is opening; wait for it to finish": "กำลังเปิดโปรเจกต์ โปรดรอจนเสร็จ",
+  "Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window's web engine does not have. The formsurface MCP tools reach the same commands.": "สคริปต์ Python ต้องใช้ JavaScript Promise Integration (การสลับสแต็กของ WebAssembly) ซึ่งเว็บเอนจินของหน้าต่างนี้ไม่มี เครื่องมือ MCP ของ formsurface ใช้คำสั่งเดียวกันได้",
+  "Redo": "ทำซ้ำ",
+  "Figure with Three Texture Sets": "ฟิกเกอร์ที่มีสามชุดเท็กซ์เจอร์",
+  "Memory {0} of {1}": "หน่วยความจำ {0} จาก {1}",
+  "Memory {0}": "หน่วยความจำ {0}",
+  "Reply {0} tokens": "การตอบกลับ {0} โทเคน",
+  "Chat {0} tokens": "แชต {0} โทเคน",
+  "UV tiles on: the UDIM tiles of each material share the active tile's layer stack and strokes paint across them; each tile keeps its own paint": "เปิดไทล์ UV: ไทล์ UDIM ของแต่ละแมทีเรียลใช้สแต็กเลเยอร์ของไทล์ที่ใช้งานอยู่ร่วมกัน และการลากพู่กันวาดข้ามไทล์ แต่ละไทล์เก็บงานวาดของตัวเองไว้"
+}

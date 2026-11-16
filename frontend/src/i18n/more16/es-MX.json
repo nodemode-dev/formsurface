@@ -1,0 +1,19 @@
+{
+  "Change Texture Size": "Cambiar tamaño de textura",
+  "Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.": "Cambiar el tamaño de textura reinicia el motor de GPU y borra todas las capas de todos los conjuntos de texturas. Las capas borradas no se pueden recuperar.",
+  "Change Size": "Cambiar tamaño",
+  "Discard Changes": "Descartar cambios",
+  "An export is running; wait for it to finish": "Hay una exportación en curso; espera a que termine",
+  "A bake is running; wait for it to finish": "Hay un horneado en curso; espera a que termine",
+  "A render is running; wait for it to finish": "Hay un renderizado en curso; espera a que termine",
+  "The project is being saved; wait for it to finish": "El proyecto se está guardando; espera a que termine",
+  "A project is opening; wait for it to finish": "Se está abriendo un proyecto; espera a que termine",
+  "Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window's web engine does not have. The formsurface MCP tools reach the same commands.": "Los scripts de Python necesitan JavaScript Promise Integration (cambio de pila de WebAssembly), que el motor web de esta ventana no tiene. Las herramientas MCP de formsurface llegan a los mismos comandos.",
+  "Redo": "Rehacer",
+  "Figure with Three Texture Sets": "Figura con tres conjuntos de texturas",
+  "Memory {0} of {1}": "Memoria {0} de {1}",
+  "Memory {0}": "Memoria {0}",
+  "Reply {0} tokens": "Respuesta {0} tokens",
+  "Chat {0} tokens": "Chat {0} tokens",
+  "UV tiles on: the UDIM tiles of each material share the active tile's layer stack and strokes paint across them; each tile keeps its own paint": "Teselas UV activadas: las teselas UDIM de cada material comparten la pila de capas de la tesela activa y los trazos pintan a través de ellas; cada tesela conserva su propia pintura"
+}

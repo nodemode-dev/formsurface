@@ -1,0 +1,19 @@
+{
+  "Change Texture Size": "Đổi kích thước texture",
+  "Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.": "Đổi kích thước texture sẽ khởi động lại engine GPU và xóa mọi layer trong mọi bộ texture. Không thể khôi phục các layer đã xóa.",
+  "Change Size": "Đổi kích thước",
+  "Discard Changes": "Bỏ thay đổi",
+  "An export is running; wait for it to finish": "Đang xuất; hãy chờ đến khi xong",
+  "A bake is running; wait for it to finish": "Đang bake; hãy chờ đến khi xong",
+  "A render is running; wait for it to finish": "Đang render; hãy chờ đến khi xong",
+  "The project is being saved; wait for it to finish": "Đang lưu dự án; hãy chờ đến khi xong",
+  "A project is opening; wait for it to finish": "Đang mở một dự án; hãy chờ đến khi xong",
+  "Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window's web engine does not have. The formsurface MCP tools reach the same commands.": "Script Python cần JavaScript Promise Integration (chuyển ngăn xếp WebAssembly), nhưng engine web của cửa sổ này không có. Các công cụ MCP của formsurface dùng được cùng các lệnh đó.",
+  "Redo": "Làm lại",
+  "Figure with Three Texture Sets": "Tượng với ba bộ texture",
+  "Memory {0} of {1}": "Bộ nhớ {0} / {1}",
+  "Memory {0}": "Bộ nhớ {0}",
+  "Reply {0} tokens": "Phản hồi {0} token",
+  "Chat {0} tokens": "Trò chuyện {0} token",
+  "UV tiles on: the UDIM tiles of each material share the active tile's layer stack and strokes paint across them; each tile keeps its own paint": "Tile UV bật: các tile UDIM của mỗi vật liệu dùng chung stack layer của tile đang dùng và nét vẽ vẽ xuyên qua chúng; mỗi tile giữ nét vẽ của riêng nó"
+}

@@ -1,0 +1,19 @@
+{
+  "Change Texture Size": "Vaihda tekstuurin koko",
+  "Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.": "Tekstuurin koon vaihtaminen käynnistää GPU-moottorin uudelleen ja tyhjentää jokaisen tason jokaisesta tekstuurisetistä. Tyhjennettyjä tasoja ei voi palauttaa.",
+  "Change Size": "Vaihda koko",
+  "Discard Changes": "Hylkää muutokset",
+  "An export is running; wait for it to finish": "Vienti on käynnissä; odota, että se valmistuu",
+  "A bake is running; wait for it to finish": "Leivonta on käynnissä; odota, että se valmistuu",
+  "A render is running; wait for it to finish": "Renderöinti on käynnissä; odota, että se valmistuu",
+  "The project is being saved; wait for it to finish": "Projektia tallennetaan; odota, että tallennus valmistuu",
+  "A project is opening; wait for it to finish": "Projektia avataan; odota, että avaus valmistuu",
+  "Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window's web engine does not have. The formsurface MCP tools reach the same commands.": "Python-skriptit tarvitsevat JavaScript Promise Integrationin (WebAssemblyn pinonvaihdon), jota tämän ikkunan verkkomoottorissa ei ole. formsurface-MCP-työkalut ulottuvat samoihin komentoihin.",
+  "Redo": "Tee uudelleen",
+  "Figure with Three Texture Sets": "Hahmo kolmella tekstuurisetillä",
+  "Memory {0} of {1}": "Muisti {0} / {1}",
+  "Memory {0}": "Muisti {0}",
+  "Reply {0} tokens": "Vastaus {0} tokenia",
+  "Chat {0} tokens": "Chat {0} tokenia",
+  "UV tiles on: the UDIM tiles of each material share the active tile's layer stack and strokes paint across them; each tile keeps its own paint": "UV-ruudut päällä: kunkin materiaalin UDIM-ruudut jakavat aktiivisen ruudun tasopinon ja vedot maalaavat niiden yli; jokainen ruutu säilyttää oman maalauksensa"
+}

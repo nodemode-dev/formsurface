@@ -1,0 +1,19 @@
+{
+  "Change Texture Size": "テクスチャサイズを変更",
+  "Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.": "テクスチャサイズを変更すると GPU エンジンが再起動し、すべてのテクスチャセットのすべてのレイヤーがクリアされます。クリアされたレイヤーは元に戻せません。",
+  "Change Size": "サイズを変更",
+  "Discard Changes": "変更を破棄",
+  "An export is running; wait for it to finish": "書き出しの実行中です。終わるまでお待ちください",
+  "A bake is running; wait for it to finish": "ベイクの実行中です。終わるまでお待ちください",
+  "A render is running; wait for it to finish": "レンダリングの実行中です。終わるまでお待ちください",
+  "The project is being saved; wait for it to finish": "プロジェクトを保存中です。終わるまでお待ちください",
+  "A project is opening; wait for it to finish": "プロジェクトを開いています。終わるまでお待ちください",
+  "Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window's web engine does not have. The formsurface MCP tools reach the same commands.": "Python スクリプトには JavaScript Promise Integration（WebAssembly のスタック切り替え）が必要ですが、このウィンドウの Web エンジンにはありません。formsurface の MCP ツールから同じコマンドを使えます。",
+  "Redo": "やり直す",
+  "Figure with Three Texture Sets": "3 つのテクスチャセットを持つフィギュア",
+  "Memory {0} of {1}": "メモリ {0} / {1}",
+  "Memory {0}": "メモリ {0}",
+  "Reply {0} tokens": "返信 {0} トークン",
+  "Chat {0} tokens": "チャット {0} トークン",
+  "UV tiles on: the UDIM tiles of each material share the active tile's layer stack and strokes paint across them; each tile keeps its own paint": "UV タイルをオンにしました：各マテリアルの UDIM タイルがアクティブなタイルのレイヤースタックを共有し、ストロークはそれらをまたいでペイントされます。各タイルは自分のペイントを保持します"
+}

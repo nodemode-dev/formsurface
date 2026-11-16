@@ -1,0 +1,19 @@
+{
+  "Change Texture Size": "Textuurgrootte wijzigen",
+  "Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.": "Als je de textuurgrootte wijzigt, start de GPU-engine opnieuw en wordt elke laag in elke textuurset gewist. De gewiste lagen zijn niet terug te halen.",
+  "Change Size": "Grootte wijzigen",
+  "Discard Changes": "Wijzigingen verwerpen",
+  "An export is running; wait for it to finish": "Er loopt een export; wacht tot die klaar is",
+  "A bake is running; wait for it to finish": "Er loopt een bake; wacht tot die klaar is",
+  "A render is running; wait for it to finish": "Er loopt een render; wacht tot die klaar is",
+  "The project is being saved; wait for it to finish": "Het project wordt opgeslagen; wacht tot dat klaar is",
+  "A project is opening; wait for it to finish": "Er wordt een project geopend; wacht tot dat klaar is",
+  "Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window's web engine does not have. The formsurface MCP tools reach the same commands.": "Python-scripts hebben JavaScript Promise Integration (WebAssembly stack switching) nodig, en die ontbreekt in de webengine van dit venster. De formsurface-MCP-tools bereiken dezelfde opdrachten.",
+  "Redo": "Opnieuw",
+  "Figure with Three Texture Sets": "Figuur met drie textuursets",
+  "Memory {0} of {1}": "Geheugen {0} van {1}",
+  "Memory {0}": "Geheugen {0}",
+  "Reply {0} tokens": "Antwoord {0} tokens",
+  "Chat {0} tokens": "Chat {0} tokens",
+  "UV tiles on: the UDIM tiles of each material share the active tile's layer stack and strokes paint across them; each tile keeps its own paint": "UV-tiles aan: de UDIM-tiles van elk materiaal delen de laagstapel van de actieve tile en streken schilderen erdoorheen; elke tile houdt zijn eigen schilderwerk"
+}

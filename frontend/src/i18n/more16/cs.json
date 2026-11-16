@@ -1,0 +1,19 @@
+{
+  "Change Texture Size": "Změnit velikost textur",
+  "Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.": "Změna velikosti textur restartuje GPU engine a vymaže všechny vrstvy ve všech sadách textur. Vymazané vrstvy nelze obnovit.",
+  "Change Size": "Změnit velikost",
+  "Discard Changes": "Zahodit změny",
+  "An export is running; wait for it to finish": "Probíhá export; počkejte, až skončí",
+  "A bake is running; wait for it to finish": "Probíhá vypalování; počkejte, až skončí",
+  "A render is running; wait for it to finish": "Probíhá renderování; počkejte, až skončí",
+  "The project is being saved; wait for it to finish": "Projekt se ukládá; počkejte, až ukládání skončí",
+  "A project is opening; wait for it to finish": "Projekt se otevírá; počkejte, až otevírání skončí",
+  "Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window's web engine does not have. The formsurface MCP tools reach the same commands.": "Skripty v Pythonu potřebují JavaScript Promise Integration (přepínání zásobníku WebAssembly), které webový engine tohoto okna nemá. Nástroje MCP formsurface dosáhnou na stejné příkazy.",
+  "Redo": "Znovu",
+  "Figure with Three Texture Sets": "Postava se třemi sadami textur",
+  "Memory {0} of {1}": "Paměť {0} z {1}",
+  "Memory {0}": "Paměť {0}",
+  "Reply {0} tokens": "Odpověď {0} tokenů",
+  "Chat {0} tokens": "Chat {0} tokenů",
+  "UV tiles on: the UDIM tiles of each material share the active tile's layer stack and strokes paint across them; each tile keeps its own paint": "UV dlaždice zapnuty: UDIM dlaždice každého materiálu sdílejí zásobník vrstev aktivní dlaždice a tahy malují přes ně; každá dlaždice si ponechá vlastní malbu"
+}

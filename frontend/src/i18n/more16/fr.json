@@ -1,0 +1,19 @@
+{
+  "Change Texture Size": "Changer la taille de texture",
+  "Changing the texture size restarts the GPU engine and clears every layer in every texture set. The cleared layers cannot be recovered.": "Changer la taille de texture redémarre le moteur GPU et efface tous les calques de tous les jeux de textures. Les calques effacés ne peuvent pas être récupérés.",
+  "Change Size": "Changer la taille",
+  "Discard Changes": "Abandonner les modifications",
+  "An export is running; wait for it to finish": "Un export est en cours ; attendez qu'il se termine",
+  "A bake is running; wait for it to finish": "Un calcul de maps est en cours ; attendez qu'il se termine",
+  "A render is running; wait for it to finish": "Un rendu est en cours ; attendez qu'il se termine",
+  "The project is being saved; wait for it to finish": "Le projet est en cours d'enregistrement ; attendez la fin",
+  "A project is opening; wait for it to finish": "Un projet est en cours d'ouverture ; attendez la fin",
+  "Python scripts need JavaScript Promise Integration (WebAssembly stack switching), which this window's web engine does not have. The formsurface MCP tools reach the same commands.": "Les scripts Python ont besoin de JavaScript Promise Integration (changement de pile WebAssembly), que le moteur web de cette fenêtre ne possède pas. Les outils MCP formsurface accèdent aux mêmes commandes.",
+  "Redo": "Rétablir",
+  "Figure with Three Texture Sets": "Figurine avec trois jeux de textures",
+  "Memory {0} of {1}": "Mémoire {0} sur {1}",
+  "Memory {0}": "Mémoire {0}",
+  "Reply {0} tokens": "Réponse {0} jetons",
+  "Chat {0} tokens": "Chat {0} jetons",
+  "UV tiles on: the UDIM tiles of each material share the active tile's layer stack and strokes paint across them; each tile keeps its own paint": "Tuiles UV activées : les tuiles UDIM de chaque matériau partagent la pile de calques de la tuile active et les traits peignent à travers elles ; chaque tuile garde sa propre peinture"
+}
