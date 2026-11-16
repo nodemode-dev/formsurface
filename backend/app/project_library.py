@@ -31,7 +31,7 @@ TEMPLATES = [
     {"id": "torus", "name": "Torus", "category": "Basics", "tags": ["torus", "ring", "donut", "primitive"], "description": "A torus with one texture set, for painting around a hole and across a wrapping seam.", "sample": "torus"},
     {"id": "knot", "name": "Torus Knot", "category": "UV layout", "tags": ["knot", "seams", "uv"], "description": "A torus knot with many UV seams, for checking that strokes cross seams cleanly.", "sample": "knot"},
     {"id": "uv2", "name": "Sphere with a second UV channel", "category": "UV layout", "tags": ["uv1", "second uv", "lightmap"], "description": "A sphere that carries a second UV channel, for exporting maps onto UV1.", "sample": "uv2"},
-    {"id": "sets", "name": "Figure with Two Texture Sets", "category": "Texture sets", "tags": ["udim", "materials", "figure"], "description": "A figure with two materials and a body spread over UDIM tiles 1001 and 1002.", "sample": "sets"},
+    {"id": "sets", "name": "Figure with Three Texture Sets", "category": "Texture sets", "tags": ["udim", "materials", "figure"], "description": "A figure with two materials and a body spread over UDIM tiles 1001 and 1002.", "sample": "sets"},
     {"id": "pair", "name": "Sphere Pair with High-Poly", "category": "Baking", "tags": ["bake", "high-poly", "normal map"], "description": "Two low-poly spheres with their high-poly pair loaded, ready to bake maps matched by name.", "sample": "pair"},
 ]
 DEFAULT_TEMPLATE = "sphere"
