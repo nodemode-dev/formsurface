@@ -3,19 +3,19 @@
   --bg: #111111;
   --surface: #17151b;
   --surface-2: #222127;
-  --surface-3: #2c2b31;
+  --surface-3: #34333a;
   --border: #2a2a2a;
   --text: #f7f7f7;
   --text-muted: #a4a4a4;
   --text-faint: #717072;
   --accent: #f97316;
-  --accent-soft: #f9731629;
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
   --accent-contrast: #000000;
   --danger: #ef4444;
   --ok: #22c55e;
   --canvas-bg: #1c1b1d;
-  --bg-hover: rgba(255, 255, 255, 0.06);
-  --bg-scrim: rgba(0, 0, 0, 0.6);
+  --bg-hover: color-mix(in srgb, var(--text) 6%, transparent);
+  --bg-scrim: rgba(8, 6, 14, 0.45);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
   --radius-sm: 4px;
@@ -30,21 +30,21 @@
   --fs-14: 14px;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "JetBrains Mono", monospace;
-  --bar-h: 40px;
+  --bar-h: 44px;
   --status-h: 28px;
   --panel-w: 300px;
   --tools-w: 52px;
   --icon: 18px;
   --surface-0: var(--bg);
-  --surface-1: var(--surface);
-  --surface-raised: var(--surface-3);
-  --line-0: var(--border);
+  --surface-1: color-mix(in srgb, var(--bg-primary) 55%, var(--bg-tertiary));
+  --surface-raised: color-mix(in srgb, var(--bg-node) 70%, var(--text-primary) 8%);
+  --line-0: color-mix(in srgb, var(--bg-primary) 55%, #000);
   --line-1: var(--border);
-  --line-2: #3a3940;
+  --line-2: var(--border-light);
   --text-primary: var(--text);
   --accent-color: var(--accent);
-  --accent-color-dim: var(--accent-soft);
-  --accent-line: var(--accent);
+  --accent-color-dim: color-mix(in srgb, var(--accent-color) 20%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent-color) calc(48% * var(--accent-intensity)), var(--border-light));
   --font-mono: var(--mono);
   --font-ui: var(--font);
   --bg-primary: var(--bg);
@@ -134,34 +134,12 @@
   --border-soft: rgba(0, 0, 0, 0.1);
   --shadow-window: 0 18px 44px rgba(96, 90, 70, 0.22);
   --glass-shadow: 0 10px 30px rgba(96, 90, 70, 0.2), 0 1px 4px rgba(96, 90, 70, 0.12);
-}
-
-.fs-family {
-  --surface-1: color-mix(in srgb, var(--bg-primary) 55%, var(--bg-tertiary));
-  --surface-2: var(--bg-node);
-  --surface-raised: color-mix(in srgb, var(--bg-node) 70%, var(--text-primary) 8%);
-  --line-0: color-mix(in srgb, var(--bg-primary) 55%, #000);
-  --line-2: var(--border-light);
-  --text-muted: var(--text-faint);
-  --accent-soft: color-mix(in srgb, var(--accent-color) calc(20% * var(--accent-intensity)), var(--bg-node));
-  --accent-line: color-mix(in srgb, var(--accent-color) calc(48% * var(--accent-intensity)), var(--border-light));
-  --accent-color-dim: color-mix(in srgb, var(--accent-color) 20%, transparent);
-}
-.theme-light .fs-family {
   --line-0: var(--border-color);
   --surface-raised: color-mix(in srgb, var(--bg-node) 88%, var(--text-primary) 8%);
 }
 
-:root[data-theme="light"] {
-  color-scheme: light;
-  --bg: #f3f4f6;
-  --surface: #ffffff;
-  --surface-2: #eef0f3;
-  --surface-3: #e2e5ea;
-  --border: #d4d8de;
-  --text: #15171b;
-  --text-muted: #5b6270;
-  --accent: #c8601f;
-  --accent-soft: rgba(200, 96, 31, 0.14);
-  --accent-contrast: #ffffff;
+.fs-family {
+  --surface-2: var(--bg-node);
+  --text-muted: var(--text-faint);
+  --accent-soft: color-mix(in srgb, var(--accent-color) calc(20% * var(--accent-intensity)), var(--bg-node));
 }
