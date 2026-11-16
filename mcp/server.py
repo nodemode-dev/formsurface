@@ -620,7 +620,7 @@ def formsurface_text_resource(
 
 @server.tool()
 def formsurface_uv_tiles(on: bool | None = None) -> dict:
-    """The UV tiles workflow. When on, the UDIM tiles of a material share one layer stack: adding, changing or removing layers, fills, filters and masks on one tile applies to all of them, and a stroke paints across tile borders in one go. Turning it on copies the active tile's stack to the material's other tiles and clears their previous paint. Without on, reports the current state."""
+    """The UV tiles workflow. When on, the UDIM tiles of a material share one layer stack: adding, changing or removing layers, fills, filters and masks on one tile applies to all of them, and a stroke paints across tile borders in one go. Turning it on joins the material's tile stacks into one (layers of the same id, or of the same name and kind, become one layer; a layer only one tile has is added to all) and every tile keeps its own paint. Without on, reports the current state."""
     return call("uv_tiles", drop_none(on=on))
 
 
