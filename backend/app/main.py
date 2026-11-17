@@ -19,7 +19,7 @@ mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/javascript", ".mjs")
 mimetypes.add_type("text/css", ".css")
 
-VERSION = "0.62.0"
+VERSION = "0.62.1"
 ROOT = Path(__file__).resolve().parents[2]
 DATA = Path(os.environ.get("FORMSURFACE_DATA", ROOT / "workspace"))
 SAFE = re.compile(r"^[A-Za-z0-9 _.-]{1,80}\Z")
