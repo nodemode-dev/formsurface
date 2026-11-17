@@ -2,6 +2,10 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. Entries before 0.61.0 were reconstructed from the commit history.
 
+## 0.62.1 · 2026-11-17
+
+- The desktop build runs again: `@tauri-apps/api` and `@tauri-apps/cli` move to 2.12.5 to match the `tauri` crate (2.12 in `src-tauri/Cargo.lock`). Tauri refuses to build when the two are on different minor releases, which stopped the 0.62.0 release on every platform.
+
 ## 0.62.0 · 2026-11-16
 
 A polish round on 0.61.0: the app tracks unsaved changes and asks only when there are some, long operations take turns instead of getting in each other's way, the desktop app says so when its engine fails, and dialogs, menus and controls take the Form family look.
