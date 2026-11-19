@@ -3,7 +3,7 @@ name: formsurface-painting
 description: Paint and texture 3D models in FormSurface through its MCP server (68 formsurface_* tools that drive the editor open in the person's browser). Use whenever an agent should texture, paint, recolor, add wear or trim, layer materials, set roughness or metallic, take a viewport screenshot or export PBR maps from FormSurface, or when formsurface tools fail with no editor linked. Trigger on paint this model, texture the mesh in formsurface, add a gold rim, make it look worn, export texture maps, formsurface_paint_stroke, formsurface_status, Agent link, or ./formsurface mcp, even when MCP is not named. Not for changing FormSurface source code, which is the formsurface-harness skill.
 license: Apache-2.0
 metadata:
-  version: "0.62.1"
+  version: "0.62.2"
   author: nodemode-ai
 ---
 
