@@ -13,9 +13,21 @@
         if (root.classList.contains('has-overlay-titlebar') && localStorage.getItem('formsurface.menusInWindow') !== '1') root.classList.add('has-native-menus');
         var lang = localStorage.getItem('formsurface.language');
         if (lang && lang !== 'en') { root.classList.add('i18n-pending'); root.lang = lang; }
-        var dock = JSON.parse(localStorage.getItem('formsurface.dock') || 'null');
-        if (dock && dock.open) root.dataset.dock = String(dock.h || 280);
       } catch (e) { root.classList.remove('i18n-pending'); }
+      var open = false, h = 280, w = 440, side = 'bottom';
+      try {
+        var dock = JSON.parse(localStorage.getItem('formsurface.agentDock') || localStorage.getItem('formsurface.dock') || '{}') || {};
+        open = dock.open === true;
+        if (dock.side === 'right') side = 'right';
+        if (typeof dock.h === 'number' && dock.h >= 140 && dock.h <= 2000) h = Math.round(dock.h);
+        if (typeof dock.w === 'number' && dock.w >= 320 && dock.w <= 4000) w = Math.round(dock.w);
+      } catch (e) {}
+      root.setAttribute('data-ft-dock', open ? 'open' : 'closed');
+      root.setAttribute('data-ft-dock-side', side);
+      root.setAttribute('data-ft-dock-h', String(h));
+      root.setAttribute('data-ft-dock-w', String(w));
+      root.style.setProperty('--ft-dock-size', h + 'px');
+      root.style.setProperty('--ft-dock-wsize', w + 'px');
       try {
         var THEMES = {
           'nodemode-dark': [0, '#0a0a0a', '#121218', '#1a1a24', '#2a2a35', '#3a3a48', '#e8e8ee', '#a8a8b8', '#6a6a7a', '#0a0a0a'],
@@ -483,7 +495,6 @@ print(project.status()["mesh"])</textarea>
     </section>
   </aside>
 
-  <section class="fl-dock" aria-label="Terminal" hidden></section>
   <footer class="status"><span class="msg" id="status">Ready</span><span id="mesh-info"></span><span id="gpu-info"></span><span id="fps"></span></footer>
 </div>
 <div id="overlay-root"></div>

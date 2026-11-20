@@ -1,0 +1,49 @@
+:root, .ft-dock {
+  --dock-bg: var(--surface-0);
+  --dock-bar-bg: var(--surface-1);
+  --dock-raised: var(--surface-raised);
+  --dock-hover: var(--bg-hover);
+  --dock-input-bg: var(--surface-field);
+  --dock-border: var(--line-1);
+  --dock-edge: var(--line-1);
+  --dock-divider: var(--line-0);
+  --dock-tab-border: var(--line-2);
+  --dock-outline: var(--accent-color);
+  --dock-scrim: var(--bg-scrim);
+  --dock-text: var(--text-primary);
+  --dock-text-dim: var(--text-secondary);
+  --dock-text-muted: var(--text-muted);
+  --dock-tab-text: var(--text-muted);
+  --dock-accent: var(--accent-color);
+  --dock-accent-line: var(--accent-line);
+  --dock-accent-ink: var(--accent-color);
+  --dock-danger: var(--danger);
+  --dock-danger-text: var(--danger-text);
+  --dock-space-1: var(--space-1);
+  --dock-space-2: var(--space-2);
+  --dock-space-3: var(--space-3);
+  --dock-space-4: var(--space-4);
+  --dock-radius-xs: var(--radius-xs);
+  --dock-radius-sm: var(--radius-sm);
+  --dock-radius: var(--radius);
+  --dock-radius-md: var(--radius-md);
+  --dock-head-h: var(--ctl-lg);
+  --dock-fs-xs: var(--fs-11);
+  --dock-fs-sm: var(--fs-12);
+  --dock-fs-md: var(--fs-14);
+  --dock-font-mono: var(--font-mono);
+  --dock-term-bg: var(--surface-0);
+  --dock-term-fg: var(--text-primary);
+  --dock-term-cursor: var(--accent-color);
+  --dock-term-selection: var(--accent-color-dim);
+  --dock-term-font-size: var(--fs-12);
+  --z-overlay: var(--z-modal);
+}
+:root { --ft-dock-size: 280px; --ft-dock-wsize: 440px; }
+:root[data-ft-dock="open"]:not([data-ft-dock-side="right"]) .app { --fs-dock-h: min(var(--ft-dock-size), 70vh); }
+:root[data-ft-dock="open"][data-ft-dock-side="right"] .app { --fs-dock-w: min(var(--ft-dock-wsize), 60vw); }
+.app { grid-template-columns: var(--tools-w) minmax(0, 1fr) var(--panel-w) var(--fs-dock-w, 0px); }
+.app > .ft-dock { grid-area: 3 / 1 / 4 / -1; }
+:root[data-ft-dock-side="right"] .app > .ft-dock { grid-area: 2 / 4 / 3 / 5; }
+.ft-dock-ask .cv-input { height: var(--ctl-sm); }
+.ft-chat.is-own > .fl-chat { position: absolute; inset: 0; }
