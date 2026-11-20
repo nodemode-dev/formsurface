@@ -2,6 +2,12 @@
 
 Decisions, reasons and anything left out, newest first. Code carries no comments; the context lives here. Started in 0.64.0; earlier history is not backfilled.
 
+## Unreleased (2026-11-20): every sentence that lists the agent programs names all four (`src/shell/app-shell.ts`, `src/shell/home.ts`, `index.html`, `src/i18n/strings.json`, `src/i18n/locales/*.json`)
+
+- The Connect an Outside Agent dialog's first sentence, Home's Agents entry and the Agent link button's tooltip now say Claude Code, Codex, Cursor and Antigravity, in that order.
+- The dialog sentence and the tooltip are lookup keys (the page is translated by matching its English text), so each key changed in `strings.json` and in all 23 tables that carry it, with the translation, in the same commit. `es-MX` and `fr-CA` carry neither key and take `es` and `fr`. Home's entry is product names only and has no table entry. No native speaker has read the new translations.
+- The search was for "Cursor" across `src` (outside the shared `dock/` folder) and `index.html`; the remaining hits are the panel module, the menu row named Cursor and the four "Under Cursor" commands, which list no programs.
+
 ## Unreleased (2026-11-20): the shared panel module is 2.2.1 (`src/dock/`)
 
 - `CONTRACT.md`, `MANIFEST.json` and `strings.ts` are copied byte for byte from FormVis commit 23b01889 (the file `cp`d whole, as the family vendors the module); the other 13 files were already the same bytes. All 16 match FormVis at that commit, and `setup/agents.py check` finds the folder whole against its manifest.
