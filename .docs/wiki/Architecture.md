@@ -9,7 +9,7 @@ formsurface is four parts: a Rust engine that owns the GPU, a TypeScript editor 
 | `frontend/src/engine/pkg` | build output of `setup/build_engine`, git-ignored |
 | `frontend/src/main.ts` | the editor: canvas, pointer handling, panels, document state |
 | `frontend/src/shell` | commands, menus, palette, Home, dialogs, the dock adapter, Chat, themes, icons |
-| `frontend/src/dock` | the Form family's shared agent dock module 2.2.0, copied unchanged from FormVis (hashes in `MANIFEST.json`) |
+| `frontend/src/dock` | the Form family's shared agent dock module 2.2.1, copied unchanged from FormVis (hashes in `MANIFEST.json`) |
 | `frontend/src/i18n` | English source strings and the language tables |
 | `backend/app/main.py` | the FastAPI service: projects, maps, meshes, exports, version |
 | `backend/app/project_library.py`, `backend/app/projects.py` | the project library behind Home |

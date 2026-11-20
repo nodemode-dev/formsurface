@@ -2,6 +2,13 @@
 
 Decisions, reasons and anything left out, newest first. Code carries no comments; the context lives here. Started in 0.64.0; earlier history is not backfilled.
 
+## Unreleased (2026-11-20): the shared panel module is 2.2.1 (`src/dock/`)
+
+- `CONTRACT.md`, `MANIFEST.json` and `strings.ts` are copied byte for byte from FormVis commit 23b01889 (the file `cp`d whole, as the family vendors the module); the other 13 files were already the same bytes. All 16 match FormVis at that commit, and `setup/agents.py check` finds the folder whole against its manifest.
+- The only change a person sees: the first-run guide's two sentences for a computer with Claude Code now also say that Codex, Cursor and Antigravity each get a button of their own when they are on this computer.
+- `shell/dock-adapter.ts` keeps `CONTRACT = '2.2.0'`. That string is the handshake with the engine (`backend/app/agent/agent_programs.py`, which reports 2.2.0): when the two differ the adapter shows only Claude Code. The 2.2.1 contract says an adapter written for 2.2.0 needs no change, and the engine's side is not part of this change, so both stay 2.2.0 and move together later.
+- FormSurface has no translations of the panel's own sentences (the adapter's `t` looks the English up in the app's tables and falls back to it), so no language table changes here.
+
 ## 0.64.0 (2026-11-20): the window check hands each page the key the way the desktop app does (`tests/window/test_window.py`, `tests/window/test_home_and_library.py`)
 
 - The window tests start one engine per module and open a new browser context per test. An engine started from source gives its key to the first page only, so from the second context on the page would be refused. The fixtures now claim the key once, right after the engine answers, and every page gets it through an init script that sets `window.__FORMSURFACE_WINDOW_KEY`, as the shell's initialization script does. The pages then make no bootstrap request at all.
