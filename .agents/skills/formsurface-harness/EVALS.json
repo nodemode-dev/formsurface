@@ -1,0 +1,25 @@
+{
+  "skill": "formsurface-harness",
+  "evaluations": [
+    {
+      "request": "Strokes in FormSurface get thinner near UV seams on the torus knot. Fix it.",
+      "expected": "Routes to the engine sub-skill, inspects the paint pass and stamp spacing in fs-engine rather than the editor, lands a single-region edit, rebuilds with setup/build_engine and verifies with an exported base color map or snapshot, stating the hardware used."
+    },
+    {
+      "request": "Add a formsurface MCP tool that hides every layer except one.",
+      "expected": "Loads engine, editor then service-mcp; adds an editor handler that calls the existing update_layer path, a typed formsurface_* tool in mcp/server.py, updates the painting skill tool table and its .agents mirror, and exercises it over curl and an MCP client."
+    },
+    {
+      "request": "Ship this FormSurface turn.",
+      "expected": "Loads release; commits as nodemode-ai with mackin@nodemode.ai, bumps every version site in a last commit, produces formsurface_vX.Y.Z.zip with .git and the planning sidecar zip with the same version, and reports what was verified and what was not."
+    },
+    {
+      "request": "Use FormSurface to paint a gold rim on the open model.",
+      "expected": "Does not trigger; this belongs to formsurface-painting."
+    }
+  ],
+  "trigger_test": {
+    "should_trigger": ["continue formsurface", "fix formsurface painting", "the formsurface brush skips across seams", "add a blend mode to fs-engine", "update formsurface parity"],
+    "should_not_trigger": ["paint the helmet gold in formsurface", "fix a formvis brush", "explain Substance Painter smart masks"]
+  }
+}

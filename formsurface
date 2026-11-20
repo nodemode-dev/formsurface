@@ -3,7 +3,7 @@ set -e
 cd "$(dirname "$0")"
 usage() {
   cat << 'EOF2'
-formsurface 0.62.2 · 3D texture painting
+formsurface 0.63.0 · 3D texture painting
 
 usage: ./formsurface [command]
 
@@ -23,6 +23,9 @@ usage: ./formsurface [command]
   build           build the engine and the editor into frontend/dist
   serve           serve the built editor from the service on 8766 (no Vite)
   claude [ARGS]   Claude Code in this terminal, connected to the formsurface MCP server
+  agents sync|check|install [--dry-run]
+                  mirror .claude/skills into .agents/skills and write agents/manifest.json; check
+                  the kit; register FormSurface with Claude Code, Codex, Cursor and Antigravity
   install-desktop install PyInstaller and check the Tauri toolchain
   freeze          freeze the service into the desktop sidecar (src-tauri/binaries)
   desktop dev     run the desktop app from source
@@ -46,6 +49,7 @@ case "$cmd" in
   claude) shift; command -v claude >/dev/null || { echo "Claude Code is not installed: https://claude.com/claude-code" >&2; exit 1; }
     # Exports, bakes and path renders can run for minutes on a slow or software GPU; give tool calls 30 minutes.
     MCP_TOOL_TIMEOUT="${MCP_TOOL_TIMEOUT:-1800000}" exec claude --mcp-config "{\"mcpServers\":{\"formsurface\":{\"type\":\"stdio\",\"command\":\"$PWD/formsurface\",\"args\":[\"mcp\"]}}}" --allowedTools mcp__formsurface "$@" ;;
+  agents) shift; exec python3 setup/agents.py "$@" ;;
   install-desktop) exec setup/install_desktop ;;
   freeze) exec setup/freeze_backend ;;
   desktop) shift; case "${1:-}" in dev) shift; exec setup/desktop_dev "$@" ;; build) shift; exec ./build_app "$@" ;; *) usage; exit 2 ;; esac ;;

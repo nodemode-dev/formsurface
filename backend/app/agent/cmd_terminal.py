@@ -62,8 +62,7 @@ def restart(id: str) -> dict:
     return terminal.restart(id).describe()
 
 
-@command("terminal.close", "Close a Terminal", {"id": ID}, mutates=False, description="Ends the program and closes the terminal.")
+@command("terminal.close", "Close a Terminal", {"id": ID}, mutates=False, description="Ends the program and closes the terminal; closing one that is already gone succeeds.")
 def close(id: str) -> dict:
-    _session(id)
     terminal.close(id)
     return {"closed": id}

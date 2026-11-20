@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 SERVICE = os.environ.get("FORMSURFACE_SERVICE", "http://127.0.0.1:8766").rstrip("/")
 if httpx.URL(SERVICE).host not in ("127.0.0.1", "localhost", "::1"):
     raise SystemExit("FormSurface MCP only talks to the local FormSurface service")
+TAB = {"x-formsurface-tab": os.environ["FORMSURFACE_TAB_TOKEN"]} if os.environ.get("FORMSURFACE_TAB_TOKEN") else {}
 
 server = MCPServer(
     "formsurface",
@@ -24,7 +25,7 @@ server = MCPServer(
 
 def call(command: str, args: dict | None = None, timeout: float = 60) -> dict:
     try:
-        response = httpx.post(f"{SERVICE}/api/agent", json={"command": command, "args": args or {}, "timeout": timeout}, timeout=timeout + 5, trust_env=False)
+        response = httpx.post(f"{SERVICE}/api/agent", json={"command": command, "args": args or {}, "timeout": timeout}, timeout=timeout + 5, trust_env=False, headers=TAB)
     except httpx.ConnectError as error:
         raise ToolError("The FormSurface service is not running. Start it with ./formsurface") from error
     if response.status_code >= 400:

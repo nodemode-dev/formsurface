@@ -18,6 +18,8 @@ An agent paints in the editor the person has open. Nothing reaches the editor un
 2. Press Agent link in the top bar.
 3. Start the agent in this folder. Claude Code reads `.mcp.json`, Codex reads `.codex/config.toml`, Cursor reads `.cursor/mcp.json`; each runs `./formsurface mcp`. `./formsurface claude` starts Claude Code already connected, with a 30 minute limit per tool call.
 
+To use an agent outside this folder, `./formsurface agents install` registers the server for your user with Claude Code, Codex, Cursor and Antigravity (`--dry-run` first says what it would change). Inside the window, the agent dock (Ctrl+J, Cmd+J on a Mac) runs the same four programs in tabs, each connected with a token that ends when its tab closes, and opening one turns Agent link on.
+
 ## The flow
 
 `formsurface_status` first: it reports the texture sets, layers, brush and camera, or says that no editor is linked. Then one idea per layer: set the base material, add a layer or a fill layer, bake the mesh maps once and drive wear with generators, take a screenshot, paint strokes with viewport points, check from a second angle, save the project, export the maps. The skill's `references/tools.md` lists every tool with its arguments.

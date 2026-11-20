@@ -8,7 +8,7 @@ from pathlib import Path
 
 import sys
 
-from app.agent import config, terminal
+from app.agent import agent_lookup, agent_programs, config, terminal
 from app.agent.commands import CommandError, command
 
 KEEP_ENV = {"CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CONFIG_DIR"}
@@ -54,14 +54,8 @@ def cli() -> str | None:
     chosen = _pref("claudeBin")
     if chosen and _runnable(chosen):
         return str(Path(chosen).expanduser())
-    found = os.environ.get("FORMSURFACE_CLAUDE_BIN") or shutil.which("claude")
-    if found:
-        return found
-    home = Path.home()
-    for p in [home / c for c in CANDIDATES] + [Path(s) for s in SYSTEM_PATHS]:
-        if p.is_file() and os.access(p, os.X_OK):
-            return str(p)
-    return _from_login_shell()
+    found = agent_lookup.find("claude", setting="", override_vars=("FORMSURFACE_CLAUDE_BIN",))
+    return found.path or _from_login_shell()
 
 
 def info(fresh: bool = False) -> dict:
@@ -78,15 +72,18 @@ def info(fresh: bool = False) -> dict:
     return _cache["value"]
 
 
-def mcp_config() -> str:
-    env = {"FORMSURFACE_SERVICE": config.service_url()}
+def launcher() -> tuple[str, list[str]]:
     if config.FROZEN:
-        server = {"type": "stdio", "command": sys.executable, "args": ["--mcp"], "env": env}
-    elif os.name == "nt":
-        server = {"type": "stdio", "command": sys.executable, "args": ["-I", str(config.REPO_DIR / "mcp" / "server.py")], "env": env}
-    else:
-        server = {"type": "stdio", "command": str(config.REPO_DIR / "formsurface"), "args": ["mcp"], "env": env}
-    return json.dumps({"mcpServers": {SERVER: server}})
+        return sys.executable, ["--mcp"]
+    if os.name == "nt":
+        return sys.executable, ["-I", str(config.REPO_DIR / "mcp" / "server.py")]
+    return str(config.REPO_DIR / "formsurface"), ["mcp"]
+
+
+def mcp_config(token: str | None = None) -> str:
+    env = {"FORMSURFACE_SERVICE": config.service_url()} | ({"FORMSURFACE_TAB_TOKEN": token} if token else {})
+    command, args = launcher()
+    return json.dumps({"mcpServers": {SERVER: {"type": "stdio", "command": command, "args": args, "env": env}}})
 
 
 def workdir() -> Path:
@@ -99,8 +96,8 @@ def workdir() -> Path:
     return folder
 
 
-def argv(path: str, prompt: str | None, resume: str | None = None) -> list[str]:
-    cmd = [path, "--mcp-config", mcp_config(), "--allowedTools", f"mcp__{SERVER}", "--append-system-prompt", NOTE]
+def argv(path: str, prompt: str | None, resume: str | None = None, config_file: str | None = None) -> list[str]:
+    cmd = [path, "--mcp-config", config_file or mcp_config(), "--allowedTools", f"mcp__{SERVER}", "--append-system-prompt", NOTE]
     if resume:
         cmd += ["--resume", resume]
     if prompt:
@@ -131,7 +128,17 @@ def open_(prompt: str | None = None, cols: int | None = None, rows: int | None =
         return running.describe()
     found = info(fresh=True)
     if not found["installed"]:
-        raise CommandError(INSTALL, 400)
+        raise CommandError(INSTALL, agent_programs.NOT_INSTALLED)
     prompt = prompt or _pref("claudeFirstMessage") or None
-    session = terminal.open_session(str(workdir()), cols or 100, rows or 30, "Claude Code (from Chat)" if resume else "Claude Code", argv(found["path"], prompt, resume), child_env(), "claude")
+    token = agent_programs.issue()
+    file = agent_programs.private_file("claude", mcp_config(token))
+    try:
+        session = terminal.open_session(str(workdir()), cols or 100, rows or 30, "Claude Code (from Chat)" if resume else "Claude Code",
+                                        argv(found["path"], prompt, resume, str(file)), child_env(), "claude")
+    except BaseException:
+        agent_programs.revoke(token)
+        file.unlink(missing_ok=True)
+        raise
+    session.on_close.append(lambda: agent_programs.revoke(token))
+    session.on_close.append(lambda: file.unlink(missing_ok=True))
     return session.describe()

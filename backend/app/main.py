@@ -11,6 +11,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, Response, Uploa
 from fastapi.responses import FileResponse, JSONResponse
 
 from app import environments, ocio, projects
+from app.agent import agent_programs
 from app.agent import config as agent_config
 from app.agent import router as agent_router
 from app.local_guard import LocalGuard
@@ -19,7 +20,7 @@ mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/javascript", ".mjs")
 mimetypes.add_type("text/css", ".css")
 
-VERSION = "0.62.2"
+VERSION = "0.63.0"
 ROOT = Path(__file__).resolve().parents[2]
 DATA = Path(os.environ.get("FORMSURFACE_DATA", ROOT / "workspace"))
 SAFE = re.compile(r"^[A-Za-z0-9 _.-]{1,80}\Z")
@@ -34,6 +35,8 @@ app.include_router(projects.router)
 async def local_only(request: Request, call_next):
     if request.client and request.client.host not in LOCAL_HOSTS:
         return JSONResponse({"detail": "FormSurface only answers this computer"}, status_code=403)
+    if agent_programs.TOKEN_HEADER in request.headers and request.url.path != "/api/agent":
+        return JSONResponse({"detail": "This route belongs to the FormSurface window; an agent tab's token is not accepted here."}, status_code=403)
     return await call_next(request)
 
 
@@ -104,7 +107,7 @@ relay = Relay()
 @app.websocket("/api/live")
 async def live(socket: WebSocket):
     host = socket.client.host if socket.client else ""
-    if host not in LOCAL_HOSTS:
+    if host not in LOCAL_HOSTS or agent_programs.TOKEN_HEADER in socket.headers:
         await socket.close(code=1008)
         return
     await socket.accept()
@@ -129,6 +132,9 @@ async def live(socket: WebSocket):
 
 @app.post("/api/agent")
 async def agent(request: Request):
+    tab = request.headers.get(agent_programs.TOKEN_HEADER)
+    if tab is not None and not agent_programs.valid(tab):
+        raise HTTPException(403, agent_programs.CLOSED_REPLY)
     body = await request.json()
     command = body.get("command")
     if not isinstance(command, str) or not command:

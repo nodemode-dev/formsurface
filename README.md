@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="version 0.62.2" src="https://img.shields.io/badge/version-v0.62.2-eef0f4?style=flat-square">
+  <img alt="version 0.63.0" src="https://img.shields.io/badge/version-v0.63.0-eef0f4?style=flat-square">
   <img alt="Rust and wgpu" src="https://img.shields.io/badge/engine-Rust%20%2B%20wgpu-b7410e?style=flat-square&logo=rust&logoColor=white">
   <img alt="TypeScript" src="https://img.shields.io/badge/editor-TypeScript-3178c6?style=flat-square&logo=typescript&logoColor=white">
   <img alt="macOS, Windows, Linux" src="https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-native-2f7bf5?style=flat-square">
@@ -117,13 +117,24 @@ An MCP server with 68 `formsurface_*` tools drives the editor you have open; a J
 ./formsurface mcp                            # MCP server on stdio for Claude Code and other clients
 ```
 
-`.mcp.json`, `.codex/config.toml` and `.cursor/mcp.json` are already wired in this repo, and the `formsurface-painting` skill lives in `.claude/skills` and `.agents/skills`. Press **Agent link** in the editor to let agents in; it is off by default. See [`AGENTS.md`](AGENTS.md) and [`CLAUDE.md`](CLAUDE.md).
+`.mcp.json`, `.codex/config.toml` and `.cursor/mcp.json` are already wired in this repo, and the skills live in `.claude/skills` and `.agents/skills`. Press **Agent link** in the editor to let agents in; it is off by default. See [`AGENTS.md`](AGENTS.md) and [`CLAUDE.md`](CLAUDE.md).
+
+The agent dock (Agent, Terminal, or Ctrl+J; Cmd+J on a Mac) holds a shell, Chat and tabs that run the real Claude Code, Codex, Cursor and Antigravity programs installed on your computer, each already connected to FormSurface's MCP server with a token that ends when its tab closes. Opening one of them turns Agent link on. A program that is not installed shows its install line. The dock sits at the bottom of the window or in a column at its right.
+
+```sh
+./formsurface agents install --dry-run       # say what registering the MCP server would change
+./formsurface agents install                 # register it with Claude Code, Codex, Cursor and Antigravity
+./formsurface agents sync                    # mirror .claude/skills into .agents/skills, write agents/manifest.json
+./formsurface agents check                   # check the skills, the MCP configs, the manifest and the dock module
+```
+
+`install` keeps every other entry in each program's settings, changes nothing on a second run and leaves alone a `formsurface` server it did not write.
 
 ## Under the hood
 
 - **GPU engine in Rust:** wgpu on WebGPU in the browser, with a WebGL 2 fallback; painting and compositing stay on the GPU.
 - **Editor in TypeScript:** Vite, with three.js used only for its file loaders.
-- **Service in Python:** FastAPI saves projects and maps, runs OpenColorIO, and hosts terminals and Claude Code.
+- **Service in Python:** FastAPI saves projects and maps, runs OpenColorIO, and hosts terminals and the agent programs (Claude Code, Codex, Cursor, Antigravity).
 - **Tested:** pytest suites for the service, MCP bridge, versions and release profiles, plus window tests for the editor.
 
 ## Download

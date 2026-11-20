@@ -1,5 +1,9 @@
 import '../styles/shell.css';
-import '../styles/dock.css';
+import '../styles/chat.css';
+import '../dock/dock.css';
+import '../styles/dock-tokens.css';
+import { Dock } from '../dock/dock';
+import { formsurfaceDock, type AgentKind } from './dock-adapter';
 import { api } from './api';
 import { Commands, comboOf, formatKeys, type Command } from './commands';
 import { el, isMac, q, revealApp, setClass, setHidden, setText } from './dom';
@@ -8,7 +12,6 @@ import { icon } from './icons';
 import { MenuBar, type MenuDef, type MenuItem } from './menu';
 import { MENUS_IN_WINDOW_KEY, NativeMenus, isMacDesktop, menusInWindow, textFieldFocused, wantsNativeMenus } from './native-menu';
 import { toast } from './toast';
-import { TerminalDock } from './terminal-dock';
 import { CommandPalette } from './command-palette';
 import { Dialog } from './dialog';
 import { DEMOS } from './demos';
@@ -18,7 +21,6 @@ import { language, languages, onLanguage, setLanguage, t, type Lang } from '../i
 import { mountColorWheel } from '../ui/color-wheel';
 
 const SHORTCUTS_KEY = 'formsurface.shortcuts';
-const DOCK_KEY = 'formsurface.dock';
 const TAB_KEY = 'formsurface.panelTab';
 const FOLD_KEY = 'formsurface.folded';
 const PANEL_KEY = 'formsurface.panel';
@@ -96,8 +98,7 @@ const PANEL_TABS: Array<{ id: string; label: string; sections: string[] }> = [
 
 export class Shell {
   readonly commands = new Commands();
-  private dock: TerminalDock | null = null;
-  private readonly dockHost: HTMLElement;
+  private readonly dock: Dock<AgentKind>;
   private readonly app: HTMLElement;
   private palette: CommandPalette | null = null;
   private tab = read<string>(TAB_KEY, 'paint');
@@ -112,7 +113,19 @@ export class Shell {
 
   constructor() {
     this.app = q(document, '.app');
-    this.dockHost = q(document, '.fl-dock');
+    this.dock = new Dock(formsurfaceDock({
+      linkAgent: () => this.linkAgent(),
+      context: () => {
+        const set = document.querySelector('.set-row.active .name')?.textContent ?? '';
+        const layer = document.querySelector('.layer.active .name')?.textContent ?? '';
+        const parts = [set && `texture set ${set}`, layer && `active layer ${layer}`].filter(Boolean).join(', ');
+        return parts ? `FormSurface window: ${parts}` : '';
+      },
+      fail,
+      claude: (prompt, resume) => this.dock.claude(prompt, resume),
+    }));
+    this.dock.onTab = () => this.native?.refresh();
+    this.dock.mount(this.app, q(this.app, ':scope > .status'));
     this.register();
     this.registerShell();
     this.loadKeys();
@@ -130,9 +143,6 @@ export class Shell {
       if (b?.dataset.cmd && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); this.commands.run(b.dataset.cmd); }
     });
     window.addEventListener('keydown', (e) => this.onKey(e), true);
-    const dock = read<{ open: boolean; h: number }>(DOCK_KEY, { open: false, h: 280 });
-    this.app.style.setProperty('--fs-dock-open-h', `${dock.h}px`);
-    if (dock.open) void this.setDock(true);
     events.start();
   }
 
@@ -147,7 +157,7 @@ export class Shell {
       { label: 'Tools', items: ['tool.paint', 'tool.erase', 'tool.clone', 'tool.polyfill', 'tool.path', '-', 'tool.mirror', 'tool.quickMask', '-', 'tool.lassoFill', 'tool.rectFill', 'tool.lassoLimit', 'tool.rectLimit', '-', 'tool.brushBigger', 'tool.brushSmaller', 'tool.pickColor'] },
       { label: 'Layer', items: ['layer.addPaint', 'layer.addFill', 'layer.addFillBlack', 'layer.addFilter', 'layer.addFolder', '-', 'layer.maskBlack', 'layer.maskWhite', 'layer.maskNone', '-', 'layer.pickUnderCursor', '-', 'layer.mergeDown', 'layer.flattenFolder', 'layer.flatten', '-', 'layer.export', 'layer.exportMask', 'layer.editExternal', '-', 'layer.delete'] },
       { label: 'Bake', items: ['bake.mesh', 'bake.loadHigh', 'bake.high'] },
-      { label: 'Agent', items: ['view.terminal', 'view.newTerminal', 'agent.claude', 'agent.chat', '-', 'agent.link', 'agent.connect'] },
+      { label: 'Agent', items: ['view.terminal', 'view.newTerminal', 'agent.claude', 'agent.chat', 'agent.codex', 'agent.cursor', 'agent.antigravity', '-', 'agent.link', 'agent.connect'] },
       { label: 'View', items: ['view.frame', 'view.2d', '-', 'view.hidePart', 'view.hideIsland', 'view.isolatePart', 'view.showParts', '-', 'view.render', ...inWindow] },
       { label: 'Window', items: [...PANEL_TABS.map((p) => `view.tab.${p.id}`), 'view.panel', '-', { label: 'Theme', items: THEMES.map(([id]) => `window.theme.${id}`) }] },
       { label: 'Help', items: [...demos, 'edit.shortcuts', 'agent.connect', '-', 'help.about'] },
@@ -268,10 +278,13 @@ export class Shell {
       { id: 'view.showParts', label: 'Show All Parts', keys: ['Alt+H'], run: () => { byId('canvas')?.dispatchEvent(new Event('fs-show-parts')); } },
       ...PANEL_TABS.map((p, i) => ({ id: `view.tab.${p.id}`, label: `${p.label} Panel`, keys: [`Alt+${i + 1}`], checked: () => this.tab === p.id, run: () => this.showTab(p.id) })),
       { id: 'view.panel', label: 'Show Properties Panel', keys: ['Mod+\\'], checked: () => !this.app.classList.contains('is-panel-hidden'), run: () => this.togglePanel() },
-      { id: 'view.terminal', label: 'Terminal', keys: ['Mod+J'], checked: () => this.app.classList.contains('is-dock-open'), run: () => void this.setDock(!this.app.classList.contains('is-dock-open')) },
-      { id: 'view.newTerminal', label: 'New Terminal', run: () => void this.withDock((d) => d.open()) },
-      { id: 'agent.claude', label: 'Claude Code', keys: ['Shift+Mod+J'], run: () => void this.withDock((d) => { this.linkAgent(); return d.claude(); }) },
-      { id: 'agent.chat', label: 'Chat with Claude', keys: ['Alt+Mod+J'], run: () => void this.withDock((d) => { this.linkAgent(); return d.showChat(); }) },
+      { id: 'view.terminal', label: 'Terminal', keys: ['Mod+J'], checked: () => this.dock.isOpen(), run: () => this.dock.toggle() },
+      { id: 'view.newTerminal', label: 'New Terminal', run: () => void this.dock.newTerminal() },
+      { id: 'agent.claude', label: 'Claude Code', keys: ['Shift+Mod+J'], checked: () => this.dock.isShowing('claude'), run: () => void this.dock.show('claude') },
+      { id: 'agent.chat', label: 'Chat with Claude', keys: ['Alt+Mod+J'], checked: () => this.dock.isShowing('chat'), run: () => { this.linkAgent(); void this.dock.show('chat'); } },
+      { id: 'agent.codex', label: 'Codex', checked: () => this.dock.isShowing('codex'), run: () => void this.dock.show('codex') },
+      { id: 'agent.cursor', label: 'Cursor', checked: () => this.dock.isShowing('cursor'), run: () => void this.dock.show('cursor') },
+      { id: 'agent.antigravity', label: 'Antigravity', checked: () => this.dock.isShowing('antigravity'), run: () => void this.dock.show('antigravity') },
       btn('agent.link', 'Agent Link', 'agent-link', undefined, { checked: () => pressed('agent-link') }),
       { id: 'agent.connect', label: 'Connect an Outside Agent...', run: () => this.connectHelp() },
       { id: 'help.about', label: 'About FormSurface', run: () => this.about() },
@@ -302,13 +315,14 @@ export class Shell {
   private typing(e: KeyboardEvent): boolean {
     const target = e.target as HTMLElement | null;
     if (!target) return false;
-    if (target.closest('.fl-dock-stage, .cv-dialog, .cv-palette')) return true;
+    if (target.closest('.cv-dialog, .cv-palette')) return true;
     if (target.isContentEditable || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return true;
     return target.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'color', 'button'].includes((target as HTMLInputElement).type);
   }
 
   private onKey(e: KeyboardEvent): void {
     if (e.isComposing || ['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
+    if (this.dock.keeps(e)) return;
     if (this.menuBar.isOpen || (e.target instanceof Element && e.target.closest('.cv-menubar'))) return;
     const cmd = this.commands.forEvent(e);
     if (!cmd || FIELD_KEYS.has(cmd.id)) return;
@@ -427,59 +441,6 @@ export class Shell {
     setClass(this.app, 'is-panel-hidden', hidden);
     write(PANEL_KEY, !hidden);
     window.dispatchEvent(new Event('resize'));
-  }
-
-  private async withDock(fn: (d: TerminalDock) => Promise<void>): Promise<void> {
-    await this.setDock(true, false);
-    if (this.dock) await fn(this.dock);
-  }
-
-  private async setDock(open: boolean, shell = true): Promise<void> {
-    if (open && !this.dock) {
-      this.dock = new TerminalDock(this.dockHost, api, () => void this.setDock(false));
-      this.dock.onFail = fail;
-      this.dockHost.addEventListener('click', (e) => { if ((e.target as HTMLElement).closest('.fl-dock-chat, .fl-dock-claude')) this.linkAgent(); }, true);
-      this.dockHost.addEventListener('submit', () => this.linkAgent(), true);
-      this.dock.context = () => {
-        const set = document.querySelector('.set-row.active .name')?.textContent ?? '';
-        const layer = document.querySelector('.layer.active .name')?.textContent ?? '';
-        const parts = [set && `texture set ${set}`, layer && `active layer ${layer}`].filter(Boolean).join(', ');
-        return parts ? `FormSurface window: ${parts}` : '';
-      };
-      this.resizer();
-    }
-    setHidden(this.dockHost, !open);
-    setClass(this.app, 'is-dock-open', open);
-    const h = parseInt(this.app.style.getPropertyValue('--fs-dock-open-h'), 10) || 280;
-    write(DOCK_KEY, { open, h });
-    window.dispatchEvent(new Event('resize'));
-    if (open && this.dock) await this.dock.ensure(shell);
-    else (byId('canvas'))?.focus();
-  }
-
-  private resizer(): void {
-    const grip = this.dockHost.querySelector<HTMLElement>('.fl-dock-rsz');
-    if (!grip) return;
-    grip.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      grip.setPointerCapture(e.pointerId);
-      const startY = e.clientY;
-      const startH = this.dockHost.getBoundingClientRect().height;
-      const move = (ev: PointerEvent) => {
-        const h = Math.round(Math.max(140, Math.min(window.innerHeight * 0.7, startH + startY - ev.clientY)));
-        this.app.style.setProperty('--fs-dock-open-h', `${h}px`);
-      };
-      const up = () => {
-        grip.removeEventListener('pointermove', move);
-        grip.removeEventListener('pointerup', up);
-        grip.removeEventListener('pointercancel', up);
-        write(DOCK_KEY, { open: true, h: parseInt(this.app.style.getPropertyValue('--fs-dock-open-h'), 10) || 280 });
-        window.dispatchEvent(new Event('resize'));
-      };
-      grip.addEventListener('pointermove', move);
-      grip.addEventListener('pointerup', up);
-      grip.addEventListener('pointercancel', up);
-    });
   }
 
   private openPalette(): void {
