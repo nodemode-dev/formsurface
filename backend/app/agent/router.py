@@ -86,7 +86,8 @@ async def stream(request: Request) -> StreamingResponse:
 
 
 @router.get("/api/chat/image")
-def chat_image(path: str) -> FileResponse:
+def chat_image(path: str, request: Request) -> FileResponse:
+    window_key.held_or_ticket(request)
     folder = (config.data_dir() / "Chat").resolve()
     target = Path(path).resolve()
     if target.parent != folder or not target.is_file():

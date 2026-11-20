@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import pytest
@@ -76,6 +77,25 @@ def test_a_ticket_opens_the_stream_once(client):
     ticket = client.post("/api/window/ticket").json()["ticket"]
     assert window_key.redeem(ticket) is True
     assert window_key.redeem(ticket) is False
+
+
+def test_a_chat_picture_needs_the_key_or_a_ticket_spent_once(bare, client):
+    from app.agent import config
+
+    folder = config.data_dir() / "Chat"
+    folder.mkdir(parents=True, exist_ok=True)
+    picture = folder / "seen.png"
+    picture.write_bytes(b"\x89PNG\r\n\x1a\nfs")
+    url = "/api/chat/image?path=" + urllib.parse.quote(str(picture))
+    for headers in ({}, WRONG):
+        r = bare.get(url, headers=headers)
+        assert r.status_code == 403 and r.json() == REFUSED
+    assert bare.get(url, headers=TAB).status_code == 403
+    assert bare.get(url + "&ticket=nothing").status_code == 403
+    assert client.get(url).content == picture.read_bytes()
+    ticket = client.post("/api/window/ticket").json()["ticket"]
+    assert bare.get(url + "&ticket=" + ticket).content == picture.read_bytes()
+    assert bare.get(url + "&ticket=" + ticket).status_code == 403
 
 
 def test_bootstrap_answers_once_then_refuses(bare, monkeypatch):

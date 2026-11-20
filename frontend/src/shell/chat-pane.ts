@@ -4,6 +4,7 @@ import { el, q, setClass, setHidden, setText } from './dom';
 import { icon } from './icons';
 import { MarkdownStream } from './markdown';
 import { t } from '../i18n';
+import { streamTicket } from './window-key';
 
 interface Part { kind: 'text' | 'tool'; text?: string; id?: string; name?: string; input?: string; status?: string; images?: string[] }
 interface Meta { seconds?: number; turns?: number | null; costUsd?: number | null; inputTokens?: number; outputTokens?: number }
@@ -138,7 +139,9 @@ export class ChatPane {
     const row = el('<div class="fl-chat-images"></div>');
     for (const path of paths.slice(0, 6)) {
       const img = el<HTMLImageElement>('<img alt="What Claude looked at" decoding="async" draggable="false">');
-      img.src = this.api.url(`/api/chat/image?path=${encodeURIComponent(path)}`);
+      void streamTicket().then((ticket) => {
+        img.src = this.api.url(`/api/chat/image?path=${encodeURIComponent(path)}&ticket=${encodeURIComponent(ticket)}`);
+      });
       row.appendChild(img);
     }
     after.after(row);

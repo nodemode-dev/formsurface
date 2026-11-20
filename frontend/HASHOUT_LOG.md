@@ -12,3 +12,7 @@ Decisions, reasons and anything left out, newest first. Code carries no comments
 - The live socket (Agent link) sends the key message as soon as it opens, after the key has loaded. Terminal sockets send it first, before any input or resize, from `dock-adapter.ts`; the shared panel module is not changed.
 - The event stream asks for a one-time ticket and opens `EventSource` with it. On any error it closes and opens again with a fresh ticket after 1.5 s, because the browser's own retry would reuse the spent ticket.
 - Checked: `tsc --noEmit` reports only the two lines for the missing WebAssembly build (`src/engine/pkg`), which cannot be built on this machine (no `wasm-bindgen`).
+
+## Unreleased (2026-11-20): Chat pictures are asked for with a ticket (`src/shell/chat-pane.ts`)
+
+- Each picture in a Chat reply asks `streamTicket()` for a one-time ticket and only then sets its `src` with `&ticket=`, because an `<img>` cannot send the window key header. One ticket per picture, spent by its one load.
