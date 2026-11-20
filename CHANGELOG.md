@@ -2,12 +2,14 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. Entries before 0.61.0 were reconstructed from the commit history.
 
-## 0.66.0 · 2026-11-20
+## 0.67.0 · 2026-11-20
 
-Only FormSurface's own window can change things in FormSurface, the Windows app holds its engine and says why a start failed, and every list of agent programs names all four. 0.64.0 and 0.65.0 were not handed out; everything they had is in this release.
+Only FormSurface's own window can change things in FormSurface, the engine starts and stops cleanly, the Windows app holds its engine and says why a start failed, and every list of agent programs names all four. 0.64.0, 0.65.0 and 0.66.0 were not handed out; everything they had is in this release.
 
 ### Changed
 
+- The engine keeps a log in the data folder's `Logs`. A second start on the same data folder is refused with "formsurface is already running on [folder] (engine process N)."; an engine left running by an app that is gone is stopped and replaced; the engine stops when the app that started it ends; and the engine opened on its own opens FormSurface instead.
+- A terminal's output now always reaches the terminal tab that is showing it.
 - On Windows the engine runs inside a job object, so it ends with the app however the app ends, and everything it started ends with it.
 - The app waits at most 90 seconds for its engine. When the engine cannot start, the message says why, shows the engine's last lines, its exit code and where its log is, and appears before the loading window closes. A main window that cannot open now says so.
 - The Windows engine is built with no console window; `FORMSURFACE_ENGINE_WINDOWED=0` keeps one. The engine runs with no standard output or error at all.
