@@ -20,6 +20,19 @@ SENTENCE = "Only the formsurface window can do this"
 REFUSED = {"detail": SENTENCE}
 WRONG = {"x-formsurface-window-key": "x" * 43}
 TAB = {"x-formsurface-tab": "t" * 43}
+SOCKET_WAIT = 20
+
+
+def receive_within(ws, seconds=SOCKET_WAIT):
+    import anyio
+
+    async def take():
+        with anyio.fail_after(seconds):
+            return await ws._send_rx.receive()
+
+    message = ws.portal.call(take)
+    ws._raise_on_close(message)
+    return message
 
 
 def write_operations(app):
@@ -130,7 +143,7 @@ def test_live_client_without_the_key_does_not_replace_the_window(client):
         with pytest.raises(WebSocketDisconnect) as refused:
             with client.websocket_connect("/api/live", headers=LOOPBACK) as other:
                 other.send_json({"type": "key", "key": "y" * 43})
-                other.receive_json()
+                receive_within(other)
         assert refused.value.code == 4403
         assert relay.socket is held
 
@@ -143,12 +156,12 @@ def test_terminal_socket_without_the_key_cannot_drive_the_shell(client):
             with client.websocket_connect(f"/api/terminal/{sid}", headers=LOOPBACK) as ws:
                 ws.send_json({"type": "key", "key": "y" * 43})
                 ws.send_json({"type": "input", "data": "true\r"})
-                ws.receive_text()
+                receive_within(ws)
         assert refused.value.code == 4403
         with client.websocket_connect(f"/api/terminal/{sid}", headers=LOOPBACK) as ws:
             ws.send_json({"type": "key", "key": window_headers()["x-formsurface-window-key"]})
             ws.send_json({"type": "resize", "cols": 90, "rows": 30})
-            assert isinstance(ws.receive_text(), str)
+            assert isinstance(receive_within(ws)["text"], str)
     finally:
         client.post("/api/commands/terminal.close", json={"id": sid})
 
