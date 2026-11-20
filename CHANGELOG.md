@@ -2,6 +2,16 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. Entries before 0.61.0 were reconstructed from the commit history.
 
+## 0.64.0 · 2026-11-20
+
+Only FormSurface's own window can change things in FormSurface.
+
+### Changed
+
+- The engine gives one key to FormSurface's window when it starts, and every change asks for it: saving, deleting and exporting projects, the terminals, Claude Code, Codex, Cursor, Antigravity and Chat, Preferences, the external editor and closing the engine. A request without it is answered "Only the formsurface window can do this". The desktop app hands the window its key directly; a window opened from source asks for it once, and the engine gives it to the first page only.
+- The editor's Agent link, the terminal tabs and the dock's event stream connect only from that window. Another program that tries to take over the Agent link is turned away, and the linked editor stays linked.
+- Agents outside the app still reach the editor through `./formsurface mcp` while you have Agent link turned on, as before.
+
 ## 0.63.0 · 2026-11-20
 
 The Form family's shared agent dock, module 2.2.0, replaces FormSurface's own terminal dock: the real Claude Code, Codex, Cursor and Antigravity programs run in tabs beside the model, each connected to FormSurface's MCP server, and `./formsurface agents install` registers that server with all four.
