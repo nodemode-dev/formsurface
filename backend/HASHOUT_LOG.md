@@ -14,3 +14,8 @@ Decisions, reasons and anything left out, newest first. Code carries no comments
 ## Unreleased (2026-11-20): a Chat picture needs the window key or a ticket (`app/agent/router.py`)
 
 - `GET /api/chat/image` now calls `window_key.held_or_ticket`, the same check as `GET /api/events`: the header, or a one-time ticket from `POST /api/window/ticket` in the query (an `<img>` cannot send a header). Without either, or with a spent ticket, it answers 403 with the sentence; an agent tab with its header is refused as before. Test: `tests/test_window_key.py::test_a_chat_picture_needs_the_key_or_a_ticket_spent_once`.
+
+## Unreleased (2026-11-20): each Antigravity tab gets a folder of its own (`app/agent/agent_programs.py`)
+
+- Antigravity reads its MCP servers from `.agents/mcp_config.json` in its working folder. All its tabs shared `agent-tabs/antigravity`, so a second tab overwrote the first tab's `formsurface_tab` entry (and token), and closing either removed the entry the other was using. Each tab now starts in `agent-tabs/antigravity/[12 hex]`, made at open; `remove_tab_folder` takes the tab's entry out (only while it still carries this tab's token) and removes the folder when the tab closes or fails to start. A fresh folder never holds a foreign or broken file. Same change as FormFabric's.
+- Test: `tests/test_agent_tabs.py` with a stand-in `agy` written by the test and given through `FORMSURFACE_ANTIGRAVITY_BIN`: two tabs open at once each have their own folder, entry and live token (file mode 0600); closing one removes its folder and ends its token and leaves the other's entry and token; a tab whose terminal fails to start leaves no folder. 2 passed.
