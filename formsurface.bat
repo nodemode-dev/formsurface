@@ -18,6 +18,7 @@ if "%1"=="backend" goto backend
 if "%1"=="frontend" goto frontend
 if "%1"=="batch" goto batch
 if "%1"=="script" goto script
+if "%1"=="agents" goto agents
 if not "%1"=="" if not "%1"=="boot" (call :help & exit /b 2)
 if not exist frontend\src\engine\pkg\fs_engine.js call :engine
 start "FormSurface backend" cmd /k "cd backend && boot_backend.bat"
@@ -64,6 +65,10 @@ goto :eof
 if not exist backend\venv\Scripts\python.exe (echo Run formsurface.bat install first 1>&2 & exit /b 1)
 shift
 backend\venv\Scripts\python.exe -I mcp\run_script.py %1 %2 %3 %4 %5 %6 %7 %8 %9
+goto :eof
+:agents
+shift
+python setup\agents.py %1 %2 %3 %4 %5 %6 %7 %8 %9
 goto :eof
 :claude
 where claude >nul 2>nul || (echo Claude Code is not installed: https://claude.com/claude-code & exit /b 1)
@@ -133,6 +138,8 @@ echo                   (--wait, --out, --pause, --keep-going, --headless [--size
 echo   script FILE     run a Python script that imports formsurface_api against the linked editor
 echo                   (script --headless [--size N] FILE runs it without an open editor)
 echo   claude [ARGS]   Claude Code connected to the formsurface MCP server
+echo   agents sync^|check^|install [--dry-run]  the agents kit: mirror the skills, check it,
+echo                   register FormSurface with Claude Code, Codex, Cursor and Antigravity
 echo   doctor          check the toolchain and builds
 echo   install-desktop PyInstaller and the Tauri command line
 echo   freeze          freeze the service into src-tauri\binaries
