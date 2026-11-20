@@ -110,7 +110,7 @@ async def attach(ws: WebSocket, sid: str) -> None:
         await ws.close(code=4404)
         return
     q: asyncio.Queue = asyncio.Queue()
-    session.subscribers.add(q)
+    session.subscribers[q] = asyncio.get_running_loop()
 
     async def outbound() -> None:
         backlog = session.scrollback()
@@ -138,4 +138,4 @@ async def attach(ws: WebSocket, sid: str) -> None:
         pass
     finally:
         sender.cancel()
-        session.subscribers.discard(q)
+        session.subscribers.pop(q, None)
