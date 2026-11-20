@@ -44,7 +44,8 @@ The code lives in:
 | `setup` | the scripts behind `./formsurface` |
 | `docs` | the parity table and the README's pictures |
 | `assets` | repo-level art (the README logo and the desktop icon source) |
-| `.claude/skills` | agent skills; the painting skill is mirrored into `.agents/skills` |
+| `.claude/skills` | agent skills, mirrored into `.agents/skills` by `./formsurface agents sync` (`agents check` checks the kit) |
+| `frontend/src/dock` | the shared agent dock module, copied unchanged from FormVis; never edit it here |
 | `.docs/wiki` | the wiki's source, published on push |
 
 ## Before you open a pull request

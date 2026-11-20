@@ -8,11 +8,12 @@ formsurface is four parts: a Rust engine that owns the GPU, a TypeScript editor 
 | `native/fs-engine` | every GPU resource, on wgpu; exposes the `Engine` class to JavaScript through wasm-bindgen; WebAssembly only |
 | `frontend/src/engine/pkg` | build output of `setup/build_engine`, git-ignored |
 | `frontend/src/main.ts` | the editor: canvas, pointer handling, panels, document state |
-| `frontend/src/shell` | commands, menus, palette, Home, dialogs, terminal dock, Chat, themes, icons |
+| `frontend/src/shell` | commands, menus, palette, Home, dialogs, the dock adapter, Chat, themes, icons |
+| `frontend/src/dock` | the Form family's shared agent dock module 2.2.0, copied unchanged from FormVis (hashes in `MANIFEST.json`) |
 | `frontend/src/i18n` | English source strings and the language tables |
 | `backend/app/main.py` | the FastAPI service: projects, maps, meshes, exports, version |
 | `backend/app/project_library.py`, `backend/app/projects.py` | the project library behind Home |
-| `backend/app/agent` | the command bus: terminals, Claude Code, Chat, preferences, events |
+| `backend/app/agent` | the command bus: terminals, the agent programs (Claude Code, Codex, Cursor, Antigravity), Chat, preferences, events |
 | `backend/app/local_guard.py` | the loopback, Host and Origin checks on every request |
 | `backend/app/ocio.py`, `backend/app/environments.py` | OpenColorIO and HDR environments |
 | `mcp` | the MCP server, the batch runner and the Python API |

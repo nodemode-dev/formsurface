@@ -31,8 +31,10 @@ something outside it could get in:
 - **Agent link** (off by default) and the MCP server (`./formsurface mcp`), the
   batch runner and the Python API behind it: an agent driving the editor while
   Agent link is off.
-- **The terminal dock and Claude Code**: starting a shell or a command there from
-  anywhere but the app's own window.
+- **The agent dock and its programs** (a shell, Claude Code, Codex, Cursor and
+  Antigravity): starting a shell or a command there from anywhere but the app's
+  own window, or a tab's MCP token working after its tab has closed or reaching a
+  shell tab.
 - **Scripts**: the Python panel in the editor and `./formsurface script` running
   anything the person did not choose to run, or a workspace script reaching outside
   the workspace folder.

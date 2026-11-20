@@ -2,6 +2,29 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. Entries before 0.61.0 were reconstructed from the commit history.
 
+## 0.63.0 · 2026-11-20
+
+The Form family's shared agent dock, module 2.2.0, replaces FormSurface's own terminal dock: the real Claude Code, Codex, Cursor and Antigravity programs run in tabs beside the model, each connected to FormSurface's MCP server, and `./formsurface agents install` registers that server with all four.
+
+### Added
+
+- Codex, Cursor and Antigravity tabs in the dock, beside the shell, Claude Code and Chat. Each has a head button and a row in the More agents menu; a program that is not installed shows its install line there. The Agent menu and the command palette have Codex, Cursor and Antigravity commands.
+- Every agent tab gets its own MCP token, in its environment or in a file only you can read, never on its command line. The token ends when the tab closes; a shell tab gets none. Antigravity reads its servers from `.agents/mcp_config.json` in its tab folder, where the tab's `formsurface_tab` entry is written and taken out again when the tab closes.
+- The service finds the four programs however FormSurface was started (from a terminal, the Dock, the Finder or a desktop launcher): the engine's PATH, the known install folders and your shell's PATH. The `agents.status` and `agents.open` commands report and start them.
+- `./formsurface agents sync | check | install [--dry-run]` (and `formsurface.bat agents`): `sync` mirrors `.claude/skills` into `.agents/skills` and writes `agents/manifest.json`; `check` checks the skills, the MCP configs, the manifest and the dock module's hashes; `install` registers the `formsurface` MCP server with Claude Code, Codex, Cursor and Antigravity for your user, keeps every other entry, changes nothing on a second run and leaves alone a `formsurface` server it did not write.
+- The dock can sit at the bottom of the window or in a column at its right, and has a short guide the first time it opens.
+
+### Changed
+
+- The dock is mounted once with the window and takes its space from the window's grid, so opening, closing and resizing it move nothing else. A saved dock height from 0.62 carries over.
+- Opening Claude Code, Codex, Cursor, Antigravity or Chat in the dock turns Agent link on, as Claude Code and Chat did before.
+- `terminal.close` succeeds for a tab that is already closed.
+- `.agents/skills` mirrors both skills, the harness as well as the painting skill.
+
+### Removed
+
+- `frontend/src/shell/terminal-dock.ts`, the old dock, and the old dock styles; the chat styles stay in `frontend/src/styles/chat.css`.
+
 ## 0.62.2 · 2026-11-18
 
 - Mac builds are signed with the new Developer ID and notarized by Apple, so macOS opens the downloaded app without asking first. Nothing in the app changed.
