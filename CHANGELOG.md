@@ -2,12 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. Entries before 0.61.0 were reconstructed from the commit history.
 
-## 0.65.0 · 2026-11-20
+## 0.66.0 · 2026-11-20
 
-Only FormSurface's own window can change things in FormSurface, and Antigravity tabs no longer share one folder. 0.64.0 was not handed out; everything it had is in this release.
+Only FormSurface's own window can change things in FormSurface, the Windows app holds its engine and says why a start failed, and every list of agent programs names all four. 0.64.0 and 0.65.0 were not handed out; everything they had is in this release.
 
 ### Changed
 
+- On Windows the engine runs inside a job object, so it ends with the app however the app ends, and everything it started ends with it.
+- The app waits at most 90 seconds for its engine. When the engine cannot start, the message says why, shows the engine's last lines, its exit code and where its log is, and appears before the loading window closes. A main window that cannot open now says so.
+- The Windows engine is built with no console window; `FORMSURFACE_ENGINE_WINDOWED=0` keeps one. The engine runs with no standard output or error at all.
+- The Connect an Outside Agent dialog, Home's Agents entry, the Agent link button's tooltip and the first-run guide name Claude Code, Codex, Cursor and Antigravity, in every language the app has. The shared panel module is 2.2.1.
+- The backend test suite runs only with stand-in agent programs, and its socket tests give up after 20 seconds instead of waiting for ever.
 - Pictures that Claude looked at, shown in a Chat reply, are now only given to FormSurface's own window.
 - Each Antigravity tab works in a folder of its own, so two Antigravity tabs open at once each keep their own connection to FormSurface, and closing one leaves the other connected. The tab's folder is removed when the tab closes.
 - The README now says that FormSurface is released, built and bundled for macOS, Windows and Linux and tested on all three.
