@@ -2,11 +2,15 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. Entries before 0.61.0 were reconstructed from the commit history.
 
-## 0.64.0 · 2026-11-20
+## 0.65.0 · 2026-11-20
 
-Only FormSurface's own window can change things in FormSurface.
+Only FormSurface's own window can change things in FormSurface, and Antigravity tabs no longer share one folder. 0.64.0 was not handed out; everything it had is in this release.
 
 ### Changed
+
+- Pictures that Claude looked at, shown in a Chat reply, are now only given to FormSurface's own window.
+- Each Antigravity tab works in a folder of its own, so two Antigravity tabs open at once each keep their own connection to FormSurface, and closing one leaves the other connected. The tab's folder is removed when the tab closes.
+- The README now says that FormSurface is released, built and bundled for macOS, Windows and Linux and tested on all three.
 
 - The engine gives one key to FormSurface's window when it starts, and every change asks for it: saving, deleting and exporting projects, the terminals, Claude Code, Codex, Cursor, Antigravity and Chat, Preferences, the external editor and closing the engine. A request without it is answered "Only the formsurface window can do this". The desktop app hands the window its key directly; a window opened from source asks for it once, and the engine gives it to the first page only.
 - The editor's Agent link, the terminal tabs and the dock's event stream connect only from that window. Another program that tries to take over the Agent link is turned away, and the linked editor stays linked.
