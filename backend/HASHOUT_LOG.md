@@ -2,6 +2,11 @@
 
 Decisions, reasons and anything left out, newest first. Code carries no comments; the context lives here. Started in 0.64.0; earlier history is not backfilled.
 
+## 0.66.0 (2026-11-20): the engine runs with no standard streams (`formsurface_engine.py`)
+
+- The family's stream guard (WINDOWS_APP_SPEC section 0) is at the top of the entry, after its standard-library imports: a missing `sys.stdin`, `sys.stdout` or `sys.stderr` is replaced by the null device. A Windows engine built with no console (src-tauri log, 0.66.0) has none of the three when nothing gives it pipes.
+- Seen here: the released entry run with its standard output closed (`>&-`, `>&- 2>&-`, `<&- >&- 2>&-`) exited each time, with "ValueError: Unable to configure formatter 'default'" when standard error was open; the entry with the guard served `/api/health` with 200 in all three.
+
 ## 0.64.0 (2026-11-20): only FormSurface's own window can change things (`app/window_key.py`, `app/main.py`, `app/agent/router.py`, `formsurface_engine.py`)
 
 - **The key.** `window_key.KEY` is made once per engine start with `secrets.token_urlsafe(32)`, kept in memory only and compared with `hmac.compare_digest`. Same design as FormVis and FormTools, under formsurface's names: header `x-formsurface-window-key`, sentence "Only the formsurface window can do this".
