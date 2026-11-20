@@ -40,6 +40,8 @@ async def call_with_editor(engine, reply):
 
     async def editor():
         async with connect(f"ws://127.0.0.1:{engine['port']}{WS_PATH}") as ws:
+            await ws.send(json.dumps({"type": "key", "key": engine["key"]}))
+            await asyncio.sleep(0.2)
             ready.set()
             message = json.loads(await ws.recv())
             seen.append(message)

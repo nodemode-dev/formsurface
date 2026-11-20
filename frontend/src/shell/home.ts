@@ -110,7 +110,7 @@ ${nav('start', 'home', 'Start')}${nav('recent', 'layers', 'Recent projects', 'fs
 <div class="fs-home-open" hidden><div class="fs-home-nav-sep"></div><div class="fs-home-nav-title">Open project</div><div class="fs-home-open-list"></div></div>
 <div class="fs-home-nav-sep"></div>
 <div class="fs-home-nav-title">Agents</div>
-<button class="fs-home-nav-item" type="button" data-a="agents">${icon('agent', 16)}<span>Claude Code, Codex, Cursor</span></button>
+<button class="fs-home-nav-item" type="button" data-a="agents">${icon('agent', 16)}<span>Claude Code, Codex, Cursor, Antigravity</span></button>
 <div class="fs-home-nav-foot">
 <button class="fs-home-nav-item fs-home-back" type="button" data-a="back" hidden>${icon('chevronLeft', 16)}<span>Back to Workspace</span></button>
 <button class="fs-home-nav-item" type="button" data-a="local" title="Your projects stay on this computer">${icon('cloudOff', 16)}<span>Local only</span></button>

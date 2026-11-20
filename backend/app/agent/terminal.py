@@ -29,7 +29,7 @@ class Session:
         self.chunks: deque[str] = deque()
         self.size = 0
         self.alive = True
-        self.subscribers: set[asyncio.Queue] = set()
+        self.subscribers: dict[asyncio.Queue, asyncio.AbstractEventLoop] = {}
         self.lock = threading.Lock()
         self.gen = 0
         self.cols = 100
@@ -90,15 +90,15 @@ def base_env() -> dict:
     return env
 
 
-def _deliver(session: Session, text: str | None) -> None:
-    for q in list(session.subscribers):
-        if q.qsize() < 4000:
-            q.put_nowait(text)
+def _deliver(q: asyncio.Queue, text: str | None) -> None:
+    if q.qsize() < 4000:
+        q.put_nowait(text)
 
 
 def _send(session: Session, text: str | None) -> None:
-    if _loop is not None and not _loop.is_closed():
-        _loop.call_soon_threadsafe(_deliver, session, text)
+    for q, loop in list(session.subscribers.items()):
+        if not loop.is_closed():
+            loop.call_soon_threadsafe(_deliver, q, text)
 
 
 def _pump(session: Session, proc, gen: int) -> None:

@@ -2,6 +2,7 @@ import hmac
 import json
 import os
 import secrets
+import shutil
 import time
 import uuid
 from pathlib import Path
@@ -45,10 +46,17 @@ def _write_private(path: Path, text: str) -> None:
     os.replace(part, path)
 
 
-def tab_folder(kind: str) -> Path:
+def tab_folder(kind: str, tab: str = "") -> Path:
     folder = config.data_dir() / "agent-tabs" / kind
+    if tab:
+        folder = folder / tab
     folder.mkdir(parents=True, exist_ok=True)
     return folder
+
+
+def remove_tab_folder(folder: Path, token: str) -> None:
+    remove_tab_entry(folder, token)
+    shutil.rmtree(folder, ignore_errors=True)
 
 
 def private_file(kind: str, text: str) -> Path:
@@ -150,7 +158,7 @@ def open_terminal(kind: str, cols: int, rows: int) -> dict:
         found = _located(kind, fresh=True)
     if found.state != "runs":
         raise LookupError(agent_lookup.sentence(found, agent_lookup.install(kind)))
-    own = tab_folder(kind) if kind == "antigravity" else None
+    own = tab_folder(kind, secrets.token_hex(6)) if kind == "antigravity" else None
     folder = own or claude_code.workdir()
     if kind == "cursor":
         cursor_config(folder)
@@ -163,9 +171,9 @@ def open_terminal(kind: str, cols: int, rows: int) -> dict:
     except BaseException:
         revoke(token)
         if own:
-            remove_tab_entry(own, token)
+            remove_tab_folder(own, token)
         raise
     session.on_close.append(lambda: revoke(token))
     if own:
-        session.on_close.append(lambda: remove_tab_entry(own, token))
+        session.on_close.append(lambda: remove_tab_folder(own, token))
     return session.describe()

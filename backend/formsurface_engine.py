@@ -1,7 +1,19 @@
 import json
+import logging
 import os
 import runpy
 import sys
+
+if sys.stdin is None:
+    sys.stdin = open(os.devnull, encoding="utf-8")
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
+LOG_NAME = "formsurface-engine.log"
+LOG_BYTES = 1_048_576
+LOG_KEEP = 3
 
 
 def resource_dir() -> str:
@@ -47,37 +59,41 @@ def run_mcp() -> int:
     return 0
 
 
-def exit_with_parent() -> None:
-    """When the desktop app passes its process id, end this engine as soon as that process is gone."""
-    raw = os.environ.get("FORMSURFACE_PARENT_PID", "")
-    if not raw.isdigit():
+def release(data) -> None:
+    from app import startup
+
+    lock = data / startup.LOCK_NAME
+    try:
+        if int(json.loads(lock.read_text(encoding="utf-8")).get("pid", 0)) == os.getpid():
+            lock.unlink()
+    except (OSError, ValueError, AttributeError):
         return
-    parent = int(raw)
 
-    def alive() -> bool:
-        if os.name == "nt":
-            import ctypes
 
-            handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, parent)
-            if not handle:
-                return False
-            code = ctypes.c_ulong()
-            ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
-            ctypes.windll.kernel32.CloseHandle(handle)
-            return code.value == 259
-        try:
-            os.kill(parent, 0)
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True
-        return True
+def start_logging(data):
+    from logging.handlers import RotatingFileHandler
 
-    def watch() -> None:
-        import time
+    folder = data / "Logs"
+    folder.mkdir(parents=True, exist_ok=True)
+    handler = RotatingFileHandler(folder / LOG_NAME, maxBytes=LOG_BYTES, backupCount=LOG_KEEP, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    log = logging.getLogger("formsurface")
+    log.setLevel(logging.INFO)
+    log.addHandler(handler)
+    log.info("engine started, pid %s, data folder %s", os.getpid(), data)
+    return folder
 
-        while alive():
-            time.sleep(1.5)
+
+def exit_with_parent(data) -> None:
+    from app import startup
+
+    shell = startup.shell_pid()
+    if shell <= 1:
+        return
+
+    def leave() -> None:
+        logging.getLogger("formsurface").info("the app that started this engine is gone (process %s), stopping", shell)
+        release(data)
         unpacked = getattr(sys, "_MEIPASS", "")
         if os.path.basename(unpacked).startswith("_MEI"):
             import shutil
@@ -85,9 +101,7 @@ def exit_with_parent() -> None:
             shutil.rmtree(unpacked, ignore_errors=True)
         os._exit(0)
 
-    import threading
-
-    threading.Thread(target=watch, name="parent-watch", daemon=True).start()
+    startup.watch(shell, leave)
 
 
 UNPACK_MARK = "formsurface-engine.pid"
@@ -165,17 +179,53 @@ def main() -> int:
     if os.path.isdir(bundled):
         os.environ.setdefault("FORMSURFACE_STATIC", bundled)
     os.environ.setdefault("FORMSURFACE_DATA", os.path.join(os.path.expanduser("~"), "FormSurface"))
+    from pathlib import Path
+
+    from app import startup
+
+    try:
+        data = Path(os.environ["FORMSURFACE_DATA"]).expanduser()
+        data.mkdir(parents=True, exist_ok=True)
+        logs = start_logging(data)
+    except OSError as err:
+        print(f"formsurface cannot use its data folder: {err}", file=sys.stderr)
+        return 5
+    startup.keep_errors(logs)
+    log = logging.getLogger("formsurface")
+    if startup.alone():
+        beside = startup.app_beside(Path(sys.executable))
+        if beside is not None and startup.open_app(beside):
+            log.info("started without its app, so it opened %s and stopped", beside)
+            return 0
+        log.error("started without its app, and no app program was found near %s", sys.executable)
+        print("formsurface-engine is a part of FormSurface and serves nothing on its own. Open FormSurface instead.", file=sys.stderr)
+        return 4
+    try:
+        _, replaced = startup.claim(data, startup.shell_pid())
+    except startup.Busy as err:
+        log.error("%s", err)
+        print(err, file=sys.stderr)
+        return 2
+    if replaced:
+        log.warning("an engine left running without its app was stopped (process %s)", replaced)
+    exit_with_parent(data)
     import uvicorn
 
+    from app import window_key
     from app.main import app as fastapi_app
 
-    exit_with_parent()
+    if window_key.stdout_mode():
+        print(window_key.LINE + window_key.KEY, flush=True)
     sweep_stale_unpacks()
     stop_on_request(fastapi_app)
     port = usable_port(int(os.environ.get("FORMSURFACE_PORT", "8766") or 8766)) or free_port()
     os.environ["FORMSURFACE_PORT"] = str(port)
-    uvicorn.run(fastapi_app, host="127.0.0.1", port=port, log_level="info", timeout_graceful_shutdown=1)
-    return 0
+    server = uvicorn.Server(uvicorn.Config(fastapi_app, host="127.0.0.1", port=port, log_level="info", timeout_graceful_shutdown=1))
+    try:
+        server.run()
+    finally:
+        release(data)
+    return 0 if server.started else 3
 
 
 if __name__ == "__main__":

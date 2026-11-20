@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from test_window import APP_ID, CLEAR_ENV_PREFIX, DIST, ENGINE_CMD, ENGINE_DIR, ENGINE_ENV, HEALTH_PATH, free_port
+from test_window import APP_ID, CLEAR_ENV_PREFIX, DIST, ENGINE_CMD, ENGINE_DIR, ENGINE_ENV, HEALTH_PATH, claim_key, free_port, key_script
 
 VIEWPORT = {"width": 1440, "height": 900}
 START = "/?size=1024"
@@ -60,7 +60,7 @@ def service():
         proc.kill()
         out = proc.communicate(timeout=5)[0].decode("utf-8", "replace")
         raise RuntimeError(f"engine did not answer {HEALTH_PATH}:\n{out[-4000:]}")
-    yield {"base": base, "data": data}
+    yield {"base": base, "data": data, "key": claim_key(base)}
     proc.terminate()
     try:
         proc.wait(timeout=10)
@@ -80,8 +80,9 @@ def chromium():
 
 
 @pytest.fixture
-def context(chromium):
+def context(chromium, service):
     ctx = chromium.new_context(viewport=VIEWPORT)
+    ctx.add_init_script(key_script(service["key"]))
     ctx.set_default_timeout(STEP_S * 1000)
     yield ctx
     ctx.close()

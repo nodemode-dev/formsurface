@@ -1,3 +1,4 @@
+import './shell/window-key';
 import init, { create_engine, type Engine } from './engine/pkg/fs_engine.js';
 import { loadHighPoly, loadMeshFile, sampleHighPoly, sampleMesh, type FlatMesh } from './engine/meshes';
 import type { BakeJob, BakeResult } from './engine/bake-worker';

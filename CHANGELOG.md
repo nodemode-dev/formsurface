@@ -2,6 +2,27 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. Entries before 0.61.0 were reconstructed from the commit history.
 
+## 0.67.0 · 2026-11-20
+
+Only FormSurface's own window can change things in FormSurface, the engine starts and stops cleanly, the Windows app holds its engine and says why a start failed, and every list of agent programs names all four. 0.64.0, 0.65.0 and 0.66.0 were not handed out; everything they had is in this release.
+
+### Changed
+
+- The engine keeps a log in the data folder's `Logs`. A second start on the same data folder is refused with "formsurface is already running on [folder] (engine process N)."; an engine left running by an app that is gone is stopped and replaced; the engine stops when the app that started it ends; and the engine opened on its own opens FormSurface instead.
+- A terminal's output now always reaches the terminal tab that is showing it.
+- On Windows the engine runs inside a job object, so it ends with the app however the app ends, and everything it started ends with it.
+- The app waits at most 90 seconds for its engine. When the engine cannot start, the message says why, shows the engine's last lines, its exit code and where its log is, and appears before the loading window closes. A main window that cannot open now says so.
+- The Windows engine is built with no console window; `FORMSURFACE_ENGINE_WINDOWED=0` keeps one. The engine runs with no standard output or error at all.
+- The Connect an Outside Agent dialog, Home's Agents entry, the Agent link button's tooltip and the first-run guide name Claude Code, Codex, Cursor and Antigravity, in every language the app has. The shared panel module is 2.2.1.
+- The backend test suite runs only with stand-in agent programs, and its socket tests give up after 20 seconds instead of waiting for ever.
+- Pictures that Claude looked at, shown in a Chat reply, are now only given to FormSurface's own window.
+- Each Antigravity tab works in a folder of its own, so two Antigravity tabs open at once each keep their own connection to FormSurface, and closing one leaves the other connected. The tab's folder is removed when the tab closes.
+- The README now says that FormSurface is released, built and bundled for macOS, Windows and Linux and tested on all three.
+
+- The engine gives one key to FormSurface's window when it starts, and every change asks for it: saving, deleting and exporting projects, the terminals, Claude Code, Codex, Cursor, Antigravity and Chat, Preferences, the external editor and closing the engine. A request without it is answered "Only the formsurface window can do this". The desktop app hands the window its key directly; a window opened from source asks for it once, and the engine gives it to the first page only.
+- The editor's Agent link, the terminal tabs and the dock's event stream connect only from that window. Another program that tries to take over the Agent link is turned away, and the linked editor stays linked.
+- Agents outside the app still reach the editor through `./formsurface mcp` while you have Agent link turned on, as before.
+
 ## 0.63.0 · 2026-11-20
 
 The Form family's shared agent dock, module 2.2.0, replaces FormSurface's own terminal dock: the real Claude Code, Codex, Cursor and Antigravity programs run in tabs beside the model, each connected to FormSurface's MCP server, and `./formsurface agents install` registers that server with all four.

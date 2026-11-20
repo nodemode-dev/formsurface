@@ -18,6 +18,7 @@ pyinstaller --noconfirm --clean --onefile --name formsurface-engine \
   --hidden-import app.agent.router --hidden-import app.agent.cmd_terminal --hidden-import app.agent.claude_code \
   --hidden-import app.agent.cmd_chat --hidden-import app.agent.cmd_prefs --hidden-import ptyprocess \
   --collect-submodules uvicorn --collect-submodules app --collect-submodules mcp.server --collect-submodules mcp.shared --collect-submodules mcp_types --collect-submodules httpx --collect-all PyOpenColorIO \
+  $([ "$(fs_os)" = windows ] && [ "${FORMSURFACE_ENGINE_WINDOWED:-1}" != 0 ] && echo --noconsole) \
   "$FORMSURFACE_ROOT/backend/formsurface_engine.py"
 "dist-engine/formsurface-engine${ext}" --selfcheck || fs_die "the frozen engine failed its selfcheck; nothing was copied to src-tauri/binaries"
 mkdir -p "$FORMSURFACE_ROOT/src-tauri/binaries"

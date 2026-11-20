@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import socket
@@ -15,6 +16,17 @@ REPO = WINDOW_DIR.parents[2]
 
 APP_ID = "formsurface"
 ENGINE_DIR = REPO / "backend"
+KEYS: dict[str, str] = {}
+
+
+def claim_key(base):
+    request = urllib.request.Request(base + "/api/window/key", data=b"", method="POST")
+    with urllib.request.urlopen(request, timeout=10) as r:
+        return json.loads(r.read().decode("utf-8"))["key"]
+
+
+def key_script(key):
+    return f"window.__FORMSURFACE_WINDOW_KEY = {json.dumps(key)};"
 ENGINE_CMD = [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "{port}"]
 ENGINE_ENV = {"FORMSURFACE_DATA": "{data}", "FORMSURFACE_PORT": "{port}", "FORMSURFACE_STATIC": "{dist}"}
 CLEAR_ENV_PREFIX = "FORMSURFACE_"
@@ -73,6 +85,7 @@ def engine():
         proc.kill()
         out = proc.communicate(timeout=5)[0].decode("utf-8", "replace")
         raise RuntimeError(f"engine did not answer {HEALTH_PATH}:\n{out[-4000:]}")
+    KEYS[base] = claim_key(base)
     yield base
     proc.terminate()
     try:
@@ -94,6 +107,7 @@ def test_window_loads_throttled_without_shift_errors_or_refusals(engine, path):
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": 1440, "height": 900})
+        page.add_init_script(key_script(KEYS[engine]))
         page.add_init_script(CLS_PROBE)
         cdp = page.context.new_cdp_session(page)
         cdp.send("Emulation.setCPUThrottlingRate", {"rate": CPU_SLOWDOWN})

@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
 
+from app import window_key
 from app.agent import claude_code, cmd_agents, cmd_chat, cmd_prefs, cmd_terminal, config, events, external, terminal
 from app.agent.commands import REGISTRY, CommandError, dispatch
 
@@ -63,6 +64,7 @@ async def run_command(cid: str, request: Request) -> dict:
 async def stream(request: Request) -> StreamingResponse:
     if TAB_HEADER in request.headers:
         raise HTTPException(403, WINDOW_ONLY)
+    window_key.held_or_ticket(request)
     queue = events.subscribe()
 
     async def gen():
@@ -84,7 +86,8 @@ async def stream(request: Request) -> StreamingResponse:
 
 
 @router.get("/api/chat/image")
-def chat_image(path: str) -> FileResponse:
+def chat_image(path: str, request: Request) -> FileResponse:
+    window_key.held_or_ticket(request)
     folder = (config.data_dir() / "Chat").resolve()
     target = Path(path).resolve()
     if target.parent != folder or not target.is_file():
@@ -98,13 +101,16 @@ async def attach(ws: WebSocket, sid: str) -> None:
         await ws.close(code=4403)
         return
     await ws.accept()
+    if not await window_key.socket_admitted(ws):
+        await ws.close(code=4403)
+        return
     try:
         session = terminal.get(sid)
     except KeyError:
         await ws.close(code=4404)
         return
     q: asyncio.Queue = asyncio.Queue()
-    session.subscribers.add(q)
+    session.subscribers[q] = asyncio.get_running_loop()
 
     async def outbound() -> None:
         backlog = session.scrollback()
@@ -132,4 +138,4 @@ async def attach(ws: WebSocket, sid: str) -> None:
         pass
     finally:
         sender.cancel()
-        session.subscribers.discard(q)
+        session.subscribers.pop(q, None)

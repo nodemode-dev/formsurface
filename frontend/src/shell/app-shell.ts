@@ -543,7 +543,7 @@ export class Shell {
   private connectHelp(): void {
     const d = new Dialog('Connect an Outside Agent');
     const body = el<HTMLElement>(`<div class="fs-form">
-<p>Claude Code, Codex and Cursor drive FormSurface through its MCP server. Turn on Agent Link in this window, then register the server once:</p>
+<p>Claude Code, Codex, Cursor and Antigravity drive FormSurface through its MCP server. Turn on Agent Link in this window, then register the server once:</p>
 <pre class="fs-code" translate="no">claude mcp add --scope user formsurface -- /path/to/formsurface/formsurface mcp</pre>
 <p>Inside this repo, the .mcp.json file already registers it for Claude Code. The Terminal, Claude Code and Chat buttons in the title bar start Claude Code right here, already connected.</p>
 </div>`);

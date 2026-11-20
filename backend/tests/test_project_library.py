@@ -26,7 +26,7 @@ def trashed(client):
 
 def raw(engine, method, path, body=None):
     conn = http.client.HTTPConnection("127.0.0.1", engine["port"], timeout=10)
-    headers = {}
+    headers = {"x-formsurface-window-key": engine["key"]}
     if isinstance(body, dict):
         body = json.dumps(body).encode("utf-8")
         headers["content-type"] = "application/json"

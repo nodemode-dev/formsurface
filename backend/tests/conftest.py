@@ -63,7 +63,50 @@ os.environ["HOME"] = str(_SANDBOX / "home")
 os.environ["USERPROFILE"] = str(_SANDBOX / "home")
 for _key in [k for k in os.environ if k.startswith(f"{ENV_PREFIX}_") and k not in (DATA_ENV, PORT_ENV)]:
     os.environ.pop(_key)
+AGENT_NAMES = ("claude", "codex", "cursor-agent", "agent", "agy")
+STAND_INS = _SANDBOX / "bin"
+STAND_IN_SHELL = _SANDBOX / "shell" / "sh"
+AGENT_SHELL = """#!/bin/sh
+script=""
+while [ $# -gt 0 ]; do if [ "$1" = "-c" ]; then shift; script="$1"; fi; shift; done
+if [ -n "$script" ]; then exec /bin/sh -c "$script"; fi
+exec /bin/sh
+"""
+PATH_WITHOUT_AGENTS = os.pathsep.join(d for d in os.environ.get("PATH", "").split(os.pathsep) if d and not any(os.path.exists(os.path.join(d, n)) for n in AGENT_NAMES))
+os.environ["PATH"] = PATH_WITHOUT_AGENTS
+if os.name != "nt":
+    STAND_INS.mkdir()
+    STAND_IN_SHELL.parent.mkdir()
+    for _name in AGENT_NAMES:
+        (STAND_INS / _name).write_text('#!/bin/sh\nif [ "$1" = "--version" ]; then echo "0.0.0 (stand-in)"; exit 0; fi\nexit 1\n', encoding="utf-8")
+        (STAND_INS / _name).chmod(0o755)
+    STAND_IN_SHELL.write_text(AGENT_SHELL, encoding="utf-8")
+    STAND_IN_SHELL.chmod(0o755)
+    os.environ["SHELL"] = str(STAND_IN_SHELL)
+    os.environ["PATH"] = os.pathsep.join([str(STAND_INS), PATH_WITHOUT_AGENTS])
 sys.path.insert(0, str(BACKEND))
+
+
+def real_agent_programs():
+    from app.agent import agent_lookup
+
+    ours = STAND_INS.resolve()
+    found = []
+    for program, spec in agent_lookup.PROGRAMS.items():
+        for name in spec["names"]:
+            hit = shutil.which(name)
+            if hit and Path(hit).resolve().parent != ours:
+                found.append(hit)
+        found += [str(p) for p in agent_lookup.candidates(program) if p.is_file() and p.resolve().parent != ours]
+    if os.name != "nt" and os.environ.get("SHELL") != str(STAND_IN_SHELL):
+        found.append(f"SHELL={os.environ.get('SHELL', '')}")
+    return sorted(set(found))
+
+
+def pytest_sessionstart(session):
+    found = real_agent_programs()
+    if found:
+        pytest.exit("refusing to run: a real agent program would be found instead of a stand-in: " + ", ".join(found), returncode=pytest.ExitCode.USAGE_ERROR)
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -80,8 +123,22 @@ def app():
     return getattr(importlib.import_module(module), attr)
 
 
+def window_headers():
+    from app import window_key
+
+    return {window_key.HEADER: window_key.KEY}
+
+
 @pytest.fixture(scope="session")
 def client(app):
+    from fastapi.testclient import TestClient
+
+    with TestClient(app, base_url=own_origin(), headers=window_headers()) as c:
+        yield c
+
+
+@pytest.fixture(scope="session")
+def bare(app):
     from fastapi.testclient import TestClient
 
     with TestClient(app, base_url=own_origin()) as c:
@@ -145,7 +202,10 @@ def engine():
         proc.kill()
         out = proc.communicate(timeout=5)[0].decode("utf-8", "replace")
         raise RuntimeError(f"engine did not answer {HEALTH_PATH} within 60 s:\n{out[-4000:]}")
-    yield {"base": base, "port": port, "data": data, "env": env, "proc": proc}
+    claim = urllib.request.Request(base + "/api/window/key", data=b"", method="POST")
+    with urllib.request.urlopen(claim, timeout=5) as r:
+        key = json.loads(r.read().decode("utf-8"))["key"]
+    yield {"base": base, "port": port, "data": data, "env": env, "proc": proc, "key": key}
     proc.terminate()
     try:
         proc.wait(timeout=10)
