@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
 
+from app import window_key
 from app.agent import claude_code, cmd_agents, cmd_chat, cmd_prefs, cmd_terminal, config, events, external, terminal
 from app.agent.commands import REGISTRY, CommandError, dispatch
 
@@ -63,6 +64,7 @@ async def run_command(cid: str, request: Request) -> dict:
 async def stream(request: Request) -> StreamingResponse:
     if TAB_HEADER in request.headers:
         raise HTTPException(403, WINDOW_ONLY)
+    window_key.held_or_ticket(request)
     queue = events.subscribe()
 
     async def gen():
@@ -98,6 +100,9 @@ async def attach(ws: WebSocket, sid: str) -> None:
         await ws.close(code=4403)
         return
     await ws.accept()
+    if not await window_key.socket_admitted(ws):
+        await ws.close(code=4403)
+        return
     try:
         session = terminal.get(sid)
     except KeyError:

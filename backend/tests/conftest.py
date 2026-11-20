@@ -80,8 +80,22 @@ def app():
     return getattr(importlib.import_module(module), attr)
 
 
+def window_headers():
+    from app import window_key
+
+    return {window_key.HEADER: window_key.KEY}
+
+
 @pytest.fixture(scope="session")
 def client(app):
+    from fastapi.testclient import TestClient
+
+    with TestClient(app, base_url=own_origin(), headers=window_headers()) as c:
+        yield c
+
+
+@pytest.fixture(scope="session")
+def bare(app):
     from fastapi.testclient import TestClient
 
     with TestClient(app, base_url=own_origin()) as c:
@@ -145,7 +159,10 @@ def engine():
         proc.kill()
         out = proc.communicate(timeout=5)[0].decode("utf-8", "replace")
         raise RuntimeError(f"engine did not answer {HEALTH_PATH} within 60 s:\n{out[-4000:]}")
-    yield {"base": base, "port": port, "data": data, "env": env, "proc": proc}
+    claim = urllib.request.Request(base + "/api/window/key", data=b"", method="POST")
+    with urllib.request.urlopen(claim, timeout=5) as r:
+        key = json.loads(r.read().decode("utf-8"))["key"]
+    yield {"base": base, "port": port, "data": data, "env": env, "proc": proc, "key": key}
     proc.terminate()
     try:
         proc.wait(timeout=10)

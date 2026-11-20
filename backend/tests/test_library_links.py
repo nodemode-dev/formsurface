@@ -218,7 +218,8 @@ def test_a_library_whose_own_folder_is_a_link_still_saves_reads_and_trashes(tmp_
                 time.sleep(0.25)
         import httpx
 
-        with httpx.Client(base_url=base, trust_env=False, timeout=10) as http:
+        key = httpx.post(base + "/api/window/key", trust_env=False, timeout=10).json()["key"]
+        with httpx.Client(base_url=base, trust_env=False, timeout=10, headers={"x-formsurface-window-key": key}) as http:
             made = http.post("/api/projects", json={"template": "sphere", "title": "on a link"}).json()
             pid = made["id"]
             assert http.post(f"/api/projects/{pid}/file", content=FSPJ).status_code == 200

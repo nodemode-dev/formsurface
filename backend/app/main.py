@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
-from app import environments, ocio, projects
+from app import environments, ocio, projects, window_key
 from app.agent import agent_programs
 from app.agent import config as agent_config
 from app.agent import router as agent_router
@@ -29,6 +29,7 @@ LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost", "testclient"}
 app = FastAPI(title="FormSurface service", version=VERSION, lifespan=agent_router.lifespan)
 app.include_router(agent_router.router)
 app.include_router(projects.router)
+app.include_router(window_key.router)
 
 
 @app.middleware("http")
@@ -40,6 +41,7 @@ async def local_only(request: Request, call_next):
     return await call_next(request)
 
 
+app.add_middleware(window_key.WindowKeyGuard)
 app.add_middleware(LocalGuard, origins=agent_config.window_origins())
 
 
@@ -111,6 +113,9 @@ async def live(socket: WebSocket):
         await socket.close(code=1008)
         return
     await socket.accept()
+    if not await window_key.socket_admitted(socket):
+        await socket.close(code=4403)
+        return
     if relay.socket is not None:
         try:
             await relay.socket.close(code=1000)

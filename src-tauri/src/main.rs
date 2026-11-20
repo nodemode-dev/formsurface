@@ -18,7 +18,7 @@ struct PageListening(AtomicBool);
 struct ExitGate(AtomicBool);
 struct EngineDone(AtomicBool);
 #[cfg(windows)]
-struct Service(Mutex<Option<u16>>);
+struct Service(Mutex<Option<(u16, String)>>);
 
 const ENGINE_PORT: &str = "8766";
 const ENGINE_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
@@ -58,7 +58,7 @@ fn kill_backend(handle: &tauri::AppHandle) {
 }
 
 #[cfg(windows)]
-fn ask_to_close(port: u16) -> bool {
+fn ask_to_close(port: u16, key: &str) -> bool {
     use std::io::{Read, Write};
     let wait = std::time::Duration::from_secs(2);
     let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
@@ -67,7 +67,7 @@ fn ask_to_close(port: u16) -> bool {
     };
     let _ = stream.set_read_timeout(Some(wait));
     let _ = stream.set_write_timeout(Some(wait));
-    let request = format!("POST /api/shutdown HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+    let request = format!("POST /api/shutdown HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nX-Formsurface-Window-Key: {key}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
     if stream.write_all(request.as_bytes()).is_err() {
         return false;
     }
@@ -96,10 +96,10 @@ fn close_backend(handle: &tauri::AppHandle) {
     handle.state::<EngineDone>().0.store(true, Ordering::SeqCst);
     #[cfg(windows)]
     {
-        let port = handle.state::<Service>().0.lock().ok().and_then(|slot| *slot);
+        let service = handle.state::<Service>().0.lock().ok().and_then(|slot| slot.clone());
         let pid = handle.state::<Backend>().0.lock().ok().and_then(|slot| slot.as_ref().map(|child| child.pid()));
-        if let (Some(port), Some(pid)) = (port, pid) {
-            if ask_to_close(port) {
+        if let (Some((port, key)), Some(pid)) = (service, pid) {
+            if ask_to_close(port, &key) {
                 wait_exit(pid, 4000);
             }
         }
@@ -239,6 +239,7 @@ fn main() {
                     // The engine exits on its own when this process is gone, so a killed app (SIGTERM at logout,
                     // a crash) never leaves it holding the port.
                     .env("FORMSURFACE_PARENT_PID", std::process::id().to_string())
+                    .env("FORMSURFACE_WINDOW_KEY_STDOUT", "1")
                     .spawn()
             });
             let (mut rx, child) = match spawned {
@@ -261,7 +262,9 @@ fn main() {
 
             tauri::async_runtime::spawn(async move {
                 let pattern = regex::Regex::new(r"http://127\.0\.0\.1:(\d+)").unwrap();
+                let key_pattern = regex::Regex::new(r"formsurface-window-key: ([A-Za-z0-9_-]{32,})").unwrap();
                 let mut port: Option<u16> = None;
+                let mut key: Option<String> = None;
                 while let Some(event) = rx.recv().await {
                     let line = match event {
                         CommandEvent::Stdout(bytes) | CommandEvent::Stderr(bytes) => {
@@ -270,6 +273,12 @@ fn main() {
                         CommandEvent::Terminated(_) => break,
                         _ => continue,
                     };
+                    if key.is_none() {
+                        key = key_pattern.captures(&line).map(|found| found[1].to_string());
+                        if key.is_some() {
+                            continue;
+                        }
+                    }
                     if let Some(captures) = pattern.captures(&line) {
                         port = captures[1].parse().ok();
                         if port.is_some() {
@@ -286,12 +295,11 @@ fn main() {
                         #[cfg(windows)]
                         {
                             if let Ok(mut slot) = handle.state::<Service>().0.lock() {
-                                *slot = Some(found);
+                                *slot = Some((found, key.clone().unwrap_or_default()));
                             }
                         }
-                        let url: tauri::Url = format!("http://127.0.0.1:{found}")
-                            .parse()
-                            .expect("loopback url");
+                        let origin = format!("http://127.0.0.1:{found}");
+                        let url: tauri::Url = origin.parse().expect("loopback url");
                         let (width, height) = handle
                             .primary_monitor()
                             .ok()
@@ -312,6 +320,12 @@ fn main() {
                             .inner_size(width, height)
                             .min_inner_size(MIN_LOGICAL.0, MIN_LOGICAL.1)
                             .center();
+                        let builder = match key.as_deref() {
+                            Some(value) => builder.initialization_script(format!(
+                                "if (window.location.origin === {origin:?}) {{ window.__FORMSURFACE_WINDOW_KEY = {value:?}; }}"
+                            )),
+                            None => builder,
+                        };
                         #[cfg(target_os = "macos")]
                         let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
                         let builder = builder.on_page_load(|window, payload| {

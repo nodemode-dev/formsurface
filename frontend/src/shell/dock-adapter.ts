@@ -4,6 +4,7 @@ import { api, ApiError } from './api';
 import { ChatPane } from './chat-pane';
 import { isMac } from './dom';
 import { onLanguage, t } from '../i18n';
+import { keyMessage } from './window-key';
 
 export type AgentKind = 'antigravity';
 export const DOCK_STORE = 'formsurface.agentDock';
@@ -24,7 +25,10 @@ function channel(id: string): DockChannel {
   let data = (_chunk: string | Uint8Array): void => undefined;
   let exit = (): void => undefined;
   let closed = (): void => undefined;
-  socket.addEventListener('open', () => data(''));
+  socket.addEventListener('open', () => {
+    socket.send(keyMessage());
+    data('');
+  });
   socket.addEventListener('message', (msg) => {
     const text = String(msg.data);
     if (text === EXIT) exit(); else data(text);

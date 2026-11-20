@@ -167,8 +167,11 @@ def main() -> int:
     os.environ.setdefault("FORMSURFACE_DATA", os.path.join(os.path.expanduser("~"), "FormSurface"))
     import uvicorn
 
+    from app import window_key
     from app.main import app as fastapi_app
 
+    if window_key.stdout_mode():
+        print(window_key.LINE + window_key.KEY, flush=True)
     exit_with_parent()
     sweep_stale_unpacks()
     stop_on_request(fastapi_app)

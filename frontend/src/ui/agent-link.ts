@@ -1,3 +1,5 @@
+import { keyMessage, windowKeyReady } from '../shell/window-key';
+
 export type Handler = (args: Record<string, unknown>) => Promise<unknown> | unknown;
 
 export class AgentLink {
@@ -30,7 +32,12 @@ export class AgentLink {
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
     const socket = new WebSocket(`${scheme}://${location.host}/api/live`);
     this.socket = socket;
-    socket.onopen = () => this.onState('linked');
+    socket.onopen = () => {
+      void windowKeyReady().then(() => {
+        if (socket.readyState === WebSocket.OPEN) socket.send(keyMessage());
+      });
+      this.onState('linked');
+    };
     socket.onclose = () => {
       if (this.socket !== socket) return;
       this.socket = undefined;
