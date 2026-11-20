@@ -7,13 +7,15 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, StreamingResponse
 
-from app.agent import claude_code, cmd_chat, cmd_prefs, cmd_terminal, config, events, external, terminal
+from app.agent import claude_code, cmd_agents, cmd_chat, cmd_prefs, cmd_terminal, config, events, external, terminal
 from app.agent.commands import REGISTRY, CommandError, dispatch
 
 router = APIRouter()
 router.include_router(external.router)
 LOCAL = ("localhost", "127.0.0.1", "::1", "tauri.localhost")
-MODULES = (claude_code, cmd_chat, cmd_prefs, cmd_terminal)
+MODULES = (claude_code, cmd_agents, cmd_chat, cmd_prefs, cmd_terminal)
+TAB_HEADER = "x-formsurface-tab"
+WINDOW_ONLY = "This route belongs to the FormSurface window; an agent tab's token is not accepted here."
 
 
 def _local(origin: str | None) -> bool:
@@ -42,6 +44,8 @@ def list_commands() -> dict:
 async def run_command(cid: str, request: Request) -> dict:
     if not _local(request.headers.get("origin")):
         raise HTTPException(403, "FormSurface only answers this computer")
+    if TAB_HEADER in request.headers:
+        raise HTTPException(403, WINDOW_ONLY)
     try:
         params = await request.json()
     except ValueError:
@@ -57,6 +61,8 @@ async def run_command(cid: str, request: Request) -> dict:
 
 @router.get("/api/events")
 async def stream(request: Request) -> StreamingResponse:
+    if TAB_HEADER in request.headers:
+        raise HTTPException(403, WINDOW_ONLY)
     queue = events.subscribe()
 
     async def gen():
@@ -88,7 +94,7 @@ def chat_image(path: str) -> FileResponse:
 
 @router.websocket("/api/terminal/{sid}")
 async def attach(ws: WebSocket, sid: str) -> None:
-    if not _local(ws.headers.get("origin")):
+    if not _local(ws.headers.get("origin")) or TAB_HEADER in ws.headers:
         await ws.close(code=4403)
         return
     await ws.accept()

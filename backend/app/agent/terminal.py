@@ -34,9 +34,10 @@ class Session:
         self.gen = 0
         self.cols = 100
         self.rows = 30
+        self.on_close: list = []
 
     def describe(self) -> dict:
-        return {"id": self.id, "title": self.title, "cwd": self.cwd, "alive": self.alive, "kind": self.kind}
+        return {"id": self.id, "title": self.title, "cwd": self.cwd, "tip": self.cwd, "alive": self.alive, "kind": self.kind}
 
     def keep(self, text: str) -> None:
         with self.lock:
@@ -76,6 +77,7 @@ def base_env() -> dict:
     env["COLORTERM"] = "truecolor"
     env["FORMSURFACE_TERMINAL"] = "1"
     env["FORMSURFACE_SERVICE"] = config.service_url()
+    env.pop("FORMSURFACE_TAB_TOKEN", None)
     if os.name != "nt" and not getattr(sys, "frozen", False):
         env["PATH"] = str(config.REPO_DIR) + os.pathsep + env.get("PATH", "")
     if getattr(sys, "frozen", False):
@@ -179,6 +181,11 @@ def close(sid: str) -> None:
         session.proc.terminate(force=True)
     except Exception:
         pass
+    for done in session.on_close:
+        try:
+            done()
+        except Exception:
+            continue
     events.publish("terminal.closed", id=sid)
 
 
