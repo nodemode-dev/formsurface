@@ -90,6 +90,7 @@ body.nm-home #toast-root { z-index: var(--z-home-preview); }
 .fs-home-sub { margin-top: 4px; color: var(--text-secondary); font-size: var(--fs-13); }
 .fs-home-hero { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 24px; padding: 28px; border: 1px dashed var(--line-3); border-radius: 14px; background: radial-gradient(120% 140% at 0% 0%, var(--accent-wash), transparent 55%), var(--surface-2); transition: border-color var(--transition-fast), background-color var(--transition-fast), box-shadow var(--transition-fast); }
 .fs-home-hero.is-drag-over { border-color: var(--accent-line); background: radial-gradient(120% 140% at 0% 0%, var(--accent-wash), transparent 70%), var(--accent-soft); box-shadow: 0 0 0 4px var(--accent-wash), 0 18px 44px rgba(0, 0, 0, 0.35); }
+:root[data-oled] .fs-home-hero:not(.is-drag-over) { background: var(--bg-primary); }
 .fs-home-hero-icon { display: inline-grid; place-items: center; width: 56px; height: 56px; border: 1px solid var(--line-3); border-radius: 14px; background: var(--surface-raised); color: var(--accent-ink); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06); }
 .fs-home-hero-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .fs-home-hero-title { color: var(--text-primary); font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
