@@ -20,8 +20,8 @@ The full documents live in the repository:
 | --- | --- | --- |
 | Painting, layers, masks, generators, baking | in use | on WebGPU, with a WebGL 2 path; path tracing and the ray-traced bake need WebGPU |
 | Export, UDIM, texture sets | in use | very large export sizes need a GPU with the memory for them |
-| Home, project library, menu bar | new in 0.61.0 | exercised in a browser on Linux |
-| Desktop app | not run on macOS or Windows for 0.62.0 | the shell was compile-checked on Linux only; the native macOS menu bar was not run |
+| Home, project library, menu bar | in use | in the browser and in the desktop app; the native menu bar on macOS |
+| Desktop app | released | built and bundled for macOS, Windows and Linux, and tested on all three |
 | Agents: MCP, batch, Python API | in use | Agent link is off by default |
 
 These pages are the source of truth in the repository under `.docs/wiki/`. Edit them there; the wiki workflow publishes them. Writing rules: full words, real paths, no emoji and no em dash (use the interpunct).
