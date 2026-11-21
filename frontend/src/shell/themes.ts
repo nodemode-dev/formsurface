@@ -1,5 +1,6 @@
 const STORE = 'nodemode_ui_settings';
 const TOKENS = ['--bg', '--surface', '--surface-2', '--border', '--surface-3', '--text', '--text-muted', '--text-faint', '--canvas-bg'] as const;
+const OLED: Record<string, true> = { amoled: true };
 
 export const THEMES: Array<[string, string, boolean, readonly string[]]> = [
   ['studio', 'Studio Dark', false, ['#111111', '#17151b', '#222127', '#2a2a2a', '#34333a', '#f7f7f7', '#a4a4a4', '#717072', '#1c1b1d']],
@@ -17,6 +18,7 @@ export const THEMES: Array<[string, string, boolean, readonly string[]]> = [
   ['rose', 'Rose Noir', false, ['#170b10', '#211117', '#301a22', '#4d2b38', '#653a49', '#f5e7ec', '#cfa5b3', '#966b7b', '#170b10']],
   ['terminal', 'Terminal Green', false, ['#050d05', '#0a140a', '#102010', '#1f3d1f', '#2b522b', '#d8f5d8', '#8fce8f', '#568a56', '#050d05']],
   ['contrast', 'High Contrast', false, ['#000000', '#0a0a0a', '#161616', '#555555', '#777777', '#ffffff', '#d8d8d8', '#9a9a9a', '#000000']],
+  ['amoled', 'AMOLED Black', false, ['#000000', '#000000', '#141414', '#262626', '#3a3a3a', '#ededed', '#a6a6a6', '#858585', '#000000']],
   ['nineties', '90s', true, ['#c0c0c0', '#d4d0c8', '#b4b0a8', '#808080', '#ffffff', '#000000', '#202020', '#585858', '#008080']],
   ['duck', 'Duck', true, ['#e9e4f7', '#f4f1fc', '#d9d2ef', '#c7bde6', '#b3a6dc', '#2b2540', '#4f4770', '#7a7299', '#e2dcf2']],
   ['pro-dark', 'Pro Dark', false, ['#1f1f1f', '#2b2b2b', '#363636', '#4a4a4a', '#818181', '#ececec', '#bdbdbd', '#a0a0a0', '#181818']],
@@ -59,6 +61,8 @@ export function applyTheme(id: string): void {
   root.style.colorScheme = base ? '' : entry[2] ? 'light' : 'dark';
   root.style.background = base ? '' : entry[3][0];
   root.classList.toggle('theme-light', entry[2]);
+  const oled = OLED[entry[0]] === true;
+  if (oled !== root.hasAttribute('data-oled')) root.toggleAttribute('data-oled', oled);
 }
 
 export function setTheme(id: string): void {

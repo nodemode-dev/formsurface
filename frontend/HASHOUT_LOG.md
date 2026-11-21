@@ -2,6 +2,29 @@
 
 Decisions, reasons and anything left out, newest first. Code carries no comments; the context lives here. Started in 0.64.0; earlier history is not backfilled.
 
+## Unreleased (2026-11-20): AMOLED Black, the theme profile (`src/shell/themes.ts`, `src/i18n/strings.json`, `src/i18n/more14/*.json`)
+
+- The family's AMOLED Black (`/home/claude/form/work/AMOLED_SPEC.md`, FormTxt eb5bacd the reference) in FormSurface's nine token names: `--bg` and `--surface` `#000000` (the spec's `--bg-primary` and `--bg-secondary`), `--surface-2` `#141414` (`--bg-tertiary`: inputs, menus and selected rows use it as their only fill), `--border` `#262626`, `--surface-3` `#3a3a3a` (`--border-light`), `--text` `#ededed` (17.9 to 1 on black), `--text-muted` `#a6a6a6` (8.6 to 1), `--text-faint` `#858585` (5.7 to 1), `--canvas-bg` `#000000`. The accent stays the user's (orange by default).
+- Id `amoled`, listed after High Contrast, so the Window menu's Theme list and the Preferences picker show it with no other change. It is not High Contrast: High Contrast keeps white text and grey panels.
+- `OLED` names the profiles for OLED screens. `applyTheme` sets `data-oled` on html for them and removes it for every other, and touches the attribute only when it changes, so a switch between two other themes writes nothing.
+- The theme's name is a lookup key, so it is in `strings.json` and in all 25 tables of `more14`, beside the other theme names, with the family's wording (FormRef's tables). No speaker has read them.
+
+## Unreleased (2026-11-20): AMOLED Black, the true-black rules (`src/styles/tokens.css`, `src/styles/home.css`)
+
+- Every rule hangs on `data-oled`, never on the theme id, so another OLED profile needs only the flag.
+- `--bg-node` and `--surface-1` mix `--surface-2` into the background: `#0c0c0c` and `#090909` under AMOLED. `--bg-node` fills dialogs, the command palette, the glass menus (82% of it), the title bar's top and the plain buttons; `--surface-1` the title bar's foot and the agent panel's bar (`--dock-bar-bg` in `dock-tokens.css`). Both are the background under `data-oled`. The spec puts `--bg-node` at `#000000` too.
+- `--line-0` mixes the background with black, so it was black on black: the dividers under the title bar, above the status bar, under the agent panel's head and beside Home's list vanished, and borders are what part the panels here. It is `--border` under `data-oled`, as `theme-light` already does.
+- `--bg-hover` 10% white and `--border-soft` 12% white: the usual 6% and 8% give 1.10 and 1.14 to 1 on black.
+- Home's drop area draws a 10% accent glow from its top left corner (`#180b02` measured at that corner under AMOLED). Under `data-oled` it is plain black with its dashed border; dragging a file over it still lights it.
+- Left as they are, on purpose: `--surface-raised` (hover, the active tab and chips: a fill that marks something), the `#141414` fills of inputs, menus in the panel and the ask line (the spec keeps them), the scrim behind dialogs, Home's template pictures (content), and the 3D view's backdrop `#131416`, which the engine clears to in native code (`native/fs-engine/src/gpu.rs`) under every theme; it is not themed, and changing it is native work outside this change. The view's frame around it (`.viewport`, `--canvas-bg`) is black.
+- The agent panel (`src/dock`, copied from FormVis) is not changed: it reads its colours through `dock-tokens.css`, whose sources are black under AMOLED.
+
+## Unreleased (2026-11-20): AMOLED Black before first paint (`index.html`)
+
+- The boot script's profile table has the `amoled` row and an `OLED = { 'amoled': 1 }` table and sets `data-oled` beside the tokens before first paint. A theme in one table and not the other would paint Studio Dark first and then switch.
+- The critical style paints `html, body` `#0a0a0a` until the stylesheets arrive, and the boot script repaints only `html`; `html[data-oled] body` is `#000000` there, so the body is black from the first frame.
+- Checked in headless Chromium at 1440 by 900, 4x CPU throttle, cache off, 150 ms latency and 4 Mbit/s: cold load and hard reload with `amoled` saved, every frame after navigation black or its settled value at 65 points (corners and centres of 13 surfaces).
+
 ## Unreleased (2026-11-20): every sentence that lists the agent programs names all four (`src/shell/app-shell.ts`, `src/shell/home.ts`, `index.html`, `src/i18n/strings.json`, `src/i18n/locales/*.json`)
 
 - The Connect an Outside Agent dialog's first sentence, Home's Agents entry and the Agent link button's tooltip now say Claude Code, Codex, Cursor and Antigravity, in that order.

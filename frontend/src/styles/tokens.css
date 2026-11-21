@@ -138,6 +138,14 @@
   --surface-raised: color-mix(in srgb, var(--bg-node) 88%, var(--text-primary) 8%);
 }
 
+:root[data-oled] {
+  --bg-node: var(--bg-primary);
+  --surface-1: var(--bg-primary);
+  --line-0: var(--border-color);
+  --bg-hover: rgba(255, 255, 255, 0.1);
+  --border-soft: rgba(255, 255, 255, 0.12);
+}
+
 .fs-family {
   --surface-2: var(--bg-node);
   --text-muted: var(--text-faint);
