@@ -2,6 +2,18 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. Entries before 0.61.0 were reconstructed from the commit history.
 
+## 0.68.0 · 2026-11-20
+
+A new theme, AMOLED Black, for OLED screens.
+
+### Added
+
+- AMOLED Black in Window, Theme and in Preferences: a true-black window for OLED screens. Home, the project library, the title bar and its menus, the tool column, the panels, the status bar, dialogs and the agent panel are black and told apart by their borders; inputs and menus keep a dark grey fill; text is light grey and the accent is yours. It is black from the first frame when FormSurface starts, and its name is in every language the app has.
+
+### Changed
+
+- The wiki's status table says the desktop app is released, built and tested on macOS, Windows and Linux.
+
 ## 0.67.0 · 2026-11-20
 
 Only FormSurface's own window can change things in FormSurface, the engine starts and stops cleanly, the Windows app holds its engine and says why a start failed, and every list of agent programs names all four. 0.64.0, 0.65.0 and 0.66.0 were not handed out; everything they had is in this release.
